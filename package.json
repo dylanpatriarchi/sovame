@@ -1,0 +1,12 @@
+{
+  "name": "sovame",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "PERVYJ SNEG — passeggiata in un microdistretto sovietico d'inverno (three.js)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  }
+}
