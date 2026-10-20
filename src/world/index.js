@@ -9,6 +9,7 @@ import { buildBuildings } from './buildings.js';
 import { buildProps } from './props.js';
 import { buildVegetation } from './vegetation.js';
 import { buildPeople } from './people.js';
+import { buildInteriors } from './interiors.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -31,6 +32,8 @@ export class World {
     this.lamps = [];
     this.updaters = [];
     this.points = {};
+    this.interiors = [];
+    this.interactables = [];
 
     this.initMaterials();
     this.initTextures();
@@ -50,6 +53,7 @@ export class World {
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
       ['Trees, bushes and crows', () => buildVegetation(this.ctx)],
+      ['Warm stairwells', () => buildInteriors(this.ctx)],
     ];
     for (let i = 0; i < stages.length; i++) {
       onProgress?.(i / stages.length, stages[i][0]);
@@ -228,9 +232,20 @@ export class World {
     return best;
   }
 
+  /** The stairwell interior containing the point, if any. */
+  interiorAt(x, z) {
+    for (const it of this.interiors) {
+      const b = it.bounds;
+      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
+    }
+    return null;
+  }
+
   /** Checks whether a circle of radius r collides with the environment. */
   collides(x, z, r) {
-    if (Math.abs(x) > WORLD.bounds || Math.abs(z) > WORLD.bounds) return true;
+    // interiors sit far outside the district: their own walls bound the
+    // player there, the world edge only applies outdoors
+    if (!this.interiorAt(x, z) && (Math.abs(x) > WORLD.bounds || Math.abs(z) > WORLD.bounds)) return true;
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));

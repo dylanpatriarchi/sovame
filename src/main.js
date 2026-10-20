@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World } from './world/index.js';
+import { INTERIOR_LAYER } from './world/interiors.js';
 import { Environment } from './environment.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
@@ -61,6 +62,8 @@ async function boot() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.08, 1500);
   camera.position.set(2.4, 1.9, 44);
+  // stairwell interiors live on their own layer, lit only by their own bulbs
+  camera.layers.enable(INTERIOR_LAYER);
 
   // post chain: bloom only haloes genuinely bright sources (windows, lamps, moon)
   const composer = new EffectComposer(renderer);
@@ -72,7 +75,7 @@ async function boot() {
   renderer.info.autoReset = false;
 
   const sound = new Sound({ volume: settings.volume });
-  const state = { mode: 'loading', elapsed: 0, introT: 0 };
+  const state = { mode: 'loading', elapsed: 0, introT: 0, interior: null, transitioning: false };
 
   const ui = new UI({
     settings,
@@ -92,6 +95,40 @@ async function boot() {
   scene.add(world.group);
 
   await world.build((fraction, label) => ui.setProgress(0.08 + fraction * 0.62, label));
+
+  // interaction registry: the kiosk radio plus one in/out pair per stairwell
+  const radio = world.points.radio;
+  if (radio) {
+    world.interactables.push({
+      id: 'radio',
+      x: radio.x,
+      z: radio.z,
+      radius: 7,
+      prompt: () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio'),
+      onUse: () => {
+        sound.toggleRadio();
+        sound.ui('tick');
+      },
+    });
+  }
+  for (const interior of world.interiors) {
+    world.interactables.push({
+      id: `${interior.id}:enter`,
+      x: interior.doorOut.x,
+      z: interior.doorOut.z,
+      radius: 2.6,
+      prompt: () => 'E — enter the stairwell',
+      onUse: () => useDoor(interior, true),
+    });
+    world.interactables.push({
+      id: `${interior.id}:exit`,
+      x: interior.doorIn.x,
+      z: interior.doorIn.z,
+      radius: 1.5,
+      prompt: () => 'E — step outside',
+      onUse: () => useDoor(interior, false),
+    });
+  }
 
   const env = new Environment({
     scene,
@@ -164,6 +201,9 @@ async function boot() {
 
   function enterWorld() {
     state.mode = 'playing';
+    state.interior = null;
+    sound.setIndoors(false);
+    env.setIndoors(false);
     player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnYaw);
     player.enabled = true;
     ui.showScreen('none');
@@ -191,10 +231,48 @@ async function boot() {
   function toTitle() {
     state.mode = 'title';
     state.introT = 0;
+    state.interior = null;
+    sound.setIndoors(false);
+    env.setIndoors(false);
     player.enabled = false;
     player.releaseLock();
     ui.showScreen('start');
     ui.setZone(null);
+  }
+
+  /* --------------------------------------------------- interactions */
+
+  /** Nearest interactable within its radius, indoors or out. */
+  function nearestInteractable() {
+    let best = null;
+    let bestDist = Infinity;
+    for (const it of world.interactables) {
+      const d = Math.hypot(it.x - player.position.x, it.z - player.position.z);
+      if (d < it.radius && d < bestDist) {
+        best = it;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
+  /** Steps through a stairwell door: fade to black, teleport, fade back. */
+  function useDoor(interior, entering) {
+    if (state.transitioning) return;
+    state.transitioning = true;
+    sound.ui('tick');
+    ui.fadeTransition(() => {
+      const spawn = entering ? interior.inSpawn : interior.outSpawn;
+      player.teleport(spawn.x, spawn.z, spawn.yaw);
+      player.pitch = entering ? 0.03 : -0.02;
+      state.interior = entering ? interior : null;
+      sound.setIndoors(entering);
+      env.setIndoors(entering);
+      lastPrompt = null;
+      updateZone();
+    }).finally(() => {
+      state.transitioning = false;
+    });
   }
 
   /* --------------------------------------------------- HUD */
@@ -212,19 +290,17 @@ async function boot() {
   }
 
   function updateZone() {
+    if (state.interior) {
+      ui.setZone('Подъезд', state.interior.caption);
+      return;
+    }
     const zone = world.zoneAt(player.position.x, player.position.z);
     ui.setZone(zone ? zone.name : null, zone ? zone.sub : null);
   }
 
   function updatePrompt() {
-    const radio = world.points.radio;
-    let text = null;
-    if (radio) {
-      const dist = Math.hypot(radio.x - player.position.x, radio.z - player.position.z);
-      if (dist < 7) {
-        text = sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio';
-      }
-    }
+    const it = nearestInteractable();
+    const text = it && !state.transitioning ? it.prompt() : null;
     if (text !== lastPrompt) {
       lastPrompt = text;
       ui.setPrompt(text);
@@ -241,14 +317,8 @@ async function boot() {
   });
 
   window.addEventListener('keydown', (event) => {
-    if (event.code === 'KeyE' && state.mode === 'playing') {
-      const radio = world.points.radio;
-      if (radio && Math.hypot(radio.x - player.position.x, radio.z - player.position.z) < 7) {
-        const on = sound.toggleRadio();
-        sound.ui('tick');
-        ui.setPrompt(on ? 'E — turn off the radio' : 'E — turn on the radio');
-        lastPrompt = null;
-      }
+    if (event.code === 'KeyE' && state.mode === 'playing' && !state.transitioning) {
+      nearestInteractable()?.onUse();
     }
     if (event.code === 'Escape' && state.mode === 'playing') {
       // the browser exits pointer lock: the pause comes from onLockChange

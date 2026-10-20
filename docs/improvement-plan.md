@@ -132,6 +132,17 @@ boxes built from the same procedural textures; warm incandescent light against
 the blue exterior is the whole point. Entering/exiting fades the camera.
 Colliders included; the smoke harness keeps working outdoors.
 
+Shipped: three entrances — building 7 entrance 1 (courtyard door at 31.09, −23.45),
+building 9 entrance 3 (crossroad door at 17.67, 55.45, nearest the spawn) and
+building 3 entrance 2 (avenue-side door at −33.5, 26.55); each interior is a
+sealed box far east of the map on its own light layer (one warm flickering
+PointLight): vestibule with numbered mailbox bank + notice board, a 10-step
+flight with railing, landing with radiator under an emissive frosted
+courtyard-view window, heating riser, bare bulb; E-doors in a generalized
+`world.interactables` registry (radio migrated unchanged), fade-teleport
+in/out, `Sound.setIndoors` (room tone, 50 Hz hum, muffled wind) and
+`Environment.setIndoors` (snow/mist fade).
+
 ## H. Cigarette spots (PR: `feat/smoke-spots`)
 
 A few marked quiet spots — the courtyard bench, a stairwell landing window

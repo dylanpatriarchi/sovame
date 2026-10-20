@@ -210,6 +210,18 @@
       }
       #prompt.visible { opacity: 1; transform: translateX(-50%) scale(1); }
 
+      /* fade-to-black used when stepping through a stairwell door */
+      #fade {
+        position: fixed;
+        inset: 0;
+        z-index: 5;
+        background: #000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+      #fade.on { opacity: 1; }
+
       /* ---------------------------------------------------------- screens */
       .screen {
         position: fixed;
@@ -510,6 +522,7 @@
     <canvas id="scene"></canvas>
     <div id="vignette"></div>
     <div id="grain"></div>
+    <div id="fade"></div>
 
     <div id="hud" class="hidden">
       <div id="crosshair"></div>
