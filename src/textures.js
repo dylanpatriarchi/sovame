@@ -106,7 +106,7 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
   const ctx = canvas.getContext('2d');
 
   // the road stays dark but never black: it is the largest surface in frame
-  ctx.fillStyle = winter ? '#565b62' : '#4a4c4e';
+  ctx.fillStyle = winter ? '#50555c' : '#45484c';
   ctx.fillRect(0, 0, size, size);
 
   // grit
@@ -114,9 +114,12 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     ctx.fillStyle = `rgba(${rng.int(70, 140)},${rng.int(72, 142)},${rng.int(76, 148)},${rng.float(0.05, 0.3)})`;
     ctx.fillRect(rng.float(0, size), rng.float(0, size), rng.float(1, 2.2), rng.float(1, 2.2));
   }
-  // wear and patches
-  for (let i = 0; i < 26; i++) {
-    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(30, 130), 'rgba(52,55,60,0.75)', rng.float(0.2, 0.5));
+  // damp patches: darker, they read as wet film under lamps
+  for (let i = 0; i < 30; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(30, 130), 'rgba(46,50,56,0.8)', rng.float(0.25, 0.55));
+  }
+  for (let i = 0; i < 12; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(60, 170), 'rgba(36,40,46,0.55)', rng.float(0.15, 0.35));
   }
   for (let i = 0; i < 14; i++) {
     const w = rng.float(40, 150);
@@ -186,6 +189,25 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     for (let i = 0; i < 40; i++) {
       wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(14, 60), 'rgba(235,241,248,0.55)', rng.float(0.2, 0.5));
     }
+    // slushy tire lanes: churned dirty snow with polished wet lines underneath
+    for (const cx of [size * 0.25, size * 0.75]) {
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#2b2f36';
+      ctx.fillRect(cx - 14, 0, 7, size);
+      ctx.fillRect(cx + 7, 0, 7, size);
+      ctx.restore();
+      for (let y = 0; y < size; y += 6) {
+        const wob = Math.sin(y * 0.021 + cx) * 4;
+        ctx.save();
+        ctx.globalAlpha = rng.float(0.1, 0.3);
+        ctx.fillStyle = rng.chance(0.6) ? '#828c9a' : '#5d6570';
+        ctx.beginPath();
+        ctx.ellipse(cx + wob + rng.float(-10, 10), y, rng.float(6, 17), rng.float(3, 8), 0, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
     // snow piled up at the edges of the carriageway
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -202,6 +224,52 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     ctx.restore();
   }
   return toTexture(canvas);
+}
+
+/**
+ * Roughness map for wet asphalt (linear, not sRGB): a mid-rough base with
+ * broad damp sheen patches and polished tire lanes. Winter keeps the lanes
+ * glossy but roughens the slush between them.
+ */
+export function makeAsphaltRoughnessTexture({ dashes = true, size = 512, winter = false } = {}) {
+  const rng = new Rng((dashes ? 881 : 882) + (winter ? 40 : 0));
+  const canvas = makeCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = winter ? '#c4c4c4' : '#d6d6d6';
+  ctx.fillRect(0, 0, size, size);
+
+  // broad damp patches with a lower roughness
+  for (let i = 0; i < 24; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(50, 170), 'rgba(118,118,118,0.85)', rng.float(0.25, 0.6));
+  }
+  // polished tire lanes: wet film is the smoothest part of the road
+  ctx.save();
+  ctx.globalAlpha = winter ? 0.7 : 0.55;
+  ctx.fillStyle = '#6e6e6e';
+  ctx.fillRect(size * 0.19, 0, size * 0.13, size);
+  ctx.fillRect(size * 0.68, 0, size * 0.13, size);
+  ctx.restore();
+  if (winter) {
+    // slush is rough again; only the two polished lines per lane stay smooth
+    for (const cx of [size * 0.25, size * 0.75]) {
+      for (let i = 0; i < 70; i++) {
+        wrappedBlob(ctx, size, cx + rng.float(-16, 16), rng.float(0, size), rng.float(6, 18), 'rgba(208,208,208,0.9)', rng.float(0.3, 0.7));
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#565656';
+      ctx.fillRect(cx - 14, 0, 7, size);
+      ctx.fillRect(cx + 7, 0, 7, size);
+      ctx.restore();
+    }
+  }
+  // speckle so the sheen breaks up instead of reading as plastic
+  for (let i = 0; i < 2600; i++) {
+    const v = rng.int(140, 235);
+    ctx.fillStyle = `rgba(${v},${v},${v},${rng.float(0.08, 0.3)})`;
+    ctx.fillRect(rng.float(0, size), rng.float(0, size), rng.float(1, 2.4), rng.float(1, 2.4));
+  }
+  return toTexture(canvas, { srgb: false });
 }
 
 /** Sidewalk made of concrete slabs. */
@@ -357,7 +425,7 @@ export function makeIceTexture(size = 512) {
 /* ------------------------------------------------------------------ buildings */
 
 function drawWindow(ctx, x, y, w, h, rng, opts) {
-  const { winter, litChance } = opts;
+  const { winter, litChance, tv = false } = opts;
   // opening
   ctx.fillStyle = 'rgba(48,46,44,0.85)';
   ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
@@ -367,8 +435,9 @@ function drawWindow(ctx, x, y, w, h, rng, opts) {
 
   const panes = rng.chance(0.5) ? 2 : 3;
   const inner = { x: x + 2, y: y + 2, w: w - 4, h: h - 4 };
-  const lit = rng.chance(litChance);
+  const lit = !tv && rng.chance(litChance);
   const cool = rng.chance(0.25);
+  const occluders = [];
 
   let glass;
   if (lit) {
@@ -380,6 +449,44 @@ function drawWindow(ctx, x, y, w, h, rng, opts) {
       glass.addColorStop(0, '#ffd7a0');
       glass.addColorStop(1, '#e08a34');
     }
+    ctx.fillStyle = glass;
+    ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
+    glass = null;
+    // curtain layout: some windows are half-lit or top-lit behind fabric
+    const r = rng.next();
+    const style = r < 0.48 ? 'full' : r < 0.76 ? 'bottom' : r < 0.88 ? 'top' : 'side';
+    if (style === 'bottom') {
+      const frac = rng.float(0.42, 0.62);
+      occluders.push({ x: inner.x, y: inner.y + inner.h * (1 - frac), w: inner.w, h: inner.h * frac });
+    } else if (style === 'top') {
+      const frac = rng.float(0.26, 0.44);
+      occluders.push({ x: inner.x, y: inner.y, w: inner.w, h: inner.h * frac });
+    } else if (style === 'side') {
+      const sw = inner.w * rng.float(0.28, 0.44);
+      occluders.push({ x: rng.chance(0.5) ? inner.x : inner.x + inner.w - sw, y: inner.y, w: sw, h: inner.h });
+    }
+    for (const o of occluders) {
+      ctx.save();
+      ctx.globalAlpha = rng.float(0.82, 0.95);
+      ctx.fillStyle = rng.pick(['#6b5f4e', '#7a6b54', '#5d5648', '#4e4a42']);
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+      // faint light leaking over the curtain edge
+      if (o.y > inner.y) {
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = 'rgba(255,196,128,0.6)';
+        ctx.fillRect(o.x, o.y - 1, o.w, 1.6);
+      }
+      ctx.restore();
+    }
+  } else if (tv) {
+    // TV window: cold navy glass, kept dark in the emissive map —
+    // the animated flicker quad provides the light (see buildings.js)
+    glass = ctx.createLinearGradient(inner.x, inner.y, inner.x, inner.y + inner.h);
+    glass.addColorStop(0, '#26344c');
+    glass.addColorStop(1, '#101825');
+    ctx.fillStyle = glass;
+    ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
+    glass = null;
   } else if (rng.chance(0.55)) {
     // curtains
     const curtain = rng.pick(['#8d7c66', '#a39784', '#7f8b93', '#9a8d7a', '#6f7c86']);
@@ -433,7 +540,7 @@ function drawWindow(ctx, x, y, w, h, rng, opts) {
     ctx.lineTo(inner.x + rng.float(0, inner.w), inner.y + inner.h);
     ctx.stroke();
   }
-  return { lit, cool, x, y, w, h, inner, panes };
+  return { lit, cool, x, y, w, h, inner, panes, occluders };
 }
 
 function drawBalcony(ctx, x, y, w, h, rng, opts) {
@@ -530,6 +637,7 @@ export function makeFacadeTextures(spec) {
     street = 'ул. КОСМОНАВТОВ',
     number = '12',
     tall = false,
+    tvCells = null,
   } = spec;
 
   const W = cells * cell;
@@ -544,15 +652,34 @@ export function makeFacadeTextures(spec) {
   gctx.fillStyle = '#000';
   gctx.fillRect(0, 0, W, H);
 
-  // panel tone variation
+  // soft vertical grime streak, fading as it runs down
+  const grimeStreak = (x, y, w, len, alpha) => {
+    const grad = ctx.createLinearGradient(0, y, 0, y + len);
+    grad.addColorStop(0, `rgba(54,51,46,${alpha})`);
+    grad.addColorStop(1, 'rgba(54,51,46,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - w / 2, y, w, len);
+    // damper source right at the origin
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillStyle = '#3c3a35';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 1, w * 0.7, 2.2, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  // per-panel albedo variance: brightness plus a faint temperature shift
+  // (replaced panels and decades of uneven weathering)
   for (let f = 0; f < floors; f++) {
     for (let c = 0; c < cells; c++) {
-      const v = rng.float(-10, 10);
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = v > 0 ? `rgba(255,255,255,${v / 60})` : `rgba(0,0,0,${-v / 60})`;
+      const v = rng.float(-11, 11);
+      ctx.fillStyle = v > 0 ? `rgba(255,255,255,${v / 62})` : `rgba(0,0,0,${-v / 62})`;
       ctx.fillRect(c * cell, (floors - 1 - f) * cell, cell, cell);
-      ctx.restore();
+      if (rng.chance(0.2)) {
+        ctx.fillStyle = rng.chance(0.5) ? 'rgba(150,128,98,0.045)' : 'rgba(94,116,140,0.045)';
+        ctx.fillRect(c * cell, (floors - 1 - f) * cell, cell, cell);
+      }
     }
   }
   // joints between panels
@@ -566,6 +693,14 @@ export function makeFacadeTextures(spec) {
   for (let c = 0; c <= cells; c++) {
     ctx.fillStyle = 'rgba(60,58,55,0.32)';
     ctx.fillRect(c * cell - 1, 0, 2, H);
+  }
+  // staining running down from the horizontal joints
+  for (let f = 0; f < floors; f++) {
+    const y = f * cell + 2;
+    for (let c = 0; c < cells; c++) {
+      if (!rng.chance(0.34)) continue;
+      grimeStreak(c * cell + rng.float(4, cell - 4), y, rng.float(2, 9), rng.float(cell * 0.15, cell * 0.55), rng.float(0.05, 0.12));
+    }
   }
   // gutters / downspouts
   for (let c = 0; c < cells; c++) {
@@ -581,6 +716,7 @@ export function makeFacadeTextures(spec) {
   for (let c = 0; c < cells; c++) if (rng.chance(balconyChance)) balconyCols.add(c);
 
   const lamps = [];
+  const streaks = [];
   for (let f = 0; f < floors; f++) {
     const yTop = (floors - 1 - f) * cell;
     for (let c = 0; c < cells; c++) {
@@ -596,7 +732,12 @@ export function makeFacadeTextures(spec) {
       const h = cell * (f === 0 ? 0.34 : 0.42);
       const xw = x + (cell - w) / 2;
       const yw = yTop + cell * (f === 0 ? 0.34 : 0.28);
-      const res = drawWindow(ctx, xw, yw, w, h, rng, { winter, litChance });
+      const res = drawWindow(ctx, xw, yw, w, h, rng, { winter, litChance, tv: tvCells ? tvCells.has(`${f}:${c}`) : false });
+      // grime washing down from the sill (soft, anchored, low alpha)
+      if (rng.chance(0.42)) {
+        streaks.push({ x: xw + rng.float(w * 0.2, w * 0.8), y: yw + h + 5, w: rng.float(2, 6), len: rng.float(cell * 0.2, cell * 0.85), a: rng.float(0.08, 0.18) });
+        if (rng.chance(0.3)) streaks.push({ x: xw + rng.float(0, w), y: yw + h + 5, w: rng.float(1, 2.6), len: rng.float(cell * 0.15, cell * 0.5), a: rng.float(0.06, 0.12) });
+      }
       if (res.lit) {
         // Emissive map: crisp glass + very restrained halo, so the window
         // stays a readable rectangle and not a glowing orb.
@@ -622,18 +763,19 @@ export function makeFacadeTextures(spec) {
           gctx.fillRect(px - 1, inner.y, 2.4, inner.h);
         }
         gctx.fillRect(inner.x, inner.y + inner.h * 0.5 - 1, inner.w, 2);
-        // curtains/furniture: inner shadow bands
-        gctx.fillStyle = 'rgba(0,0,0,0.3)';
-        if (rng.chance(0.55)) {
-          gctx.fillRect(inner.x, inner.y + inner.h * rng.float(0.58, 0.72), inner.w, inner.h);
-        }
-        if (rng.chance(0.3)) {
-          const sw = inner.w * rng.float(0.22, 0.45);
-          gctx.fillRect(rng.chance(0.5) ? inner.x : inner.x + inner.w - sw, inner.y, sw, inner.h);
+        // curtains: the emissive map repeats the color map's occluders,
+        // so half-lit and top-lit windows glow with the same shape
+        gctx.fillStyle = 'rgba(0,0,0,0.9)';
+        for (const o of res.occluders) {
+          gctx.fillRect(o.x, o.y, o.w, o.h);
         }
       }
       if (f > 0 && balconyCols.has(c) && rng.chance(0.9)) {
         drawBalcony(ctx, xw - 3, yw, w + 6, h, rng, { winter });
+        // streak from the balcony slab edge
+        if (rng.chance(0.55)) {
+          streaks.push({ x: xw + rng.float(0, w), y: yw + h + 11, w: rng.float(3, 8), len: rng.float(cell * 0.25, cell * 0.9), a: rng.float(0.09, 0.2) });
+        }
       }
     }
   }
@@ -667,13 +809,16 @@ export function makeFacadeTextures(spec) {
     ctx.fillRect(0, 0, W, 3);
   }
 
-  // dirt streaks under the windowsills and from the cornice
-  for (let i = 0; i < cells * 3; i++) {
+  // anchored grime: sills, balcony slabs and joint stains collected above
+  for (const s of streaks) grimeStreak(s.x, s.y, s.w, s.len, s.a);
+
+  // long dirt streaks from the cornice and downspout lines
+  for (let i = 0; i < cells * 1.5; i++) {
     const x = rng.float(0, W);
     const y = rng.float(0, H - plinthH);
     const len = rng.float(20, 150);
     const grad = ctx.createLinearGradient(0, y, 0, y + len);
-    grad.addColorStop(0, 'rgba(58,56,52,0.28)');
+    grad.addColorStop(0, 'rgba(58,56,52,0.24)');
     grad.addColorStop(1, 'rgba(58,56,52,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(x, y, rng.float(1.5, 6), len);
@@ -684,6 +829,24 @@ export function makeFacadeTextures(spec) {
     ctx.fillStyle = rng.chance(0.5) ? '#3f3d39' : '#e8e4da';
     ctx.beginPath();
     ctx.ellipse(rng.float(0, W), rng.float(0, H), rng.float(10, 60), rng.float(6, 30), rng.float(0, TAU), 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // splash zone: damp dark band (~0.8 m) kicked up from the ground
+  const splashH = cell * 0.27;
+  const sgrad = ctx.createLinearGradient(0, H - splashH, 0, H);
+  sgrad.addColorStop(0, 'rgba(42,40,36,0)');
+  sgrad.addColorStop(0.55, 'rgba(42,40,36,0.14)');
+  sgrad.addColorStop(1, 'rgba(38,36,32,0.42)');
+  ctx.fillStyle = sgrad;
+  ctx.fillRect(0, H - splashH, W, splashH);
+  for (let i = 0; i < cells * 5; i++) {
+    ctx.save();
+    ctx.globalAlpha = rng.float(0.06, 0.2);
+    ctx.fillStyle = rng.chance(0.72) ? '#2e2c28' : '#b9b4a6';
+    ctx.beginPath();
+    ctx.ellipse(rng.float(0, W), H - rng.float(0, splashH), rng.float(1.5, 7), rng.float(1, 4), 0, 0, TAU);
     ctx.fill();
     ctx.restore();
   }
@@ -720,9 +883,54 @@ export function makeFacadeTextures(spec) {
   };
 }
 
+/**
+ * Snow line clinging to roof parapets and ledges: an alpha strip with a
+ * bumpy top edge and sparse drips below. Applied to thin planes under the
+ * parapet in winter (see buildings.js).
+ */
+export function makeSnowLedgeTexture(w = 512, h = 64) {
+  const rng = new Rng(7331);
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  // main bumpy body of snow along the top edge
+  ctx.fillStyle = 'rgba(246,250,255,0.97)';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(w, 0);
+  ctx.lineTo(w, h * 0.3);
+  for (let x = w; x >= 0; x -= 7) {
+    ctx.lineTo(x, h * 0.3 + rng.float(-3, 11));
+  }
+  ctx.closePath();
+  ctx.fill();
+  // soft lumps and shaded underside
+  for (let i = 0; i < 70; i++) {
+    ctx.save();
+    ctx.globalAlpha = rng.float(0.1, 0.4);
+    ctx.fillStyle = rng.chance(0.6) ? '#ffffff' : '#c9d4e4';
+    ctx.beginPath();
+    ctx.ellipse(rng.float(0, w), rng.float(0, h * 0.42), rng.float(4, 16), rng.float(2, 6), 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  // sparse melt drips below the ledge
+  for (let i = 0; i < 30; i++) {
+    const x = rng.float(0, w);
+    const y0 = h * rng.float(0.3, 0.45);
+    const len = rng.float(3, h * 0.5);
+    const grad = ctx.createLinearGradient(0, y0, 0, y0 + len);
+    grad.addColorStop(0, `rgba(228,238,250,${rng.float(0.25, 0.55)})`);
+    grad.addColorStop(1, 'rgba(228,238,250,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y0, rng.float(1, 2.4), len);
+  }
+  return toTexture(canvas);
+}
+
 /** Bituminous roof covering, with snow patches (in winter). */
-export function makeRoofTexture(winter, size = 512) {
-  const rng = new Rng(31);
+export function makeRoofTexture(winter, size = 512) {  const rng = new Rng(31);
   const canvas = makeCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#3a3c3e';
@@ -1060,8 +1268,7 @@ export function makeLeafTexture(size = 64) {
   return tex;
 }
 
-export function makeSmokeTexture(size = 128) {
-  const rng = new Rng(17);
+export function makeSmokeTexture(size = 128) {  const rng = new Rng(17);
   const canvas = makeCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
@@ -1077,6 +1284,37 @@ export function makeSmokeTexture(size = 128) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, TAU);
     ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Wide horizontal wisp for the drifting mist planes: an elongated radial
+ * gradient with a few offset lobes, fading to zero on every side.
+ */
+export function makeMistTexture(w = 256, h = 128) {
+  const rng = new Rng(241);
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  for (let i = 0; i < 9; i++) {
+    const x = w * 0.5 + rng.float(-w * 0.22, w * 0.22);
+    const y = h * 0.5 + rng.float(-h * 0.16, h * 0.16);
+    const rx = rng.float(w * 0.16, w * 0.4);
+    const ry = rx * rng.float(0.28, 0.5);
+    const a = rng.float(0.1, 0.26);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rx);
+    g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    ctx.translate(-x, -y);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -1100,6 +1338,64 @@ export function makeFootprintTexture(w = 64, h = 96) {
   }
   ctx.fillRect(w * 0.28, h * 0.74, w * 0.44, 2.6);
   ctx.globalCompositeOperation = 'source-over';
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Light-beam card for the street lamps: an isosceles beam profile, bright
+ * under the lamp head and fading downward and sideways, so the silhouette
+ * never shows a hard edge. Used on two crossed planes per lamp.
+ */
+export function makeBeamTexture(w = 128, h = 256) {
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const v = y / h; // 0 = lamp head, 1 = ground
+    const half = 0.05 + v * 0.45; // beam half-width as a fraction of w
+    // brightest right under the head, dissolving before the ground
+    const vert = Math.pow(1 - v, 1.45) * 0.62 * (v > 0.9 ? (1 - v) / 0.1 : 1);
+    for (let x = 0; x < w; x++) {
+      const u = Math.abs(x / w - 0.5) / half;
+      const edge = u >= 1 ? 0 : 1 - u * u;
+      const a = Math.max(0, Math.min(1, vert * edge));
+      const i = (y * w + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Soft window-shaped glow for the TV flicker quads: a feathered rectangle,
+ * slightly brighter toward the top (the set against the ceiling).
+ */
+export function makeTvGlowTexture(w = 96, h = 72) {
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const ramp = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
+  for (let y = 0; y < h; y++) {
+    const fy = ramp(y / h, 0.06, 0.22) * (1 - ramp(y / h, 0.8, 0.98));
+    for (let x = 0; x < w; x++) {
+      const fx = ramp(x / w, 0.05, 0.2) * (1 - ramp(x / w, 0.8, 0.97));
+      const a = fx * fy * (0.7 + 0.3 * (1 - y / h));
+      const i = (y * w + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(Math.min(1, a) * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
