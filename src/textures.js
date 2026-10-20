@@ -910,13 +910,7 @@ export function posterSlava(w = 512, h = 320) {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = CREAM;
-    fitFont(ctx, 'СЛАВА ТРУДУ!', W - 60, 68, '"Arial Narrow", Arial, sans-serif');
-    ctx.fillText('СЛАВА ТРУДУ!', W / 2, H * 0.4);
-    ctx.fillStyle = 'rgba(239,227,207,0.9)';
-    ctx.font = 'bold 20px Arial, sans-serif';
-    ctx.fillText('ГЕРОЯМ ПЯТИЛЕТКИ — СЛАВА', W / 2, H * 0.62);
-    ctx.fillStyle = CREAM;
-    starPath(ctx, W * 0.5, H * 0.8, 26, 11);
+    starPath(ctx, W * 0.5, H * 0.5, 34, 14);
     ctx.fill();
     // wear
     for (let i = 0; i < 240; i++) {
@@ -951,9 +945,6 @@ export function posterNewYear(w = 512, h = 320) {
     }
     ctx.fillStyle = '#5a3b22';
     ctx.fillRect(W * 0.5 - 7, H * 0.86, 14, 26);
-    ctx.fillStyle = CREAM;
-    fitFont(ctx, 'С НОВЫМ ГОДОМ!', W - 70, 60, '"Arial Narrow", Arial, sans-serif');
-    ctx.fillText('С НОВЫМ ГОДОМ!', W / 2, H * 0.16);
     ctx.fillStyle = '#d94a3d';
     starPath(ctx, W * 0.5, H * 0.09, 20, 8.5);
     ctx.fill();
@@ -987,32 +978,6 @@ export function posterFire(w = 400, h = 512) {
     ctx.quadraticCurveTo(W * 0.5, H * 0.52, W * 0.5, H * 0.6);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#22221f';
-    fitFont(ctx, 'БЕРЕГИ ЛЕС', W - 40, 46, '"Arial Narrow", Arial, sans-serif');
-    ctx.fillText('БЕРЕГИ ЛЕС', W / 2, H * 0.7);
-    fitFont(ctx, 'ОТ ПОЖАРА!', W - 40, 40, '"Arial Narrow", Arial, sans-serif');
-    ctx.fillText('ОТ ПОЖАРА!', W / 2, H * 0.79);
-    ctx.font = 'bold 16px Arial, sans-serif';
-    ctx.fillText('ТУШИТЕ КОСТЁР ПЕСКОМ', W / 2, H * 0.9);
-  });
-}
-
-export function signRink(w = 400, h = 220) {
-  return makeSignTexture(w, h, (ctx, W, H) => {
-    ctx.fillStyle = '#dcd8c8';
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = '#2b2a26';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(4, 4, W - 8, H - 8);
-    ctx.fillStyle = '#2b2a26';
-    fitFont(ctx, 'КАТОК', W - 60, 60, '"Arial Narrow", Arial, sans-serif');
-    ctx.fillText('КАТОК', W / 2, H * 0.34);
-    ctx.fillStyle = '#a8231c';
-    fitFont(ctx, 'ЗАКРЫТ', W - 90, 52, '"Arial Narrow", Arial, sans-serif');
-    ctx.fillText('ЗАКРЫТ', W / 2, H * 0.66);
-    ctx.fillStyle = '#514f47';
-    ctx.font = 'bold 16px Arial, sans-serif';
-    ctx.fillText('по техническим причинам', W / 2, H * 0.87);
   });
 }
 

@@ -5,7 +5,7 @@ import { Environment } from './environment.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
 import { UI } from './ui.js';
-import { PLAYER, SETTINGS_DEFAULTS, SEASONS } from './config.js';
+import { PLAYER, SETTINGS_DEFAULTS } from './config.js';
 import { clamp } from './util.js';
 
 const STORAGE_KEY = 'pervyj-sneg:settings';
@@ -188,11 +188,8 @@ async function boot() {
   let lastSprint = false;
 
   function updateStatus() {
-    const season = SEASONS[settings.season];
     ui.setStatus({
       clock: env.clock,
-      timeLabel: env.timeLabel,
-      seasonLabel: season.label,
       temp: env.temperature,
     });
   }

@@ -21,7 +21,6 @@ export class UI {
       zoneName: q('zone').querySelector('.zone-name'),
       zoneSub: q('zone').querySelector('.zone-sub'),
       clock: document.querySelector('#status .clock'),
-      meta: document.querySelector('#status .meta'),
       temp: document.querySelector('#status .temp'),
       hints: q('hints'),
       prompt: q('prompt'),
@@ -265,9 +264,8 @@ export class UI {
     this.zoneTimer = setTimeout(() => this.el.zone.classList.remove('visible'), 6000);
   }
 
-  setStatus({ clock, timeLabel, seasonLabel, temp }) {
+  setStatus({ clock, temp }) {
     this.el.clock.textContent = clock;
-    this.el.meta.textContent = `${timeLabel} · ${seasonLabel}`;
     this.el.temp.textContent = `${temp > 0 ? '+' : '−'}${Math.abs(temp)} °C`;
   }
 
