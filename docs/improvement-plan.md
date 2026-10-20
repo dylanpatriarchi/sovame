@@ -102,10 +102,53 @@ New module `src/world/people.js`, driven from the main loop
 Non-goals: crowds, dialogue, AI, pathfinding around dynamic obstacles, children,
 vehicles in motion.
 
+## E. Movement-direction bug (PR: `fix/player-movement-direction`)
+
+Reported: turning the mouse left and pressing W moves the player *backwards*.
+Suspect a sign inconsistency between the yaw applied to the camera and the yaw
+used for the movement basis in `src/player.js` (invisible near spawn yaw ≈ 0,
+grows with rotation). Audit the whole controller while at it: pitch clamp,
+crouch/sprint speeds, collision slide.
+
+## F. Post-punk radio (PR: `feat/postpunk-radio`)
+
+The kiosk radio gets a proper station: a **procedurally synthesized Russian
+post-punk-style loop** (WebAudio only — no external files, no copyrighted
+material; original composition in the genre's idiom). Cold minor-key bassline
+(eighth-note drive), motorik drum machine (tight kick/snare, ticking hats),
+chorus-drenched guitar arpeggio (detuned saws through a feedback-delay "chorus"),
+sparse doomy synth lead phrases. 2–3 rotating "tracks" from seeded parameter
+sets (progression, tempo 95–115 BPM, lead motif) so the station is not a single
+loop. Radio on/off stays on `E`; the station keeps playing softly from the
+kiosk with distance attenuation.
+
+## G. Building entrances (PR: `feat/entrances`)
+
+2–3 stairwells (подъезды) become enterable. Prompt on the entrance door (`E`),
+a dim warm interior: vestibule with mailboxes and a notice board, one or two
+flights of stairs, a landing window looking out on the courtyard, the hum of
+the heating pipes and a stronger room-tone echo inside. Interiors are minimal
+boxes built from the same procedural textures; warm incandescent light against
+the blue exterior is the whole point. Entering/exiting fades the camera.
+Colliders included; the smoke harness keeps working outdoors.
+
+## H. Cigarette spots (PR: `feat/smoke-spots`)
+
+A few marked quiet spots — the courtyard bench, a stairwell landing window
+(from G), the bus stop — show a prompt (`F`). Using it plays a ~25 s
+first-person sequence: a simple hand-and-cigarette prop rises into frame, the
+ember glows on each drag, thin smoke drifts and bends with the wind, a soft
+inhale/exhale; the world keeps living around you (snow, mist, pedestrians).
+No mechanics, no counters — just the pause. Cooldown per spot.
+
 ## Rollout order
 
 1. `docs: improvement plan` (this file)
 2. `feat/less-signage` — quick, do first (touches `textures.js` before realism)
 3. `feat/realism-pass`
-4. `feat/bloom`
-5. `feat/pedestrians`
+4. `fix/player-movement-direction`
+5. `feat/postpunk-radio`
+6. `feat/bloom`
+7. `feat/pedestrians`
+8. `feat/entrances`
+9. `feat/smoke-spots`
