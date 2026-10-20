@@ -1306,6 +1306,37 @@ export function makeFootprintTexture(w = 64, h = 96) {
   return tex;
 }
 
+/**
+ * Light-beam card for the street lamps: an isosceles beam profile, bright
+ * under the lamp head and fading downward and sideways, so the silhouette
+ * never shows a hard edge. Used on two crossed planes per lamp.
+ */
+export function makeBeamTexture(w = 128, h = 256) {
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const v = y / h; // 0 = lamp head, 1 = ground
+    const half = 0.05 + v * 0.45; // beam half-width as a fraction of w
+    // brightest right under the head, dissolving before the ground
+    const vert = Math.pow(1 - v, 1.45) * 0.62 * (v > 0.9 ? (1 - v) / 0.1 : 1);
+    for (let x = 0; x < w; x++) {
+      const u = Math.abs(x / w - 0.5) / half;
+      const edge = u >= 1 ? 0 : 1 - u * u;
+      const a = Math.max(0, Math.min(1, vert * edge));
+      const i = (y * w + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export function makeGlowTexture(size = 128, color = '255,190,120') {
   return makeSoftCircleTexture(size, color, 3.2);
 }

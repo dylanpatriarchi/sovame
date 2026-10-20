@@ -504,6 +504,7 @@ export class Environment {
       lamp.light.intensity = c.lamp * 95 * flicker;
       lamp.glow.material.opacity = c.lamp * 0.5 * flicker;
       lamp.pool.material.opacity = c.lamp * 0.3 * flicker;
+      lamp.coneMat.opacity = c.lamp * 0.09 * flicker;
     });
     this.world.setWindowLit(c.windowLit * 0.95);
     // notice boards and posters: slightly backlit when the street lamps turn on

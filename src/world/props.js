@@ -2,7 +2,7 @@
 // notice boards, New Year fir, power poles and wires.
 import * as THREE from 'three';
 import { Rng, TAU } from '../util.js';
-import { makeSignTexture, makeGlowTexture, makeSoftCircleTexture } from '../textures.js';
+import { makeSignTexture, makeGlowTexture, makeSoftCircleTexture, makeBeamTexture } from '../textures.js';
 import { makeStarMesh } from './buildings.js';
 import { WORLD } from '../config.js';
 
@@ -14,6 +14,8 @@ export function buildProps(ctx) {
 
   /* ---------------------------------------------------------- street lamps */
   const glowTex = makeGlowTexture(128, '255,186,110');
+  const beamTex = makeBeamTexture();
+  const beamGeo = new THREE.PlaneGeometry(3.4, 7.1);
   const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0x35393b, emissive: 0xffb066, emissiveIntensity: 0 });
   const lampGlassMat = new THREE.MeshBasicMaterial({ color: 0x2a2c2c });
   world.lampMats = { head: lampHeadMat, glass: lampGlassMat };
@@ -68,11 +70,31 @@ export function buildProps(ctx) {
     pool.position.set(1.42, 0.18, 0);
     g.add(pool);
 
+    // fake volumetric beam: two crossed soft-alpha cards, dissolving
+    // before they reach the ground; no hard silhouette edges
+    const beamMat = new THREE.MeshBasicMaterial({
+      map: beamTex,
+      color: 0xffbe78,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const cone = new THREE.Group();
+    for (const ry of [0, Math.PI / 2]) {
+      const card = new THREE.Mesh(beamGeo, beamMat);
+      card.rotation.y = ry;
+      cone.add(card);
+    }
+    cone.position.set(1.42, 3.62, 0);
+    g.add(cone);
+
     g.position.set(x, 0, z);
     g.rotation.y = facing;
     group.add(g);
     ctx.addBoxCollider(x, z, 0.5, 0.5, 0.15);
-    world.lamps.push({ light, glow, pool, group: g, height: 7.4 });
+    world.lamps.push({ light, glow, pool, cone, coneMat: beamMat, group: g, height: 7.4 });
   };
 
   makeLamp(8.2, -78, Math.PI);
