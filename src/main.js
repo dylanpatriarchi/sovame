@@ -1,5 +1,9 @@
 // Game boot: scene, staged loading, main loop, interactions.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World } from './world/index.js';
 import { Environment } from './environment.js';
 import { Player } from './player.js';
@@ -57,6 +61,15 @@ async function boot() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.08, 1500);
   camera.position.set(2.4, 1.9, 44);
+
+  // post chain: bloom only haloes genuinely bright sources (windows, lamps, moon)
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.32, 0.4, 1.0);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+  // accumulate renderer.info across all composer passes (smoke test reads it)
+  renderer.info.autoReset = false;
 
   const sound = new Sound({ volume: settings.volume });
   const state = { mode: 'loading', elapsed: 0, introT: 0 };
@@ -139,9 +152,13 @@ async function boot() {
 
   function applyQuality() {
     const high = quality === 'high';
-    renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio, 1.8) : Math.min(window.devicePixelRatio, 1.2));
+    const pixelRatio = high ? Math.min(window.devicePixelRatio, 1.8) : Math.min(window.devicePixelRatio, 1.2);
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     renderer.shadowMap.enabled = quality !== 'low';
+    bloomPass.enabled = quality !== 'low';
+    composer.setPixelRatio(pixelRatio);
+    composer.setSize(window.innerWidth, window.innerHeight);
     env.setQuality(quality);
   }
 
@@ -220,6 +237,7 @@ async function boot() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight, false);
+    composer.setSize(window.innerWidth, window.innerHeight);
   });
 
   window.addEventListener('keydown', (event) => {
@@ -279,6 +297,7 @@ async function boot() {
 
   function frame(now) {
     requestAnimationFrame(frame);
+    renderer.info.reset();
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     state.elapsed += dt;
@@ -321,7 +340,7 @@ async function boot() {
       }
     }
 
-    renderer.render(scene, camera);
+    composer.render();
   }
 
   requestAnimationFrame(frame);
