@@ -280,14 +280,6 @@
         font-style: normal;
         color: var(--red);
       }
-      .subtitle {
-        margin-top: 14px;
-        font-size: clamp(14px, 1.4vw, 19px);
-        color: var(--cream-dim);
-        max-width: 46ch;
-        line-height: 1.5;
-      }
-      .subtitle strong { color: var(--cream); font-weight: 700; }
 
       .controls-list {
         margin-top: clamp(18px, 3vh, 30px);
@@ -554,26 +546,19 @@
     <div id="start" class="screen hidden">
       <div class="layout">
         <div class="title-block">
-          <div class="eyebrow">First-person walk · three.js</div>
           <h1>Первый<em>снег</em></h1>
-          <p class="subtitle">
-            A Soviet microdistrict at the end of autumn: prefab slabs, courtyards of trampled
-            snow, bare birches, sodium lamps switching on one by one.
-            <strong>No hurry, no objective.</strong> Walk.
-          </p>
           <div class="controls-list">
             <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</div>
             <div><kbd>⇧</kbd> sprint</div>
             <div><kbd>Space</kbd> jump</div>
             <div><kbd>C</kbd> crouch</div>
-            <div><kbd>E</kbd> turn on the radio</div>
+            <div><kbd>E</kbd> use</div>
             <div><kbd>Esc</kbd> pause</div>
           </div>
           <div class="footnote" id="device-note"></div>
         </div>
         <div class="panel" id="panel-start">
           <h2>Settings</h2>
-          <p class="panel-note">Everything generated in the browser, no external files</p>
           <div id="panel-start-fields"></div>
           <div class="actions">
             <button class="btn" id="btn-start" type="button">Enter the district</button>
