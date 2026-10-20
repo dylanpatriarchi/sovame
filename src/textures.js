@@ -544,15 +544,34 @@ export function makeFacadeTextures(spec) {
   gctx.fillStyle = '#000';
   gctx.fillRect(0, 0, W, H);
 
-  // panel tone variation
+  // soft vertical grime streak, fading as it runs down
+  const grimeStreak = (x, y, w, len, alpha) => {
+    const grad = ctx.createLinearGradient(0, y, 0, y + len);
+    grad.addColorStop(0, `rgba(54,51,46,${alpha})`);
+    grad.addColorStop(1, 'rgba(54,51,46,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - w / 2, y, w, len);
+    // damper source right at the origin
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillStyle = '#3c3a35';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 1, w * 0.7, 2.2, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  // per-panel albedo variance: brightness plus a faint temperature shift
+  // (replaced panels and decades of uneven weathering)
   for (let f = 0; f < floors; f++) {
     for (let c = 0; c < cells; c++) {
-      const v = rng.float(-10, 10);
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = v > 0 ? `rgba(255,255,255,${v / 60})` : `rgba(0,0,0,${-v / 60})`;
+      const v = rng.float(-11, 11);
+      ctx.fillStyle = v > 0 ? `rgba(255,255,255,${v / 62})` : `rgba(0,0,0,${-v / 62})`;
       ctx.fillRect(c * cell, (floors - 1 - f) * cell, cell, cell);
-      ctx.restore();
+      if (rng.chance(0.2)) {
+        ctx.fillStyle = rng.chance(0.5) ? 'rgba(150,128,98,0.045)' : 'rgba(94,116,140,0.045)';
+        ctx.fillRect(c * cell, (floors - 1 - f) * cell, cell, cell);
+      }
     }
   }
   // joints between panels
@@ -566,6 +585,14 @@ export function makeFacadeTextures(spec) {
   for (let c = 0; c <= cells; c++) {
     ctx.fillStyle = 'rgba(60,58,55,0.32)';
     ctx.fillRect(c * cell - 1, 0, 2, H);
+  }
+  // staining running down from the horizontal joints
+  for (let f = 0; f < floors; f++) {
+    const y = f * cell + 2;
+    for (let c = 0; c < cells; c++) {
+      if (!rng.chance(0.34)) continue;
+      grimeStreak(c * cell + rng.float(4, cell - 4), y, rng.float(2, 9), rng.float(cell * 0.15, cell * 0.55), rng.float(0.05, 0.12));
+    }
   }
   // gutters / downspouts
   for (let c = 0; c < cells; c++) {
@@ -581,6 +608,7 @@ export function makeFacadeTextures(spec) {
   for (let c = 0; c < cells; c++) if (rng.chance(balconyChance)) balconyCols.add(c);
 
   const lamps = [];
+  const streaks = [];
   for (let f = 0; f < floors; f++) {
     const yTop = (floors - 1 - f) * cell;
     for (let c = 0; c < cells; c++) {
@@ -597,6 +625,11 @@ export function makeFacadeTextures(spec) {
       const xw = x + (cell - w) / 2;
       const yw = yTop + cell * (f === 0 ? 0.34 : 0.28);
       const res = drawWindow(ctx, xw, yw, w, h, rng, { winter, litChance });
+      // grime washing down from the sill (soft, anchored, low alpha)
+      if (rng.chance(0.42)) {
+        streaks.push({ x: xw + rng.float(w * 0.2, w * 0.8), y: yw + h + 5, w: rng.float(2, 6), len: rng.float(cell * 0.2, cell * 0.85), a: rng.float(0.08, 0.18) });
+        if (rng.chance(0.3)) streaks.push({ x: xw + rng.float(0, w), y: yw + h + 5, w: rng.float(1, 2.6), len: rng.float(cell * 0.15, cell * 0.5), a: rng.float(0.06, 0.12) });
+      }
       if (res.lit) {
         // Emissive map: crisp glass + very restrained halo, so the window
         // stays a readable rectangle and not a glowing orb.
@@ -634,6 +667,10 @@ export function makeFacadeTextures(spec) {
       }
       if (f > 0 && balconyCols.has(c) && rng.chance(0.9)) {
         drawBalcony(ctx, xw - 3, yw, w + 6, h, rng, { winter });
+        // streak from the balcony slab edge
+        if (rng.chance(0.55)) {
+          streaks.push({ x: xw + rng.float(0, w), y: yw + h + 11, w: rng.float(3, 8), len: rng.float(cell * 0.25, cell * 0.9), a: rng.float(0.09, 0.2) });
+        }
       }
     }
   }
@@ -667,13 +704,16 @@ export function makeFacadeTextures(spec) {
     ctx.fillRect(0, 0, W, 3);
   }
 
-  // dirt streaks under the windowsills and from the cornice
-  for (let i = 0; i < cells * 3; i++) {
+  // anchored grime: sills, balcony slabs and joint stains collected above
+  for (const s of streaks) grimeStreak(s.x, s.y, s.w, s.len, s.a);
+
+  // long dirt streaks from the cornice and downspout lines
+  for (let i = 0; i < cells * 1.5; i++) {
     const x = rng.float(0, W);
     const y = rng.float(0, H - plinthH);
     const len = rng.float(20, 150);
     const grad = ctx.createLinearGradient(0, y, 0, y + len);
-    grad.addColorStop(0, 'rgba(58,56,52,0.28)');
+    grad.addColorStop(0, 'rgba(58,56,52,0.24)');
     grad.addColorStop(1, 'rgba(58,56,52,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(x, y, rng.float(1.5, 6), len);
@@ -684,6 +724,24 @@ export function makeFacadeTextures(spec) {
     ctx.fillStyle = rng.chance(0.5) ? '#3f3d39' : '#e8e4da';
     ctx.beginPath();
     ctx.ellipse(rng.float(0, W), rng.float(0, H), rng.float(10, 60), rng.float(6, 30), rng.float(0, TAU), 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // splash zone: damp dark band (~0.8 m) kicked up from the ground
+  const splashH = cell * 0.27;
+  const sgrad = ctx.createLinearGradient(0, H - splashH, 0, H);
+  sgrad.addColorStop(0, 'rgba(42,40,36,0)');
+  sgrad.addColorStop(0.55, 'rgba(42,40,36,0.14)');
+  sgrad.addColorStop(1, 'rgba(38,36,32,0.42)');
+  ctx.fillStyle = sgrad;
+  ctx.fillRect(0, H - splashH, W, splashH);
+  for (let i = 0; i < cells * 5; i++) {
+    ctx.save();
+    ctx.globalAlpha = rng.float(0.06, 0.2);
+    ctx.fillStyle = rng.chance(0.72) ? '#2e2c28' : '#b9b4a6';
+    ctx.beginPath();
+    ctx.ellipse(rng.float(0, W), H - rng.float(0, splashH), rng.float(1.5, 7), rng.float(1, 4), 0, 0, TAU);
     ctx.fill();
     ctx.restore();
   }
@@ -720,9 +778,54 @@ export function makeFacadeTextures(spec) {
   };
 }
 
+/**
+ * Snow line clinging to roof parapets and ledges: an alpha strip with a
+ * bumpy top edge and sparse drips below. Applied to thin planes under the
+ * parapet in winter (see buildings.js).
+ */
+export function makeSnowLedgeTexture(w = 512, h = 64) {
+  const rng = new Rng(7331);
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  // main bumpy body of snow along the top edge
+  ctx.fillStyle = 'rgba(246,250,255,0.97)';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(w, 0);
+  ctx.lineTo(w, h * 0.3);
+  for (let x = w; x >= 0; x -= 7) {
+    ctx.lineTo(x, h * 0.3 + rng.float(-3, 11));
+  }
+  ctx.closePath();
+  ctx.fill();
+  // soft lumps and shaded underside
+  for (let i = 0; i < 70; i++) {
+    ctx.save();
+    ctx.globalAlpha = rng.float(0.1, 0.4);
+    ctx.fillStyle = rng.chance(0.6) ? '#ffffff' : '#c9d4e4';
+    ctx.beginPath();
+    ctx.ellipse(rng.float(0, w), rng.float(0, h * 0.42), rng.float(4, 16), rng.float(2, 6), 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  // sparse melt drips below the ledge
+  for (let i = 0; i < 30; i++) {
+    const x = rng.float(0, w);
+    const y0 = h * rng.float(0.3, 0.45);
+    const len = rng.float(3, h * 0.5);
+    const grad = ctx.createLinearGradient(0, y0, 0, y0 + len);
+    grad.addColorStop(0, `rgba(228,238,250,${rng.float(0.25, 0.55)})`);
+    grad.addColorStop(1, 'rgba(228,238,250,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y0, rng.float(1, 2.4), len);
+  }
+  return toTexture(canvas);
+}
+
 /** Bituminous roof covering, with snow patches (in winter). */
-export function makeRoofTexture(winter, size = 512) {
-  const rng = new Rng(31);
+export function makeRoofTexture(winter, size = 512) {  const rng = new Rng(31);
   const canvas = makeCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#3a3c3e';

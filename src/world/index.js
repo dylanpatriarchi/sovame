@@ -101,6 +101,7 @@ export class World {
       ice: TX.makeIceTexture(),
       roofWinter: TX.makeRoofTexture(true),
       roofAutumn: TX.makeRoofTexture(false),
+      snowLedge: TX.makeSnowLedgeTexture(),
       rust: TX.makeRustTexture(),
       corrugated: TX.makeCorrugatedTexture(),
       birch: TX.makeBirchTexture(),

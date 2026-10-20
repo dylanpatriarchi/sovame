@@ -37,6 +37,23 @@ export function buildBuildings(ctx) {
   });
   world.roofMats.push(roofMat);
 
+  // snow line clinging to the facade top under the parapet (winter only)
+  const snowLedgeMat = new THREE.MeshStandardMaterial({
+    map: T.snowLedge,
+    transparent: true,
+    depthWrite: false,
+    roughness: 0.85,
+  });
+  const addSnowLedges = (x, z, w, d, h) => {
+    for (const side of [1, -1]) {
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.75), snowLedgeMat);
+      strip.position.set(x, h - 0.04, z + side * (d / 2 + 0.045));
+      if (side < 0) strip.rotation.y = Math.PI;
+      strip.receiveShadow = true;
+      world.group.add(ctx.seasonable('winter', strip));
+    }
+  };
+
   const buildingSpecs = [
     { id: 'B1', x: -40, z: -52, w: 44, d: 12, floors: 5, number: '12', street: 'ул. КОСМОНАВТОВ', base: '#c3bcac', plinth: '#8f8b80', balcony: 0.45, lit: 0.5, seed: 11 },
     { id: 'B2', x: 38, z: -30, w: 38, d: 12, floors: 5, number: '7', street: 'ул. КОСМОНАВТОВ', base: '#b6b9b8', plinth: '#87857c', balcony: 0.4, lit: 0.45, seed: 22 },
@@ -103,6 +120,7 @@ export function buildBuildings(ctx) {
     mesh.position.set(spec.x, h / 2, spec.z);
     ctx.place(mesh);
     ctx.addBoxCollider(spec.x, spec.z, spec.w, spec.d, 0.25);
+    addSnowLedges(spec.x, spec.z, spec.w, spec.d, h);
 
     // perimeter apron / отмостка
     const apron = new THREE.Mesh(new THREE.BoxGeometry(spec.w + 1.8, 0.06, spec.d + 1.8), M.concreteDark);
@@ -232,6 +250,7 @@ export function buildBuildings(ctx) {
     mesh.position.set(x, h / 2, z);
     ctx.place(mesh);
     ctx.addBoxCollider(x, z, w, d, 0.25);
+    addSnowLedges(x, z, w, d, h);
 
     // colored canopy and star above the entrance
     const canopy = new THREE.Mesh(new THREE.BoxGeometry(5, 0.2, 2.2), M.paintGreen);
