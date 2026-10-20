@@ -21,6 +21,7 @@ const browser = await puppeteer.launch({
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--window-size=1280,760',
+    '--autoplay-policy=no-user-gesture-required',
   ],
 });
 
@@ -99,6 +100,25 @@ const dot = (after.x - before.x) * fwd.x + (after.z - before.z) * fwd.z;
 console.log(`→ forward alignment: ${dot.toFixed(2)} (must be > 0)`);
 if (moved > 0.5 && dot <= 0) logs.push('[movement] W walks against the view direction');
 await page.screenshot({ path: `${OUT}/03-walk.png` });
+
+// kiosk radio: turn the post-punk station on, let the sequencer run, then off
+await page.evaluate(() => {
+  window.__game.sound.toggleRadio(true);
+});
+await wait(3000);
+const radio = await page.evaluate(() => ({
+  state: window.__game.sound.ctx.state,
+  on: window.__game.sound.radioOn,
+  steps: window.__game.sound.radioStep,
+  track: window.__game.sound.radioTrackIndex,
+}));
+console.log(`→ radio: ctx.state=${radio.state}, on=${radio.on}, steps scheduled=${radio.steps}, track=${radio.track}`);
+if (radio.state !== 'running') logs.push(`[radio] audio context not running: ${radio.state}`);
+if (!radio.on || radio.steps <= 0) logs.push('[radio] sequencer did not schedule any steps');
+await page.evaluate(() => {
+  window.__game.sound.toggleRadio(false);
+});
+await wait(300);
 
 // turn around and look at the courtyard
 await page.evaluate(() => {
