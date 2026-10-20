@@ -319,6 +319,7 @@ async function boot() {
 
     env.update(dt, state.elapsed, camera);
     world.update(dt, state.elapsed);
+    world.people?.update(dt, state.elapsed, player.position, env.temperature);
     sound.updateWind(env.wind.gust);
     sound.update(dt, state.elapsed, camera.position, world.points.radio);
 
