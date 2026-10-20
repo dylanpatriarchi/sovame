@@ -174,11 +174,11 @@ export class Player {
     this.sprinting = !!keys.sprint && !this.crouching && wishLen > 0;
     const targetSpeed = this.crouching ? PLAYER.crouchSpeed : this.sprinting ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
 
-    // world-space direction
+    // world-space direction (camera is -Z forward: dir = R_y(yaw) * wish)
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
-    const dirX = wish.x * cos - wish.z * sin;
-    const dirZ = wish.x * sin + wish.z * cos;
+    const dirX = wish.x * cos + wish.z * sin;
+    const dirZ = -wish.x * sin + wish.z * cos;
 
     const accel = PLAYER.accel * (this.onGround ? 1 : 0.35);
     this.velocity.x = damp(this.velocity.x, dirX * targetSpeed, accel, dt);
@@ -245,7 +245,7 @@ export class Player {
 
     // camera
     const cam = this.camera;
-    cam.position.set(this.position.x + bobX * Math.sin(this.yaw), this.position.y + this.eye + bobY + breathe, this.position.z + bobX * Math.cos(this.yaw));
+    cam.position.set(this.position.x + bobX * Math.cos(this.yaw), this.position.y + this.eye + bobY + breathe, this.position.z - bobX * Math.sin(this.yaw));
     cam.rotation.set(0, 0, 0);
     cam.rotateY(this.yaw);
     cam.rotateX(this.pitch);
