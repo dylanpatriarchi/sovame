@@ -52,10 +52,18 @@ export function buildTerrain(ctx) {
 
   /* ------------------------------------------------ roads */
   const winter = world.season === 'winter';
-  const roadMat = new THREE.MeshStandardMaterial({ map: winter ? T.asphaltWinter : T.asphalt, roughness: 0.82 });
-  roadMat.userData = { winterTex: T.asphaltWinter, autumnTex: T.asphalt };
-  const roadPlainMat = new THREE.MeshStandardMaterial({ map: winter ? T.asphaltPlainWinter : T.asphaltPlain, roughness: 0.85 });
-  roadPlainMat.userData = { winterTex: T.asphaltPlainWinter, autumnTex: T.asphaltPlain };
+  const roadMat = new THREE.MeshStandardMaterial({
+    map: winter ? T.asphaltWinter : T.asphalt,
+    roughnessMap: winter ? T.asphaltRoughWinter : T.asphaltRough,
+    roughness: 1,
+  });
+  roadMat.userData = { winterTex: T.asphaltWinter, autumnTex: T.asphalt, winterRough: T.asphaltRoughWinter, autumnRough: T.asphaltRough };
+  const roadPlainMat = new THREE.MeshStandardMaterial({
+    map: winter ? T.asphaltPlainWinter : T.asphaltPlain,
+    roughnessMap: winter ? T.asphaltPlainRoughWinter : T.asphaltPlainRough,
+    roughness: 1,
+  });
+  roadPlainMat.userData = { winterTex: T.asphaltPlainWinter, autumnTex: T.asphaltPlain, winterRough: T.asphaltPlainRoughWinter, autumnRough: T.asphaltPlainRough };
   world.roadMats.push(roadMat, roadPlainMat);
 
   const mainRoad = tiledPlane(R * 2, 232, 12, roadMat, 0.02);
@@ -166,26 +174,42 @@ export function buildTerrain(ctx) {
   world.group.add(rim);
 
   /* ------------------------------------------------ puddles and ice sheets */
-  const puddleMat = new THREE.MeshStandardMaterial({ color: 0x22292f, roughness: 0.12, metalness: 0.3 });
-  let placed = 0;
-  for (let i = 0; i < 60 && placed < 16; i++) {
-    const onRoad = rng.chance(0.5);
-    const x = onRoad ? rng.float(-R + 0.6, R - 0.6) : rng.float(-84, 80);
-    const z = rng.float(-100, 100);
-    if (!onRoad && !free(x, z, 3)) continue;
-    const mesh = new THREE.Mesh(new THREE.CircleGeometry(rng.float(0.5, 1.5), 16), puddleMat);
+  // glossy dark planes near curbs and drains: they catch the sky and the
+  // lamp glints. Emissive tint fakes the reflected sky, no real reflections.
+  const puddleMat = new THREE.MeshStandardMaterial({
+    color: 0x1b232d,
+    roughness: 0.07,
+    metalness: 0.2,
+    emissive: 0x0c1522,
+    emissiveIntensity: 0.5,
+  });
+  const dropPuddle = (x, z, y, seasonKey) => {
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(rng.float(0.6, 1.6), 18), puddleMat);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.scale.set(rng.float(1, 1.6), rng.float(0.6, 1.1), 1);
-    mesh.position.set(x, onRoad ? 0.028 : 0.05, z);
+    mesh.scale.set(rng.float(1, 1.7), rng.float(0.55, 1), 1);
+    mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
-    mesh.castShadow = false;
-    world.group.add(ctx.seasonable('winter', mesh));
-    if (rng.chance(0.4)) {
-      const clone = mesh.clone();
-      clone.position.y = 0.022;
-      world.group.add(ctx.seasonable('autumn', clone));
-    }
-    placed++;
+    world.group.add(ctx.seasonable(seasonKey, mesh));
+  };
+  // winter: meltwater sheets and dark ice, mostly along the curb line
+  let placedW = 0;
+  for (let i = 0; i < 70 && placedW < 10; i++) {
+    const nearCurb = rng.chance(0.6);
+    const x = nearCurb ? rng.sign() * (R - rng.float(0.5, 2.2)) : rng.float(-84, 80);
+    const z = rng.float(-100, 100);
+    if (!nearCurb && !free(x, z, 3)) continue;
+    dropPuddle(x, z, nearCurb ? 0.028 : 0.05, 'winter');
+    placedW++;
+  }
+  // autumn: rain puddles after the thaw
+  let placedA = 0;
+  for (let i = 0; i < 70 && placedA < 8; i++) {
+    const nearCurb = rng.chance(0.5);
+    const x = nearCurb ? rng.sign() * (R - rng.float(0.5, 2.2)) : rng.float(-84, 80);
+    const z = rng.float(-100, 100);
+    if (!nearCurb && !free(x, z, 3)) continue;
+    dropPuddle(x, z, nearCurb ? 0.024 : 0.05, 'autumn');
+    placedA++;
   }
 
   /* ------------------------------------------------ snowy edges */

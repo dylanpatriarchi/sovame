@@ -106,7 +106,7 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
   const ctx = canvas.getContext('2d');
 
   // the road stays dark but never black: it is the largest surface in frame
-  ctx.fillStyle = winter ? '#565b62' : '#4a4c4e';
+  ctx.fillStyle = winter ? '#50555c' : '#45484c';
   ctx.fillRect(0, 0, size, size);
 
   // grit
@@ -114,9 +114,12 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     ctx.fillStyle = `rgba(${rng.int(70, 140)},${rng.int(72, 142)},${rng.int(76, 148)},${rng.float(0.05, 0.3)})`;
     ctx.fillRect(rng.float(0, size), rng.float(0, size), rng.float(1, 2.2), rng.float(1, 2.2));
   }
-  // wear and patches
-  for (let i = 0; i < 26; i++) {
-    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(30, 130), 'rgba(52,55,60,0.75)', rng.float(0.2, 0.5));
+  // damp patches: darker, they read as wet film under lamps
+  for (let i = 0; i < 30; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(30, 130), 'rgba(46,50,56,0.8)', rng.float(0.25, 0.55));
+  }
+  for (let i = 0; i < 12; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(60, 170), 'rgba(36,40,46,0.55)', rng.float(0.15, 0.35));
   }
   for (let i = 0; i < 14; i++) {
     const w = rng.float(40, 150);
@@ -186,6 +189,25 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     for (let i = 0; i < 40; i++) {
       wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(14, 60), 'rgba(235,241,248,0.55)', rng.float(0.2, 0.5));
     }
+    // slushy tire lanes: churned dirty snow with polished wet lines underneath
+    for (const cx of [size * 0.25, size * 0.75]) {
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#2b2f36';
+      ctx.fillRect(cx - 14, 0, 7, size);
+      ctx.fillRect(cx + 7, 0, 7, size);
+      ctx.restore();
+      for (let y = 0; y < size; y += 6) {
+        const wob = Math.sin(y * 0.021 + cx) * 4;
+        ctx.save();
+        ctx.globalAlpha = rng.float(0.1, 0.3);
+        ctx.fillStyle = rng.chance(0.6) ? '#828c9a' : '#5d6570';
+        ctx.beginPath();
+        ctx.ellipse(cx + wob + rng.float(-10, 10), y, rng.float(6, 17), rng.float(3, 8), 0, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
     // snow piled up at the edges of the carriageway
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -202,6 +224,52 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     ctx.restore();
   }
   return toTexture(canvas);
+}
+
+/**
+ * Roughness map for wet asphalt (linear, not sRGB): a mid-rough base with
+ * broad damp sheen patches and polished tire lanes. Winter keeps the lanes
+ * glossy but roughens the slush between them.
+ */
+export function makeAsphaltRoughnessTexture({ dashes = true, size = 512, winter = false } = {}) {
+  const rng = new Rng((dashes ? 881 : 882) + (winter ? 40 : 0));
+  const canvas = makeCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = winter ? '#c4c4c4' : '#d6d6d6';
+  ctx.fillRect(0, 0, size, size);
+
+  // broad damp patches with a lower roughness
+  for (let i = 0; i < 24; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(50, 170), 'rgba(118,118,118,0.85)', rng.float(0.25, 0.6));
+  }
+  // polished tire lanes: wet film is the smoothest part of the road
+  ctx.save();
+  ctx.globalAlpha = winter ? 0.7 : 0.55;
+  ctx.fillStyle = '#6e6e6e';
+  ctx.fillRect(size * 0.19, 0, size * 0.13, size);
+  ctx.fillRect(size * 0.68, 0, size * 0.13, size);
+  ctx.restore();
+  if (winter) {
+    // slush is rough again; only the two polished lines per lane stay smooth
+    for (const cx of [size * 0.25, size * 0.75]) {
+      for (let i = 0; i < 70; i++) {
+        wrappedBlob(ctx, size, cx + rng.float(-16, 16), rng.float(0, size), rng.float(6, 18), 'rgba(208,208,208,0.9)', rng.float(0.3, 0.7));
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#565656';
+      ctx.fillRect(cx - 14, 0, 7, size);
+      ctx.fillRect(cx + 7, 0, 7, size);
+      ctx.restore();
+    }
+  }
+  // speckle so the sheen breaks up instead of reading as plastic
+  for (let i = 0; i < 2600; i++) {
+    const v = rng.int(140, 235);
+    ctx.fillStyle = `rgba(${v},${v},${v},${rng.float(0.08, 0.3)})`;
+    ctx.fillRect(rng.float(0, size), rng.float(0, size), rng.float(1, 2.4), rng.float(1, 2.4));
+  }
+  return toTexture(canvas, { srgb: false });
 }
 
 /** Sidewalk made of concrete slabs. */

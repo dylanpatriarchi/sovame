@@ -95,6 +95,10 @@ export class World {
       asphaltPlain: TX.makeAsphaltTexture({ dashes: false }),
       asphaltWinter: TX.makeAsphaltTexture({ dashes: true, winter: true }),
       asphaltPlainWinter: TX.makeAsphaltTexture({ dashes: false, winter: true }),
+      asphaltRough: TX.makeAsphaltRoughnessTexture({ dashes: true }),
+      asphaltPlainRough: TX.makeAsphaltRoughnessTexture({ dashes: false }),
+      asphaltRoughWinter: TX.makeAsphaltRoughnessTexture({ dashes: true, winter: true }),
+      asphaltPlainRoughWinter: TX.makeAsphaltRoughnessTexture({ dashes: false, winter: true }),
       sidewalk: TX.makeSidewalkTexture(),
       path: TX.makeTrampledSnowTexture(),
       snowEdge: TX.makeSnowEdgeTexture(),
@@ -248,6 +252,7 @@ export class World {
     }
     for (const m of this.roadMats) {
       m.map = key === 'winter' ? (m.userData.winterTex ?? this.textures.asphaltWinter) : (m.userData.autumnTex ?? this.textures.asphalt);
+      if (m.userData.winterRough) m.roughnessMap = key === 'winter' ? m.userData.winterRough : m.userData.autumnRough;
       m.needsUpdate = true;
     }
     if (this.materials.snowEdge) this.materials.snowEdge.opacity = s.snowEdge;
