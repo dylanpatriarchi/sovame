@@ -2,6 +2,7 @@ node_modules
 dist
 dist-ssr
 .vite
+shots
 *.local
 .DS_Store
 .env
