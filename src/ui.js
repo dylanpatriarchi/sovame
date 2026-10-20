@@ -24,6 +24,7 @@ export class UI {
       temp: document.querySelector('#status .temp'),
       hints: q('hints'),
       prompt: q('prompt'),
+      fade: q('fade'),
       start: q('start'),
       pause: q('pause'),
       loading: q('loading'),
@@ -276,6 +277,16 @@ export class UI {
     } else {
       this.el.prompt.classList.remove('visible');
     }
+  }
+
+  /** Fades the view to black, runs `midpoint` while black, then fades back. */
+  async fadeTransition(midpoint) {
+    this.el.fade.classList.add('on');
+    await new Promise((resolve) => setTimeout(resolve, 270));
+    midpoint?.();
+    // let one frame of the new location render before revealing it
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    this.el.fade.classList.remove('on');
   }
 
   setSprinting(on) {

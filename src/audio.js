@@ -12,6 +12,7 @@ export class Sound {
     this.radioOn = false;
     this.nextClang = 0;
     this.windGust = 0;
+    this.indoors = false;
     // the station's rotating tracks: pure seeded data, same sequence every session
     this.radioTracks = this.buildRadioTracks();
   }
@@ -56,6 +57,7 @@ export class Sound {
     windFilter.type = 'lowpass';
     windFilter.frequency.value = 320;
     windFilter.Q.value = 0.8;
+    this.windFilter = windFilter;
     windSrc.connect(windFilter).connect(this.windGain);
     const lfo = ctx.createOscillator();
     lfo.frequency.value = 0.06;
@@ -90,6 +92,32 @@ export class Sound {
       const g = ctx.createGain();
       g.gain.value = 0.5;
       osc.connect(g).connect(humGain);
+      osc.start();
+    }
+
+    // stairwell room tone: soft brown rumble and a 50 Hz mains hum in the
+    // panel walls, silent outdoors, faded in by setIndoors
+    this.roomGain = ctx.createGain();
+    this.roomGain.gain.value = 0;
+    this.roomGain.connect(this.master);
+    const roomSrc = ctx.createBufferSource();
+    roomSrc.buffer = this.noise;
+    roomSrc.loop = true;
+    const roomFilter = ctx.createBiquadFilter();
+    roomFilter.type = 'lowpass';
+    roomFilter.frequency.value = 210;
+    roomSrc.connect(roomFilter).connect(this.roomGain);
+    roomSrc.start();
+    this.indoorHumGain = ctx.createGain();
+    this.indoorHumGain.gain.value = 0;
+    this.indoorHumGain.connect(this.master);
+    for (const [freq, level] of [[50, 0.5], [100, 0.2]]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(this.indoorHumGain);
       osc.start();
     }
 
@@ -161,8 +189,20 @@ export class Sound {
     if (!this.ready) return;
     this.windGust = gust;
     const t = this.ctx.currentTime;
-    this.windGain.gain.setTargetAtTime(0.05 + 0.16 * gust, t, 0.6);
-    this.hissGain.gain.setTargetAtTime(0.004 + 0.05 * gust * gust, t, 0.8);
+    // through the stairwell walls the wind turns into a low rumble
+    const muffle = this.indoors ? 0.35 : 1;
+    this.windGain.gain.setTargetAtTime((0.05 + 0.16 * gust) * muffle, t, 0.6);
+    this.hissGain.gain.setTargetAtTime((0.004 + 0.05 * gust * gust) * (this.indoors ? 0.12 : 1), t, 0.8);
+  }
+
+  /** Fades the interior room tone in and muffles the outdoor wind. */
+  setIndoors(on) {
+    this.indoors = on;
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.roomGain.gain.setTargetAtTime(on ? 0.05 : 0, t, 0.45);
+    this.indoorHumGain.gain.setTargetAtTime(on ? 0.016 : 0, t, 0.4);
+    this.windFilter.frequency.setTargetAtTime(on ? 150 : 320, t, 0.5);
   }
 
   burst({ time, freq, q, duration, level, type = 'bandpass', buffer = null, rate = 1 }) {

@@ -271,6 +271,84 @@ if (pedInfo) {
   console.log('→ pedestrians: world.people missing, skipping the segment');
 }
 
+// stairwell: walk up to an entrance door, press E, look around, step back out
+const doorInfo = await page.evaluate(() => {
+  const game = window.__game;
+  game.state.mode = 'playing';
+  const interior = game.world.interiors.find((i) => i.id === 'b9-cross') ?? game.world.interiors[0];
+  if (!interior) return null;
+  const out = interior.outSpawn;
+  // stand on the walk in front of the door, facing it
+  game.player.teleport(out.x, out.z, out.yaw + Math.PI);
+  game.player.pitch = 0;
+  return { id: interior.id, door: { ...interior.doorOut } };
+});
+if (doorInfo) {
+  console.log(`→ stairwell ${doorInfo.id}: entrance door at (${doorInfo.door.x.toFixed(2)}, ${doorInfo.door.z.toFixed(2)})`);
+  await wait(500);
+  const prompt = await page.evaluate(() => ({
+    visible: document.getElementById('prompt').classList.contains('visible'),
+    text: document.getElementById('prompt').textContent,
+  }));
+  console.log(`→ entrance prompt: "${prompt.text}" (visible=${prompt.visible})`);
+  if (!prompt.visible || !prompt.text.includes('E')) logs.push('[stairwell] entrance prompt did not appear at the door');
+  await page.keyboard.press('KeyE');
+  // the headless loop is slow: wait for the fade-teleport to actually finish
+  try {
+    await page.waitForFunction(() => window.__game.state.interior && !window.__game.state.transitioning, { timeout: 20000 });
+  } catch {
+    logs.push('[stairwell] enter transition did not finish');
+  }
+  const inside = await page.evaluate(() => {
+    const game = window.__game;
+    const p = game.player.position;
+    const interior = game.world.interiorAt(p.x, p.z);
+    return { x: p.x, z: p.z, id: interior?.id ?? null, stateId: game.state.interior?.id ?? null };
+  });
+  console.log(`→ after E: player at (${inside.x.toFixed(1)}, ${inside.z.toFixed(1)}), interior=${inside.id}`);
+  if (!inside.id || inside.stateId !== inside.id) logs.push('[stairwell] player did not end up inside the stairwell');
+  // frame the stairwell from the flight: railing diagonal, warm walls,
+  // the cold courtyard window glowing over the radiator
+  await page.evaluate(() => {
+    const game = window.__game;
+    const b = game.state.interior.bounds;
+    game.player.teleport((b.x0 + b.x1) / 2 - 1.4, (b.z0 + b.z1) / 2 + 0.2, Math.PI);
+    game.player.pitch = 0.12;
+  });
+  // let the snow fade and the exposure settle before the screenshot
+  try {
+    await page.waitForFunction(() => window.__game.env.indoor > 0.9, { timeout: 20000 });
+  } catch {
+    logs.push('[stairwell] indoor fade did not settle');
+  }
+  await wait(400);
+  await page.screenshot({ path: `${OUT}/09-stairwell.png` });
+  // step back out through the door
+  await page.evaluate(() => {
+    const game = window.__game;
+    const d = game.state.interior.doorIn;
+    game.player.teleport(d.x, d.z, 0); // at the door, facing it
+  });
+  await wait(400);
+  const exitPrompt = await page.evaluate(() => document.getElementById('prompt').textContent);
+  console.log(`→ exit prompt: "${exitPrompt}"`);
+  await page.keyboard.press('KeyE');
+  try {
+    await page.waitForFunction(() => !window.__game.state.interior && !window.__game.state.transitioning, { timeout: 20000 });
+  } catch {
+    logs.push('[stairwell] exit transition did not finish');
+  }
+  const outside = await page.evaluate(() => {
+    const game = window.__game;
+    const p = game.player.position;
+    return { x: p.x, z: p.z, interior: game.world.interiorAt(p.x, p.z)?.id ?? null, state: game.state.interior?.id ?? null };
+  });
+  console.log(`→ after exit E: player at (${outside.x.toFixed(1)}, ${outside.z.toFixed(1)}), interior=${outside.interior}`);
+  if (outside.interior || outside.state) logs.push('[stairwell] player did not make it back outside');
+} else {
+  console.log('→ stairwells: world.interiors missing, skipping the segment');
+}
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;

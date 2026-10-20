@@ -6,6 +6,37 @@ import { makeSignTexture, canvasTexture } from '../textures.js';
 const FLOOR_H = 3.0;
 const CELL_W = 3.4;
 
+/** Panel blocks of the district. Shared with the stairwell interiors, which
+ * anchor their entrance doors to the same cells the facade texture paints. */
+export const BUILDING_SPECS = [
+  { id: 'B1', x: -40, z: -52, w: 44, d: 12, floors: 5, number: '12', street: 'ул. КОСМОНАВТОВ', base: '#c3bcac', plinth: '#8f8b80', balcony: 0.45, lit: 0.5, seed: 11, tv: true },
+  { id: 'B2', x: 38, z: -30, w: 38, d: 12, floors: 5, number: '7', street: 'ул. КОСМОНАВТОВ', base: '#b6b9b8', plinth: '#87857c', balcony: 0.4, lit: 0.45, seed: 22 },
+  { id: 'B3', x: -42, z: 20, w: 34, d: 12, floors: 9, number: '3', street: 'ул. МИРА', base: '#aab2b6', plinth: '#7f7d76', balcony: 0.5, lit: 0.55, seed: 33, tv: true },
+  { id: 'B4', x: 36, z: 62, w: 40, d: 12, floors: 5, number: '9', street: 'ул. МИРА', base: '#c0b6a4', plinth: '#8a8578', balcony: 0.42, lit: 0.48, seed: 44, tv: true },
+  { id: 'B5', x: -30, z: -80, w: 40, d: 12, floors: 5, number: '15', street: 'ул. СЕВЕРНАЯ', base: '#bcb9ae', plinth: '#8b8880', balcony: 0.38, lit: 0.42, seed: 55 },
+  { id: 'B7', x: -46, z: 74, w: 36, d: 12, floors: 5, number: '21', street: 'ул. МИРА', base: '#c6bfb0', plinth: '#8f8b80', balcony: 0.44, lit: 0.46, seed: 66 },
+];
+
+/**
+ * World coordinates of one painted entrance door: cell c (c % 4 === 3) on a
+ * long side (+1 faces +z, -1 faces -z). The facade texture is mirrored on the
+ * -z side, hence the x flip — same formula as the entrance pads below.
+ */
+export function entranceDoor(spec, c, side) {
+  const cells = Math.max(4, Math.round(spec.w / CELL_W));
+  const cw = spec.w / cells;
+  const localX = -spec.w / 2 + (c + 0.5) * cw;
+  const x = spec.x + side * localX;
+  return {
+    x,
+    z: spec.z + side * (spec.d / 2),
+    /** Center of the entrance pad: where the prompt is offered. */
+    pad: { x, z: spec.z + side * (spec.d / 2 + 0.55) },
+    /** A step in front of the door, facing away from the building. */
+    out: { x, z: spec.z + side * (spec.d / 2 + 1.7), yaw: side > 0 ? Math.PI : 0 },
+  };
+}
+
 /** Extruded red star, the Soviet detail par excellence. */
 export function makeStarMesh(size = 0.9, thickness = 0.16, color = 0xa8231c) {
   const shape = new THREE.Shape();
@@ -54,16 +85,7 @@ export function buildBuildings(ctx) {
     }
   };
 
-  const buildingSpecs = [
-    { id: 'B1', x: -40, z: -52, w: 44, d: 12, floors: 5, number: '12', street: 'ул. КОСМОНАВТОВ', base: '#c3bcac', plinth: '#8f8b80', balcony: 0.45, lit: 0.5, seed: 11, tv: true },
-    { id: 'B2', x: 38, z: -30, w: 38, d: 12, floors: 5, number: '7', street: 'ул. КОСМОНАВТОВ', base: '#b6b9b8', plinth: '#87857c', balcony: 0.4, lit: 0.45, seed: 22 },
-    { id: 'B3', x: -42, z: 20, w: 34, d: 12, floors: 9, number: '3', street: 'ул. МИРА', base: '#aab2b6', plinth: '#7f7d76', balcony: 0.5, lit: 0.55, seed: 33, tv: true },
-    { id: 'B4', x: 36, z: 62, w: 40, d: 12, floors: 5, number: '9', street: 'ул. МИРА', base: '#c0b6a4', plinth: '#8a8578', balcony: 0.42, lit: 0.48, seed: 44, tv: true },
-    { id: 'B5', x: -30, z: -80, w: 40, d: 12, floors: 5, number: '15', street: 'ул. СЕВЕРНАЯ', base: '#bcb9ae', plinth: '#8b8880', balcony: 0.38, lit: 0.42, seed: 55 },
-    { id: 'B7', x: -46, z: 74, w: 36, d: 12, floors: 5, number: '21', street: 'ул. МИРА', base: '#c6bfb0', plinth: '#8f8b80', balcony: 0.44, lit: 0.46, seed: 66 },
-  ];
-
-  for (const spec of buildingSpecs) {
+  for (const spec of BUILDING_SPECS) {
     const cells = Math.max(4, Math.round(spec.w / CELL_W));
     const sideCells = Math.max(2, Math.round(spec.d / CELL_W));
     const facadeRng = new Rng(spec.seed);

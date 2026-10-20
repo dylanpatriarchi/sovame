@@ -126,6 +126,8 @@ export class Environment {
     this.quality = quality;
     this.wind = { x: 0.6, z: -0.3, gust: 0.5 };
     this.ambientLevel = 1;
+    this.indoor = 0;
+    this.indoorTarget = 0;
     this.timeIndex = Math.max(0, TIME_PRESETS.findIndex((p) => p.id === time));
     this.sunDir = new THREE.Vector3(0, 1, 0);
     // immediately align road surfaces, roofs and canopies with the starting season
@@ -392,6 +394,11 @@ export class Environment {
     this.updateWeatherDensity();
   }
 
+  /** Inside a stairwell the snowfall, leaves and ground mist fade out. */
+  setIndoors(on) {
+    this.indoorTarget = on ? 1 : 0;
+  }
+
   setQuality(q) {
     this.quality = q;
   }
@@ -418,6 +425,7 @@ export class Environment {
     const target = this.preset;
     const c = this.cur;
     const rate = 1.5;
+    this.indoor = damp(this.indoor, this.indoorTarget, 5, dt);
 
     c.zenith.lerp(new THREE.Color(target.sky.zenith), 1 - Math.exp(-rate * dt));
     c.horizon.lerp(new THREE.Color(target.fog.color), 1 - Math.exp(-rate * dt));
@@ -504,7 +512,7 @@ export class Environment {
 
     // drifting ground mist: density follows the fog preset and season
     const seasonFog = SEASONS[this.season].fogMul;
-    const mistDensity = clamp((c.fogDensity * seasonFog - 0.006) / 0.008, 0, 1);
+    const mistDensity = clamp((c.fogDensity * seasonFog - 0.006) / 0.008, 0, 1) * (1 - this.indoor);
     this.mistColor.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.4);
     this.mist.update(dt, t, this.wind, camera.position, mistDensity, this.mistColor);
 
@@ -551,14 +559,14 @@ export class Environment {
 
     // precipitation
     this.snowLayers.forEach((layer) => {
-      const visibleFrac = clamp(layer.density, 0, 1);
-      const shown = Math.max(1, Math.floor(layer.count * visibleFrac));
+      const visibleFrac = clamp(layer.density, 0, 1) * (1 - this.indoor);
+      const shown = Math.max(0, Math.floor(layer.count * visibleFrac));
       layer.points.geometry.setDrawRange(0, shown);
       layer.update(dt, t, camera.position, this.wind, 1.6, 1);
     });
-    const leafFrac = clamp(this.leaf.density, 0, 1);
+    const leafFrac = clamp(this.leaf.density, 0, 1) * (1 - this.indoor);
     if (this.leaf.points.visible) {
-      this.leaf.points.geometry.setDrawRange(0, Math.max(1, Math.floor(this.leaf.count * leafFrac)));
+      this.leaf.points.geometry.setDrawRange(0, Math.max(0, Math.floor(this.leaf.count * leafFrac)));
       this.leaf.update(dt, t, camera.position, this.wind, 0.55, 1);
     }
 
