@@ -271,7 +271,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound };
 
   /* --------------------------------------------------- loop */
 

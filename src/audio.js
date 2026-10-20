@@ -2,6 +2,8 @@
 // distant chimes. No external audio files.
 import { clamp, Rng } from './util.js';
 
+const midiHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
 export class Sound {
   constructor({ volume = 0.7 } = {}) {
     this.volume = volume;
@@ -10,6 +12,8 @@ export class Sound {
     this.radioOn = false;
     this.nextClang = 0;
     this.windGust = 0;
+    // the station's rotating tracks: pure seeded data, same sequence every session
+    this.radioTracks = this.buildRadioTracks();
   }
 
   init() {
@@ -102,6 +106,8 @@ export class Sound {
     } else {
       this.radioGain.connect(this.master);
     }
+    // instruments feed the radio through the shared lowpass
+    this.radioFilter.connect(this.radioGain);
     const vinyl = ctx.createBufferSource();
     vinyl.buffer = this.flatNoise;
     vinyl.loop = true;
@@ -112,7 +118,29 @@ export class Sound {
     vinylGain.gain.value = 0.02;
     vinyl.connect(vinylFilter).connect(vinylGain).connect(this.radioGain);
     vinyl.start();
+
+    // guitar "chorus": one shared feedback-delay bus that arpeggio notes tap into
+    this.guitarBus = ctx.createGain();
+    const chorusDelay = ctx.createDelay(0.06);
+    chorusDelay.delayTime.value = 0.024;
+    const chorusFeedback = ctx.createGain();
+    chorusFeedback.gain.value = 0.3;
+    const chorusWet = ctx.createGain();
+    chorusWet.gain.value = 0.55;
+    this.guitarBus.connect(chorusDelay);
+    chorusDelay.connect(chorusFeedback).connect(chorusDelay);
+    chorusDelay.connect(chorusWet);
+    const guitarLowpass = ctx.createBiquadFilter();
+    guitarLowpass.type = 'lowpass';
+    guitarLowpass.frequency.value = 2400;
+    this.guitarBus.connect(guitarLowpass);
+    chorusWet.connect(guitarLowpass);
+    guitarLowpass.connect(this.radioFilter);
+
     this.radioStep = 0;
+    this.radioTrackIndex = 0;
+    this.radioTrackStep = 0;
+    this.radioGapSteps = 0;
     this.radioNextTime = ctx.currentTime + 0.2;
 
     this.ready = true;
@@ -243,40 +271,257 @@ export class Sound {
     this.burst({ time: t, freq: 900, q: 0.7, duration: 0.5, level: 0.02, type: 'bandpass' });
   }
 
-  /** Slow, weary melody from the kiosk radio. */
+  /**
+   * Builds the station's rotating tracks from seeded parameter sets:
+   * chord progression, tempo, patterns and lead phrases. Deterministic.
+   */
+  buildRadioTracks() {
+    const rng = new Rng(4510);
+    const MINOR = [0, 2, 3, 5, 7, 8, 10];
+    const deg = (tonic, d, oct = 0) => tonic + MINOR[((d % 7) + 7) % 7] + 12 * (oct + Math.floor(d / 7));
+    const progressions = [
+      [0, 5, 2, 6], // i–VI–III–VII
+      [0, 6, 5, 6], // i–VII–VI–VII
+      [0, 3, 5, 4], // i–iv–VI–v
+    ];
+    const bassPatterns = [
+      [0, 0, 7, 0, 12, 0, 7, 0],
+      [0, 0, 0, 7, 0, 0, 12, 7],
+      [0, 7, 0, 12, 0, 7, 10, 12],
+      [0, 0, 10, 0, 7, 0, 12, 0],
+    ];
+    const arpPatterns = [
+      [0, 1, 2, 3, 2, 1],
+      [0, 2, 1, 3, 0, 2, 1, 2],
+      [0, 1, 2, 1, 3, 1, 2, 1],
+      [0, 3, 1, 2, 0, 3, 2, 1],
+    ];
+    const hatPatterns = [
+      [0.7, 0.35, 1, 0.35, 0.7, 0.35, 1, 0.35, 0.7, 0.35, 1, 0.35, 0.7, 0.35, 1, 0.45],
+      [1, 0.35, 0.55, 0.35, 1, 0.35, 0.55, 0.35, 1, 0.35, 0.55, 0.35, 1, 0.35, 0.55, 0.45],
+      [0.8, 0.3, 0.5, 0.3, 0.8, 0.3, 0.5, 0.55, 0.8, 0.3, 0.5, 0.3, 0.8, 0.55, 0.5, 0.55],
+    ];
+    // one distinct progression per track, in a seeded order
+    const order = [0, 1, 2];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = rng.int(0, i);
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order.map((pi) => {
+      const tonic = rng.pick([33, 38]); // A1 or D2: A minor / D minor
+      const degrees = progressions[pi];
+      const bpm = rng.int(95, 115);
+      const bars = rng.pick([16, 20, 24]);
+      // sparse doomy lead phrases: a short motif every few bars, lots of space
+      const lead = {};
+      let bar = rng.int(1, 3);
+      while (bar < bars) {
+        const notes = [];
+        let s = rng.pick([0, 4, 8]);
+        const count = rng.int(1, 3);
+        for (let n = 0; n < count && s < 15; n++) {
+          const len = rng.pick([3, 4, 6, 8]);
+          notes.push({ step: s, midi: tonic + 36 + rng.pick([0, 3, 5, 7, 10, 12]), len });
+          s += len + rng.int(1, 3);
+        }
+        lead[bar] = notes;
+        bar += rng.int(2, 5);
+      }
+      return {
+        bpm,
+        bars,
+        sixteenth: 60 / bpm / 4,
+        chordRoots: degrees.map((d) => deg(tonic, d)),
+        chordTones: degrees.map((d) => [0, 2, 4, 7, 9, 14].map((x) => deg(tonic, d + x, 2))),
+        bass: rng.pick(bassPatterns),
+        bassGate: Array.from({ length: 8 }, () => rng.float(0.55, 0.95)),
+        bassCutoff: rng.float(400, 700),
+        arp: rng.pick(arpPatterns),
+        arpRate: rng.pick([1, 2]), // 16ths or 8ths
+        hats: rng.pick(hatPatterns),
+        fill: rng.chance(0.6),
+        lead,
+      };
+    });
+  }
+
+  /**
+   * Post-punk station sequencer. Schedules one 16th step per while-loop
+   * iteration, always a little ahead of the audio clock; tracks rotate with
+   * a one-bar crackle-only gap in between, like a tape change.
+   */
   scheduleRadio() {
     if (!this.ready || !this.radioOn) return;
     const ctx = this.ctx;
-    const bar = 2.6;
     if (this.radioNextTime < ctx.currentTime - 0.5) this.radioNextTime = ctx.currentTime + 0.1;
     while (this.radioNextTime < ctx.currentTime + 1.2) {
+      const track = this.radioTracks[this.radioTrackIndex];
       const t = this.radioNextTime;
-      const step = this.radioStep;
-      const scale = [57, 60, 62, 64, 65, 67, 69, 72, 64, 62, 60, 57];
-      const midi = scale[step % scale.length];
-      const freq = 440 * Math.pow(2, (midi - 69) / 12);
-      const osc = ctx.createOscillator();
-      osc.type = step % 4 === 0 ? 'triangle' : 'sine';
-      osc.frequency.value = step % 8 === 0 ? freq * 0.5 : freq;
-      const gain = ctx.createGain();
-      const level = step % 4 === 0 ? 0.08 : 0.05;
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(level, t + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-      osc.connect(gain).connect(this.radioFilter).connect(this.radioGain);
-      osc.start(t);
-      osc.stop(t + 1.0);
-      // slight vibrato
-      const vib = ctx.createOscillator();
-      vib.frequency.value = 5.2;
-      const vibGain = ctx.createGain();
-      vibGain.gain.value = 4;
-      vib.connect(vibGain).connect(osc.detune);
-      vib.start(t);
-      vib.stop(t + 1.0);
+      if (this.radioGapSteps > 0) {
+        this.radioGapSteps--; // between tracks: vinyl crackle only
+      } else {
+        this.scheduleRadioStep(track, this.radioTrackStep, t);
+        this.radioTrackStep++;
+        if (this.radioTrackStep >= track.bars * 16) {
+          this.radioTrackStep = 0;
+          this.radioTrackIndex = (this.radioTrackIndex + 1) % this.radioTracks.length;
+          this.radioGapSteps = 16;
+        }
+      }
       this.radioStep++;
-      this.radioNextTime += bar / 4;
+      this.radioNextTime += track.sixteenth;
     }
+  }
+
+  /** Schedules every instrument for one 16th step of a track. */
+  scheduleRadioStep(track, step, t) {
+    const bar = (step / 16) | 0;
+    const s16 = step % 16;
+    const ci = bar % track.chordRoots.length;
+    if (s16 % 4 === 0) this.radioKick(t);
+    if (s16 === 4 || s16 === 12) this.radioSnare(t, 1);
+    if (track.fill && bar % 8 === 7 && s16 === 14) this.radioSnare(t, 0.55);
+    const hatLevel = track.hats[s16];
+    if (hatLevel > 0) this.radioHat(t, hatLevel);
+    if (s16 % 2 === 0) {
+      const i8 = (s16 / 2) | 0;
+      this.radioBass(t, track.chordRoots[ci] + track.bass[i8], track.sixteenth * 2 * track.bassGate[i8], track.bassCutoff);
+    }
+    if (s16 % track.arpRate === 0) {
+      const tone = track.arp[((step / track.arpRate) | 0) % track.arp.length];
+      this.radioGuitar(t, track.chordTones[ci][tone], track.sixteenth * track.arpRate * 0.9);
+    }
+    const phrase = track.lead[bar];
+    if (phrase) {
+      for (const note of phrase) {
+        if (note.step === s16) this.radioLead(t, note.midi, note.len * track.sixteenth);
+      }
+    }
+  }
+
+  /** Motorik kick: sine pitch-drop on the quarter notes. */
+  radioKick(t) {
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.11);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.1, t + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(gain).connect(this.radioFilter);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  /** Snare on 2 and 4: noise burst plus a short triangle body. */
+  radioSnare(t, accent) {
+    const ctx = this.ctx;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.flatNoise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 1900;
+    band.Q.value = 0.8;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.05 * accent, t + 0.004);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    noise.connect(band).connect(noiseGain).connect(this.radioFilter);
+    noise.start(t, 0, 0.14);
+    noise.stop(t + 0.15);
+    const tone = ctx.createOscillator();
+    tone.type = 'triangle';
+    tone.frequency.setValueAtTime(210, t);
+    tone.frequency.exponentialRampToValueAtTime(160, t + 0.08);
+    const toneGain = ctx.createGain();
+    toneGain.gain.setValueAtTime(0.0001, t);
+    toneGain.gain.exponentialRampToValueAtTime(0.028 * accent, t + 0.004);
+    toneGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    tone.connect(toneGain).connect(this.radioFilter);
+    tone.start(t);
+    tone.stop(t + 0.12);
+  }
+
+  /** Closed 16th hats: highpassed noise, velocity from the accent pattern. */
+  radioHat(t, velocity) {
+    const ctx = this.ctx;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.flatNoise;
+    const high = ctx.createBiquadFilter();
+    high.type = 'highpass';
+    high.frequency.value = 7200;
+    high.Q.value = 0.7;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.035 * velocity, t + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    noise.connect(high).connect(gain).connect(this.radioFilter);
+    noise.start(t, 0.6, 0.05);
+    noise.stop(t + 0.06);
+  }
+
+  /** Driving bass: sawtooth through a lowpass, eighth-note gate. */
+  radioBass(t, midi, dur, cutoff) {
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = midiHz(midi);
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.value = cutoff;
+    low.Q.value = 1.2;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.085, t + 0.012);
+    gain.gain.setValueAtTime(0.085, t + Math.max(0.03, dur - 0.05));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(low).connect(gain).connect(this.radioFilter);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  /** Chorus-drenched guitar: two detuned saws into the feedback-delay bus. */
+  radioGuitar(t, midi, dur) {
+    const ctx = this.ctx;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.026, t + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const cents of [-7, 7]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = midiHz(midi);
+      osc.detune.value = cents;
+      osc.connect(gain);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    }
+    gain.connect(this.guitarBus);
+  }
+
+  /** Doomy lead: triangle with slow vibrato, long notes, rare phrases. */
+  radioLead(t, midi, dur) {
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = midiHz(midi);
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 4.6;
+    const vibGain = ctx.createGain();
+    vibGain.gain.value = 7;
+    vib.connect(vibGain).connect(osc.detune);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.06, t + 0.09);
+    gain.gain.setValueAtTime(0.06, t + Math.max(0.1, dur - 0.12));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain).connect(this.radioFilter);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+    vib.start(t);
+    vib.stop(t + dur + 0.05);
   }
 
   update(dt, now, listenerPos, radioPos) {
