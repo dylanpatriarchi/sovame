@@ -144,6 +144,18 @@ export const SETTINGS_DEFAULTS = {
   invertY: false,
 };
 
+/** Ambient pedestrians: procedural figures on deterministic sidewalk routes. */
+export const PEOPLE = {
+  /** Seconds between two breath-vapor puffs of one figure (only at ≤ 0 °C). */
+  breathInterval: [2, 4],
+  /** Lifetime of one vapor puff (s). */
+  puffLife: 1.05,
+  /** Shared pool of vapor sprites for all figures. */
+  puffPool: 10,
+  /** Beyond this distance (m) breath vapor is not emitted. */
+  vaporRange: 65,
+};
+
 /** Soviet place names, used by buildings, plaques and captions. */
 export const NAME_POOL = {
   streets: ['ул. КОСМОНАВТОВ', 'ул. МИРА', 'ул. ЗАВОДСКАЯ', 'пр. ЛЕНИНА', 'ул. СЕВЕРНАЯ'],

@@ -8,6 +8,7 @@ import { buildTerrain } from './terrain.js';
 import { buildBuildings } from './buildings.js';
 import { buildProps } from './props.js';
 import { buildVegetation } from './vegetation.js';
+import { buildPeople } from './people.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -45,6 +46,9 @@ export class World {
       ['Apartment blocks and courtyards', () => buildBuildings(this.ctx)],
       ['Roads, snow and paths', () => buildTerrain(this.ctx)],
       ['District props', () => buildProps(this.ctx)],
+      // routes are validated lazily on the first update, once the trees
+      // planted by the next stage have registered their colliders too
+      ['Passers-by', () => buildPeople(this.ctx)],
       ['Trees, bushes and crows', () => buildVegetation(this.ctx)],
     ];
     for (let i = 0; i < stages.length; i++) {

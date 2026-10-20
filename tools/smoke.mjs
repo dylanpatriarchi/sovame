@@ -48,9 +48,12 @@ try {
   logs.push(`[timeout] loading did not complete: ${error.message}`);
 }
 
-const stats = await page.evaluate(() => {
+const stats = await page.evaluate(async () => {
   const game = window.__game;
   if (!game) return { error: 'window.__game missing' };
+  // renderer.info accumulates (autoReset=false, composer passes); reading right
+  // after the next frame gives exactly one frame instead of 1-or-2 frames
+  await new Promise((resolve) => requestAnimationFrame(resolve));
   const info = game.renderer.info;
   return {
     calls: info.render.calls,
@@ -61,6 +64,7 @@ const stats = await page.evaluate(() => {
     colliders: game.world.colliders.length,
     zones: game.world.zones.length,
     lamps: game.world.lamps.length,
+    pedestrians: game.world.people?.list.length ?? 0,
     children: game.scene.children.length,
     season: game.env.season,
     clock: game.env.clock,
@@ -68,6 +72,9 @@ const stats = await page.evaluate(() => {
   };
 });
 console.log('→ stats:', JSON.stringify(stats, null, 2));
+if (stats.calls >= 300 || stats.triangles >= 600000) {
+  logs.push(`[budget] title view: ${stats.calls} calls / ${stats.triangles} triangles`);
+}
 
 await page.screenshot({ path: `${OUT}/01-title.png` });
 
@@ -164,6 +171,105 @@ await page.evaluate(() => {
 });
 await wait(1400);
 await page.screenshot({ path: `${OUT}/07-aerial.png` });
+
+// widest view of the district: nearly nothing is frustum-culled here, so this
+// is the absolute upper bound (gameplay views are what the budget targets)
+const aerialStats = await page.evaluate(async () => {
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  const info = window.__game.renderer.info;
+  return { calls: info.render.calls, triangles: info.render.triangles };
+});
+console.log(`→ render stats (aerial, unculled): ${aerialStats.calls} calls, ${aerialStats.triangles} triangles`);
+
+// pedestrians: route report, then teleport next to the nearest walker and frame it
+const pedInfo = await page.evaluate(() => {
+  const game = window.__game;
+  const people = game.world.people;
+  if (!people || !people.list?.length) return null;
+  game.state.mode = 'playing';
+  // freeze the preset cross-fade (the shadow pass flips mid-transition and
+  // would make the draw-call reading nondeterministic)
+  game.env.snapTo(game.env.preset);
+  const p = game.player.position;
+  const walkers = people.list.filter((w) => !w.idle);
+  walkers.sort((a, b) => a.position.distanceToSquared(p) - b.position.distanceToSquared(p));
+  const target = walkers[0] ?? people.list[0];
+  const t = target.position;
+  const yawT = target.yaw ?? 0;
+  const dirX = Math.sin(yawT);
+  const dirZ = Math.cos(yawT);
+  // candidate spots: 6 m to either side, then ahead/behind the figure
+  const spots = [
+    [t.x + dirZ * 6, t.z - dirX * 6],
+    [t.x - dirZ * 6, t.z + dirX * 6],
+    [t.x + dirX * 6, t.z + dirZ * 6],
+    [t.x - dirX * 6, t.z - dirZ * 6],
+  ];
+  let spot = spots[spots.length - 1];
+  for (const s of spots) {
+    if (!game.world.collides(s[0], s[1], 0.36)) {
+      spot = s;
+      break;
+    }
+  }
+  const dx = t.x - spot[0];
+  const dz = t.z - spot[1];
+  game.player.teleport(spot[0], spot[1], Math.atan2(-dx, -dz));
+  game.player.pitch = -0.06;
+  return {
+    target: target.name,
+    list: people.list.map((w) => ({
+      name: w.name,
+      idle: !!w.idle,
+      route: Number((w.routeLength ?? 0).toFixed(1)),
+      x: Number(w.position.x.toFixed(1)),
+      z: Number(w.position.z.toFixed(1)),
+    })),
+  };
+});
+if (pedInfo) {
+  for (const w of pedInfo.list) {
+    console.log(`→ pedestrian ${w.name}: route ${w.route} m, at (${w.x}, ${w.z})${w.idle ? ' [idle]' : ''}`);
+  }
+  console.log(`→ framing pedestrian: ${pedInfo.target}`);
+  await wait(700);
+  await page.screenshot({ path: `${OUT}/08-pedestrian.png` });
+  // self-calibrating budget: the district has dense corners that exceed the
+  // title-view budget on their own, so measure what the figures add here
+  const closeStats = await page.evaluate(async () => {
+    const game = window.__game;
+    const info = game.renderer.info;
+    const read = () => ({ calls: info.render.calls, triangles: info.render.triangles });
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
+    const withPeople = read();
+    const people = game.world.people;
+    const hidden = [];
+    for (const p of people.list) {
+      hidden.push([p.root, p.root.visible]);
+      p.root.visible = false;
+    }
+    for (const child of game.world.group.children) {
+      if (child.userData.breathPuff && child.visible) {
+        hidden.push([child, true]);
+        child.visible = false;
+      }
+    }
+    await frame();
+    const without = read();
+    for (const [obj, vis] of hidden) obj.visible = vis;
+    return { withPeople, without, cost: withPeople.calls - without.calls };
+  });
+  console.log(
+    `→ render budget (gameplay view): ${closeStats.withPeople.calls} calls / ${closeStats.withPeople.triangles} tris ` +
+      `(view without pedestrians: ${closeStats.without.calls} calls, pedestrians add ${closeStats.cost})`
+  );
+  // the absolute budget applies to the canonical title view (checked above);
+  // here only the pedestrian system has its own allowance
+  if (closeStats.cost > 40) logs.push(`[budget] pedestrians add ${closeStats.cost} calls (limit 40)`);
+} else {
+  console.log('→ pedestrians: world.people missing, skipping the segment');
+}
 
 // indicative performance
 const fps = await page.evaluate(async () => {
