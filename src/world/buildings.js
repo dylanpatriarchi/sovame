@@ -394,12 +394,9 @@ export function buildBuildings(ctx) {
     c.font = 'bold 96px "Arial Narrow", Arial, sans-serif';
     c.fillText('МИКРОРАЙОН № 7', W / 2, H * 0.32);
     c.font = 'bold 52px "Arial Narrow", Arial, sans-serif';
-    c.fillText('СЕВЕРНЫЙ · 1964', W / 2, H * 0.54);
-    c.fillStyle = '#2b2a27';
-    c.font = 'bold 34px Arial, sans-serif';
-    c.fillText('ул. КОСМОНАВТОВ', W / 2, H * 0.8);
+    c.fillText('1964', W / 2, H * 0.54);
     c.fillStyle = '#a8231c';
-    starPath(c, W * 0.5, H * 0.9, 20, 8.5);
+    starPath(c, W * 0.5, H * 0.8, 20, 8.5);
     c.fill();
   });
   const signFor = (x, z, ry) => {

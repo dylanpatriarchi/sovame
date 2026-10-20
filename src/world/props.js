@@ -152,9 +152,6 @@ export function buildProps(ctx) {
       c.font = 'bold 28px Arial, sans-serif';
       c.fillStyle = '#a8231c';
       c.fillText('12  24  31', W / 2, H * 0.76);
-      c.fillStyle = '#4a4a45';
-      c.font = '20px Arial, sans-serif';
-      c.fillText('5:40 — 23:10', W / 2, H * 0.9);
     });
     const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 3.0, 8), M.metal);
     signPost.position.set(6.6, 1.5, 28.6);
@@ -209,9 +206,6 @@ export function buildProps(ctx) {
       c.fillStyle = '#2a2a28';
       c.font = 'bold 68px "Arial Narrow", Arial, sans-serif';
       c.fillText('ПРОДУКТЫ', W / 2, H * 0.5);
-      c.fillStyle = '#6a675c';
-      c.font = 'bold 22px Arial, sans-serif';
-      c.fillText('хлеб · молоко · рыба', W / 2, H * 0.78);
     });
     const sign = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 0.62, 0.1), [
       M.metalLight,
@@ -812,25 +806,8 @@ export function buildProps(ctx) {
     makeBin(-53.6, -59.6, true);
   }
 
-  /* ---------------------------------------------------------- pond sign */
-  {
-    const texture = ctx.TEXTURES.signRink(400, 220);
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.2, 8), M.metal);
-    post.position.set(27.5, 1.1, 26.5);
-    ctx.place(post);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 1.9), [
-      M.metal,
-      M.metal,
-      M.metal,
-      M.metal,
-      new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8 }),
-      new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8 }),
-    ]);
-    plate.position.set(27.5, 1.9, 26.5);
-    ctx.place(plate);
-    ctx.addBoxCollider(27.5, 26.5, 0.4, 0.4, 0.1);
-    ctx.addZone('Каток', 'Ice rink', 24, 46, 6, 28);
-  }
+  /* ---------------------------------------------------------- pond zone */
+  ctx.addZone('Каток', 'Ice rink', 24, 46, 6, 28);
 
   /* ---------------------------------------------------------- street zones */
   ctx.addZone('Улица Космонавтов', 'Cosmonauts Avenue', -12, 12, -110, 110);
