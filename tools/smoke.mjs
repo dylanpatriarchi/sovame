@@ -76,6 +76,12 @@ await wait(1200);
 await page.screenshot({ path: `${OUT}/02-start.png` });
 
 // walk a bit (keys go to the player)
+// turn ~108 deg first: with a yaw-basis sign error the dot product below
+// only turns negative when the yaw is far from the spawn value
+await page.evaluate(() => {
+  window.__game.player.yaw += Math.PI * 0.6;
+});
+await wait(150);
 const before = await page.evaluate(() => ({ ...window.__game.player.position }));
 await page.keyboard.down('KeyW');
 await wait(2600);
@@ -84,6 +90,14 @@ await wait(300);
 const after = await page.evaluate(() => ({ ...window.__game.player.position }));
 const moved = Math.hypot(after.x - before.x, after.z - before.z);
 console.log(`→ movement with W: ${moved.toFixed(2)} m`);
+// regression check: W must move along the view direction, not against it
+const fwd = await page.evaluate(() => {
+  const f = window.__game.player.forwardVector;
+  return { x: f.x, z: f.z };
+});
+const dot = (after.x - before.x) * fwd.x + (after.z - before.z) * fwd.z;
+console.log(`→ forward alignment: ${dot.toFixed(2)} (must be > 0)`);
+if (moved > 0.5 && dot <= 0) logs.push('[movement] W walks against the view direction');
 await page.screenshot({ path: `${OUT}/03-walk.png` });
 
 // turn around and look at the courtyard
