@@ -22,6 +22,9 @@ const SKY_FRAG = /* glsl */ `
   uniform vec3 uSunColor;
   uniform vec3 uSunDir;
   uniform float uSunGlow;
+  uniform float uRemnant;
+  uniform vec3 uRemnantColor;
+  uniform vec3 uRemnantDir;
   void main() {
     vec3 d = normalize(vDir);
     float h = d.y;
@@ -29,6 +32,11 @@ const SKY_FRAG = /* glsl */ `
     sky = mix(sky, uGround, smoothstep(0.0, -0.22, h));
     float sd = max(dot(d, normalize(uSunDir)), 0.0);
     sky += uSunColor * (pow(sd, 22.0) * 1.4 + pow(sd, 3.0) * 0.22) * uSunGlow;
+    // faint warm band left by the set sun, hugging the horizon on its azimuth
+    vec3 hd = normalize(vec3(d.x, 0.0, d.z));
+    float az = max(dot(hd, normalize(uRemnantDir)), 0.0);
+    float band = pow(az, 6.0) * smoothstep(0.3, 0.02, abs(h - 0.02));
+    sky += uRemnantColor * band * uRemnant;
     gl_FragColor = vec4(sky, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -140,11 +148,13 @@ export class Environment {
       fogDensity: 0.01,
       lamp: 0,
       windowLit: 0,
+      remnant: 0,
       stars: 0,
       moon: 0,
       cloudOpacity: 0.6,
       clockMinutes: 18 * 60,
     };
+    this.remnantDir = new THREE.Vector3(0, 0, 1);
     const start = TIME_PRESETS[this.timeIndex];
     this.snapTo(start);
     this.buildSky();
@@ -174,6 +184,7 @@ export class Environment {
     c.fogDensity = preset.fog.density;
     c.lamp = preset.lamp;
     c.windowLit = preset.windowLit;
+    c.remnant = preset.remnant ?? 0;
     c.stars = preset.stars;
     c.moon = preset.moon;
     c.cloudOpacity = 0.55 + preset.stars * 0.25;
@@ -222,6 +233,9 @@ export class Environment {
         uSunColor: { value: this.cur.sunColor },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uSunGlow: { value: 0 },
+        uRemnant: { value: 0 },
+        uRemnantColor: { value: new THREE.Color(0xc98a5a) },
+        uRemnantDir: { value: this.remnantDir },
       },
     });
     this.sky = new THREE.Mesh(geo, this.skyMat);
@@ -420,6 +434,7 @@ export class Environment {
     c.fogDensity = damp(c.fogDensity, target.fog.density, rate, dt);
     c.lamp = damp(c.lamp, target.lamp, rate, dt);
     c.windowLit = damp(c.windowLit, target.windowLit, rate, dt);
+    c.remnant = damp(c.remnant, target.remnant ?? 0, rate, dt);
     c.stars = damp(c.stars, target.stars, rate, dt);
     c.moon = damp(c.moon, target.moon, rate, dt);
     c.cloudOpacity = damp(c.cloudOpacity, 0.5 + target.stars * 0.2, rate, dt);
@@ -461,6 +476,10 @@ export class Environment {
     // sky
     this.skyMat.uniforms.uSunDir.value.copy(this.sunDir);
     this.skyMat.uniforms.uSunGlow.value = c.sunGlow;
+    // warm remnant band: pinned to the sunset azimuth, flat on the horizon
+    const azRad = c.azimuth * (Math.PI / 180);
+    this.remnantDir.set(Math.sin(azRad), 0, Math.cos(azRad)).normalize();
+    this.skyMat.uniforms.uRemnant.value = c.remnant;
 
     // fog and exposure
     this.applyFog();
@@ -507,6 +526,13 @@ export class Environment {
       lamp.coneMat.opacity = c.lamp * 0.09 * flicker;
     });
     this.world.setWindowLit(c.windowLit * 0.95);
+    // TV windows: slow cool flicker, gated by the window-light preset
+    const tvGate = smoothstep(0.25, 0.5, c.windowLit);
+    for (const tv of this.world.tvMats) {
+      const wob = Math.sin(t * tv.speed + tv.phase) * Math.sin(t * tv.speed * 0.37 + tv.phase * 1.7);
+      const dip = Math.sin(t * 0.31 + tv.phase * 2.3) > 0.93 ? 0.3 : 1;
+      tv.mat.opacity = tvGate * (0.22 + 0.14 * wob) * dip;
+    }
     // notice boards and posters: slightly backlit when the street lamps turn on
     for (const mat of this.world.posterMats) mat.emissiveIntensity = 0.1 + 0.45 * c.lamp;
     this.ambientLevel = c.lamp;

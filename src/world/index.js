@@ -23,6 +23,7 @@ export class World {
     this.autumnOnly = [];
     this.winterOnly = [];
     this.windowMats = [];
+    this.tvMats = [];
     this.roofMats = [];
     this.roadMats = [];
     this.posterMats = [];
@@ -106,6 +107,7 @@ export class World {
       roofWinter: TX.makeRoofTexture(true),
       roofAutumn: TX.makeRoofTexture(false),
       snowLedge: TX.makeSnowLedgeTexture(),
+      tvGlow: TX.makeTvGlowTexture(),
       rust: TX.makeRustTexture(),
       corrugated: TX.makeCorrugatedTexture(),
       birch: TX.makeBirchTexture(),

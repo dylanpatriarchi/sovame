@@ -55,10 +55,10 @@ export function buildBuildings(ctx) {
   };
 
   const buildingSpecs = [
-    { id: 'B1', x: -40, z: -52, w: 44, d: 12, floors: 5, number: '12', street: 'ул. КОСМОНАВТОВ', base: '#c3bcac', plinth: '#8f8b80', balcony: 0.45, lit: 0.5, seed: 11 },
+    { id: 'B1', x: -40, z: -52, w: 44, d: 12, floors: 5, number: '12', street: 'ул. КОСМОНАВТОВ', base: '#c3bcac', plinth: '#8f8b80', balcony: 0.45, lit: 0.5, seed: 11, tv: true },
     { id: 'B2', x: 38, z: -30, w: 38, d: 12, floors: 5, number: '7', street: 'ул. КОСМОНАВТОВ', base: '#b6b9b8', plinth: '#87857c', balcony: 0.4, lit: 0.45, seed: 22 },
-    { id: 'B3', x: -42, z: 20, w: 34, d: 12, floors: 9, number: '3', street: 'ул. МИРА', base: '#aab2b6', plinth: '#7f7d76', balcony: 0.5, lit: 0.55, seed: 33 },
-    { id: 'B4', x: 36, z: 62, w: 40, d: 12, floors: 5, number: '9', street: 'ул. МИРА', base: '#c0b6a4', plinth: '#8a8578', balcony: 0.42, lit: 0.48, seed: 44 },
+    { id: 'B3', x: -42, z: 20, w: 34, d: 12, floors: 9, number: '3', street: 'ул. МИРА', base: '#aab2b6', plinth: '#7f7d76', balcony: 0.5, lit: 0.55, seed: 33, tv: true },
+    { id: 'B4', x: 36, z: 62, w: 40, d: 12, floors: 5, number: '9', street: 'ул. МИРА', base: '#c0b6a4', plinth: '#8a8578', balcony: 0.42, lit: 0.48, seed: 44, tv: true },
     { id: 'B5', x: -30, z: -80, w: 40, d: 12, floors: 5, number: '15', street: 'ул. СЕВЕРНАЯ', base: '#bcb9ae', plinth: '#8b8880', balcony: 0.38, lit: 0.42, seed: 55 },
     { id: 'B7', x: -46, z: 74, w: 36, d: 12, floors: 5, number: '21', street: 'ул. МИРА', base: '#c6bfb0', plinth: '#8f8b80', balcony: 0.44, lit: 0.46, seed: 66 },
   ];
@@ -68,6 +68,20 @@ export function buildBuildings(ctx) {
     const sideCells = Math.max(2, Math.round(spec.d / CELL_W));
     const facadeRng = new Rng(spec.seed);
     const sideRng = new Rng(spec.seed + 101);
+
+    // one window per chosen building glows with TV light: baked dark into the
+    // facade texture, the animated flicker comes from an additive quad
+    let tvPick = null;
+    if (spec.tv) {
+      const tvRng = new Rng(spec.seed + 500);
+      tvPick = {
+        f: tvRng.int(1, spec.floors - 1),
+        c: tvRng.int(0, cells - 1),
+        side: tvRng.sign(),
+        phase: tvRng.float(0, TAU),
+        speed: tvRng.float(0.5, 1.05),
+      };
+    }
 
     const facade = TX.makeFacadeTextures({
       floors: spec.floors,
@@ -81,6 +95,7 @@ export function buildBuildings(ctx) {
       winter: false,
       street: spec.street,
       number: spec.number,
+      tvCells: tvPick ? new Set([`${tvPick.f}:${tvPick.c}`]) : null,
     });
     const side = TX.makeFacadeTextures({
       floors: spec.floors,
@@ -121,6 +136,29 @@ export function buildBuildings(ctx) {
     ctx.place(mesh);
     ctx.addBoxCollider(spec.x, spec.z, spec.w, spec.d, 0.25);
     addSnowLedges(spec.x, spec.z, spec.w, spec.d, h);
+
+    // TV flicker quad, sitting exactly on the baked-dark window
+    if (tvPick) {
+      const cellW = spec.w / cells;
+      const wx =
+        tvPick.side > 0
+          ? spec.x - spec.w / 2 + (tvPick.c + 0.5) * cellW
+          : spec.x + spec.w / 2 - (tvPick.c + 0.5) * cellW;
+      const wz = spec.z + tvPick.side * (spec.d / 2 + 0.03);
+      const tvMat = new THREE.MeshBasicMaterial({
+        map: T.tvGlow,
+        color: 0x8fb4ef,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(cellW * 0.5, FLOOR_H * 0.42), tvMat);
+      quad.position.set(wx, tvPick.f * FLOOR_H + 1.53, wz);
+      if (tvPick.side < 0) quad.rotation.y = Math.PI;
+      world.group.add(quad);
+      world.tvMats.push({ mat: tvMat, phase: tvPick.phase, speed: tvPick.speed });
+    }
 
     // perimeter apron / отмостка
     const apron = new THREE.Mesh(new THREE.BoxGeometry(spec.w + 1.8, 0.06, spec.d + 1.8), M.concreteDark);

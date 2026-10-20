@@ -425,7 +425,7 @@ export function makeIceTexture(size = 512) {
 /* ------------------------------------------------------------------ buildings */
 
 function drawWindow(ctx, x, y, w, h, rng, opts) {
-  const { winter, litChance } = opts;
+  const { winter, litChance, tv = false } = opts;
   // opening
   ctx.fillStyle = 'rgba(48,46,44,0.85)';
   ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
@@ -435,8 +435,9 @@ function drawWindow(ctx, x, y, w, h, rng, opts) {
 
   const panes = rng.chance(0.5) ? 2 : 3;
   const inner = { x: x + 2, y: y + 2, w: w - 4, h: h - 4 };
-  const lit = rng.chance(litChance);
+  const lit = !tv && rng.chance(litChance);
   const cool = rng.chance(0.25);
+  const occluders = [];
 
   let glass;
   if (lit) {
@@ -448,6 +449,44 @@ function drawWindow(ctx, x, y, w, h, rng, opts) {
       glass.addColorStop(0, '#ffd7a0');
       glass.addColorStop(1, '#e08a34');
     }
+    ctx.fillStyle = glass;
+    ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
+    glass = null;
+    // curtain layout: some windows are half-lit or top-lit behind fabric
+    const r = rng.next();
+    const style = r < 0.48 ? 'full' : r < 0.76 ? 'bottom' : r < 0.88 ? 'top' : 'side';
+    if (style === 'bottom') {
+      const frac = rng.float(0.42, 0.62);
+      occluders.push({ x: inner.x, y: inner.y + inner.h * (1 - frac), w: inner.w, h: inner.h * frac });
+    } else if (style === 'top') {
+      const frac = rng.float(0.26, 0.44);
+      occluders.push({ x: inner.x, y: inner.y, w: inner.w, h: inner.h * frac });
+    } else if (style === 'side') {
+      const sw = inner.w * rng.float(0.28, 0.44);
+      occluders.push({ x: rng.chance(0.5) ? inner.x : inner.x + inner.w - sw, y: inner.y, w: sw, h: inner.h });
+    }
+    for (const o of occluders) {
+      ctx.save();
+      ctx.globalAlpha = rng.float(0.82, 0.95);
+      ctx.fillStyle = rng.pick(['#6b5f4e', '#7a6b54', '#5d5648', '#4e4a42']);
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+      // faint light leaking over the curtain edge
+      if (o.y > inner.y) {
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = 'rgba(255,196,128,0.6)';
+        ctx.fillRect(o.x, o.y - 1, o.w, 1.6);
+      }
+      ctx.restore();
+    }
+  } else if (tv) {
+    // TV window: cold navy glass, kept dark in the emissive map —
+    // the animated flicker quad provides the light (see buildings.js)
+    glass = ctx.createLinearGradient(inner.x, inner.y, inner.x, inner.y + inner.h);
+    glass.addColorStop(0, '#26344c');
+    glass.addColorStop(1, '#101825');
+    ctx.fillStyle = glass;
+    ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
+    glass = null;
   } else if (rng.chance(0.55)) {
     // curtains
     const curtain = rng.pick(['#8d7c66', '#a39784', '#7f8b93', '#9a8d7a', '#6f7c86']);
@@ -501,7 +540,7 @@ function drawWindow(ctx, x, y, w, h, rng, opts) {
     ctx.lineTo(inner.x + rng.float(0, inner.w), inner.y + inner.h);
     ctx.stroke();
   }
-  return { lit, cool, x, y, w, h, inner, panes };
+  return { lit, cool, x, y, w, h, inner, panes, occluders };
 }
 
 function drawBalcony(ctx, x, y, w, h, rng, opts) {
@@ -598,6 +637,7 @@ export function makeFacadeTextures(spec) {
     street = 'ул. КОСМОНАВТОВ',
     number = '12',
     tall = false,
+    tvCells = null,
   } = spec;
 
   const W = cells * cell;
@@ -692,7 +732,7 @@ export function makeFacadeTextures(spec) {
       const h = cell * (f === 0 ? 0.34 : 0.42);
       const xw = x + (cell - w) / 2;
       const yw = yTop + cell * (f === 0 ? 0.34 : 0.28);
-      const res = drawWindow(ctx, xw, yw, w, h, rng, { winter, litChance });
+      const res = drawWindow(ctx, xw, yw, w, h, rng, { winter, litChance, tv: tvCells ? tvCells.has(`${f}:${c}`) : false });
       // grime washing down from the sill (soft, anchored, low alpha)
       if (rng.chance(0.42)) {
         streaks.push({ x: xw + rng.float(w * 0.2, w * 0.8), y: yw + h + 5, w: rng.float(2, 6), len: rng.float(cell * 0.2, cell * 0.85), a: rng.float(0.08, 0.18) });
@@ -723,14 +763,11 @@ export function makeFacadeTextures(spec) {
           gctx.fillRect(px - 1, inner.y, 2.4, inner.h);
         }
         gctx.fillRect(inner.x, inner.y + inner.h * 0.5 - 1, inner.w, 2);
-        // curtains/furniture: inner shadow bands
-        gctx.fillStyle = 'rgba(0,0,0,0.3)';
-        if (rng.chance(0.55)) {
-          gctx.fillRect(inner.x, inner.y + inner.h * rng.float(0.58, 0.72), inner.w, inner.h);
-        }
-        if (rng.chance(0.3)) {
-          const sw = inner.w * rng.float(0.22, 0.45);
-          gctx.fillRect(rng.chance(0.5) ? inner.x : inner.x + inner.w - sw, inner.y, sw, inner.h);
+        // curtains: the emissive map repeats the color map's occluders,
+        // so half-lit and top-lit windows glow with the same shape
+        gctx.fillStyle = 'rgba(0,0,0,0.9)';
+        for (const o of res.occluders) {
+          gctx.fillRect(o.x, o.y, o.w, o.h);
         }
       }
       if (f > 0 && balconyCols.has(c) && rng.chance(0.9)) {
@@ -1329,6 +1366,33 @@ export function makeBeamTexture(w = 128, h = 256) {
       img.data[i + 1] = 255;
       img.data[i + 2] = 255;
       img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Soft window-shaped glow for the TV flicker quads: a feathered rectangle,
+ * slightly brighter toward the top (the set against the ceiling).
+ */
+export function makeTvGlowTexture(w = 96, h = 72) {
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const ramp = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
+  for (let y = 0; y < h; y++) {
+    const fy = ramp(y / h, 0.06, 0.22) * (1 - ramp(y / h, 0.8, 0.98));
+    for (let x = 0; x < w; x++) {
+      const fx = ramp(x / w, 0.05, 0.2) * (1 - ramp(x / w, 0.8, 0.97));
+      const a = fx * fy * (0.7 + 0.3 * (1 - y / h));
+      const i = (y * w + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(Math.min(1, a) * 255);
     }
   }
   ctx.putImageData(img, 0, 0);
