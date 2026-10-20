@@ -349,6 +349,84 @@ if (doorInfo) {
   console.log('→ stairwells: world.interiors missing, skipping the segment');
 }
 
+// trees: stand ~5.5 m in front of a dense birch cluster, crown in frame,
+// winter first, then the same spot after switching to autumn and back
+const treeSpot = await page.evaluate(() => {
+  const game = window.__game;
+  game.state.mode = 'playing';
+  game.env.snapTo(game.env.preset);
+  const spots = game.world.treeSpots ?? [];
+  const deciduous = spots.filter((s) => s.species !== 'spruce');
+  const spruces = spots.filter((s) => s.species === 'spruce');
+  const clearOfSpruce = (x, z, r) => spruces.every((s) => Math.hypot(s.x - x, s.z - z) > r);
+  let best = null;
+  let bestScore = -1;
+  for (const c of deciduous) {
+    if (c.species !== 'birch') continue;
+    if (Math.abs(c.x) > 70 || Math.abs(c.z) > 70) continue;
+    if (!clearOfSpruce(c.x, c.z, 9)) continue;
+    let score = 0;
+    for (const o of deciduous) {
+      const d = Math.hypot(o.x - c.x, o.z - c.z);
+      if (d > 1 && d < 11) score += 1;
+      if (d < 20 && o.species !== c.species) score += 1.5;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  if (!best) return null;
+  // approach directions, preferring the avenue side; the first that the
+  // player can actually stand on with a clear sight line wins
+  const towardCenter = Math.atan2(-best.x, -best.z);
+  const tries = [towardCenter, towardCenter + 0.6, towardCenter - 0.6, towardCenter + 1.2, towardCenter - 1.2, towardCenter + Math.PI];
+  let spot = null;
+  for (const a of tries) {
+    const px = best.x - Math.sin(a) * 6;
+    const pz = best.z - Math.cos(a) * 6;
+    if (game.world.collides(px, pz, 0.4)) continue;
+    if (!clearOfSpruce(px, pz, 2.5)) continue;
+    let blocked = false;
+    for (let t = 0.2; t < 1; t += 0.2) {
+      if (!clearOfSpruce(px + (best.x - px) * t, pz + (best.z - pz) * t, 1.1)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) continue;
+    spot = [px, pz];
+    break;
+  }
+  if (!spot) return null;
+  const dx = best.x - spot[0];
+  const dz = best.z - spot[1];
+  game.player.teleport(spot[0], spot[1], Math.atan2(-dx, -dz));
+  game.player.pitch = 0.15;
+  return { species: best.species, x: best.x, z: best.z, neighbors: bestScore };
+});
+if (treeSpot) {
+  console.log(`→ tree framing: ${treeSpot.species} at (${treeSpot.x.toFixed(1)}, ${treeSpot.z.toFixed(1)}), cluster score ${treeSpot.neighbors}`);
+  await wait(700);
+  await page.screenshot({ path: `${OUT}/10-trees.png` });
+  await page.evaluate(() => {
+    const { env, player, settings } = window.__game;
+    settings.season = 'autumn';
+    env.setSeason('autumn');
+    player.setFootprintStyle(player.surface, 'autumn');
+  });
+  await wait(900);
+  await page.screenshot({ path: `${OUT}/11-trees-autumn.png` });
+  await page.evaluate(() => {
+    const { env, player, settings } = window.__game;
+    settings.season = 'winter';
+    env.setSeason('winter');
+    player.setFootprintStyle(player.surface, 'winter');
+  });
+} else {
+  logs.push('[trees] no tree spot found (world.treeSpots missing?)');
+}
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;
