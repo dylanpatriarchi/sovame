@@ -427,6 +427,34 @@ if (treeSpot) {
   logs.push('[trees] no tree spot found (world.treeSpots missing?)');
 }
 
+// roadside strip: down the avenue, poplars must stand on the verge beside
+// the sidewalk — never on asphalt or stone
+const roadsideSpot = await page.evaluate(() => {
+  const game = window.__game;
+  const poplars = (game.world.treeSpots ?? []).filter((s) => s.species === 'poplar');
+  if (!poplars.length) return null;
+  const mx = poplars.reduce((a, s) => a + s.x, 0) / poplars.length;
+  const mz = poplars.reduce((a, s) => a + s.z, 0) / poplars.length;
+  const px = 0;
+  const pz = mz - 14;
+  game.player.teleport(px, pz, Math.atan2(-(mx - px), -(mz + 6 - pz)));
+  game.player.pitch = 0.08;
+  // every deciduous trunk on a hard surface is a bug; report them
+  const bad = (game.world.treeSpots ?? []).filter((s) => {
+    const t = game.world.surfaceAt(s.x, s.z);
+    return t === 'asphalt' || t === 'stone';
+  });
+  return { mx, mz, bad: bad.map((s) => `${s.species}@${s.x.toFixed(1)},${s.z.toFixed(1)}`) };
+});
+if (roadsideSpot) {
+  console.log(`→ roadside framing: strip center (${roadsideSpot.mx.toFixed(1)}, ${roadsideSpot.mz.toFixed(1)}), trunks on hard surface: ${roadsideSpot.bad.length}`);
+  if (roadsideSpot.bad.length) logs.push(`[trees] trunks on road/sidewalk: ${roadsideSpot.bad.join('; ')}`);
+  await wait(600);
+  await page.screenshot({ path: `${OUT}/12-roadside.png` });
+} else {
+  logs.push('[trees] no poplars found for the roadside shot');
+}
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;

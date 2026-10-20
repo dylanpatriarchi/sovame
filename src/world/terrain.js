@@ -3,6 +3,28 @@ import * as THREE from 'three';
 import { TAU } from '../util.js';
 import { WORLD } from '../config.js';
 
+/** Parking pad in the east courtyard (asphalt). Shared with vegetation. */
+export const PARKING_LOT = { x0: 40, x1: 56, z0: -21, z1: 5 };
+
+/**
+ * Trampled walkways through the yards. Their surface type stays 'snow', so
+ * anything that must never stand on a path (trees) needs the rects — they
+ * are exported for the vegetation pass.
+ */
+export const WALK_PATHS = [
+  { x0: -58, x1: -22, z0: -46.6, z1: -44.2 },
+  { x0: -30, x1: WORLD.roadHalfWidth + 3.2, z0: -19.6, z1: -17.2 },
+  { x0: -42.2, x1: -39.8, z0: -44, z1: -4 },
+  { x0: -45, x1: -29, z0: -22.4, z1: -20 },
+  { x0: WORLD.roadHalfWidth + 3.2, x1: 21, z0: -3.4, z1: -1 },
+  { x0: WORLD.roadHalfWidth + 3.2, x1: 27, z0: 9, z1: 11.4 },
+  { x0: 24, x1: 44, z0: 24, z1: 26.4 },
+  { x0: -14.4, x1: WORLD.roadHalfWidth + 3.2, z0: 1, z1: 3.4 },
+  { x0: -26, x1: -9.4, z0: -8, z1: 12, plaza: true },
+  { x0: -14, x1: WORLD.roadHalfWidth + 3.2, z0: -78.5, z1: -76.1 },
+  { x0: 26, x1: 40, z0: -26.4, z1: -24 },
+];
+
 /** Plane with scaled UVs: the texture repeats every `tile` meters. */
 export function tiledPlane(w, d, tile, material, y = 0) {
   const geo = new THREE.PlaneGeometry(w, d);
@@ -80,7 +102,7 @@ export function buildTerrain(ctx) {
   const lot = tiledPlane(16, 26, 12, roadPlainMat, 0.018);
   lot.position.set(48, 0.018, -8);
   world.group.add(lot);
-  ctx.addSurfaceRect(40, 56, -21, 5, 'asphalt');
+  ctx.addSurfaceRect(PARKING_LOT.x0, PARKING_LOT.x1, PARKING_LOT.z0, PARKING_LOT.z1, 'asphalt');
 
   /* ------------------------------------------------ sidewalks */
   const walkMat = new THREE.MeshStandardMaterial({ map: T.sidewalk, roughness: 0.92 });
@@ -130,19 +152,7 @@ export function buildTerrain(ctx) {
 
   /* ------------------------------------------------ trampled paths */
   const pathMat = new THREE.MeshStandardMaterial({ map: T.path, roughness: 0.88 });
-  const paths = [
-    { x0: -58, x1: -22, z0: -46.6, z1: -44.2 },
-    { x0: -30, x1: R + 3.2, z0: -19.6, z1: -17.2 },
-    { x0: -42.2, x1: -39.8, z0: -44, z1: -4 },
-    { x0: -45, x1: -29, z0: -22.4, z1: -20 },
-    { x0: R + 3.2, x1: 21, z0: -3.4, z1: -1 },
-    { x0: R + 3.2, x1: 27, z0: 9, z1: 11.4 },
-    { x0: 24, x1: 44, z0: 24, z1: 26.4 },
-    { x0: -14.4, x1: R + 3.2, z0: 1, z1: 3.4 },
-    { x0: -26, x1: -9.4, z0: -8, z1: 12, plaza: true },
-    { x0: -14, x1: R + 3.2, z0: -78.5, z1: -76.1 },
-    { x0: 26, x1: 40, z0: -26.4, z1: -24 },
-  ];
+  const paths = WALK_PATHS;
   for (const p of paths) {
     const cx = (p.x0 + p.x1) / 2;
     const cz = (p.z0 + p.z1) / 2;

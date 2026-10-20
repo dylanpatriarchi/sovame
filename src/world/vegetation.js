@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, DEG, lerp, clamp } from '../util.js';
+import { WORLD } from '../config.js';
+import { PARKING_LOT, WALK_PATHS } from './terrain.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -521,7 +523,95 @@ export function buildVegetation(ctx) {
     (rng.chance(0.6) ? belt : spruces).push({ x, z });
   }
 
-  // trunk colliders: identical set to what the pedestrian routes expect
+  /* ---------------- relocation: trunks never stand on hard surfaces,
+   * inside another tree or inside a prop collider
+   * The historic scatter only avoided the colliders that existed at that
+   * moment (buildings and props — never other trees), so a few trees ended
+   * up on asphalt, on the trampled walkways, in the boundary fences or
+   * inside a neighbour. Every offender is moved to the nearest spot that is
+   * free, on soil and clear, inside its own cluster; the search is a fixed
+   * golden-angle spiral, fully deterministic. Road/sidewalk rects derive
+   * from the same constants terrain.js uses. */
+  {
+    const R = WORLD.roadHalfWidth;
+    const CROSS = WORLD.crossroadZ;
+    const SW = WORLD.sidewalkWidth;
+    const hardRects = [
+      [-R, R, -116, 116], // main road
+      [-116, 116, CROSS - 6, CROSS + 6], // crossroad
+      [PARKING_LOT.x0, PARKING_LOT.x1, PARKING_LOT.z0, PARKING_LOT.z1],
+      [R, R + SW, -116, 116], // sidewalks
+      [-R - SW, -R, -116, 116],
+      [-116, 116, CROSS + 6, CROSS + 6 + SW],
+      [-116, 116, CROSS - 6 - SW, CROSS - 6],
+    ];
+    const inRect = (x, z, r, pad) => x >= r[0] - pad && x <= r[1] + pad && z >= r[2] - pad && z <= r[3] + pad;
+    const offending = (x, z) => {
+      const s = world.surfaceAt(x, z);
+      if (s === 'asphalt' || s === 'stone') return true;
+      if (hardRects.some((r) => inRect(x, z, r, 0.6))) return true;
+      if (WALK_PATHS.some((p) => inRect(x, z, [p.x0, p.x1, p.z0, p.z1], 0.6))) return true;
+      return false;
+    };
+    for (const b of [...west, ...east, ...farNorth, ...belt]) b.species = 'birch';
+    for (const b of central) b.species = 'yard';
+    for (const b of roadside) b.species = 'poplar';
+    for (const s of spruces) s.species = 'spruce';
+    const allTrees = [...west, ...east, ...farNorth, ...central, ...roadside, ...belt, ...spruces];
+    const gap = (a, b) => (a.species === 'spruce' || b.species === 'spruce' ? 2.2 : 1.2);
+    const cramped = (item) => allTrees.some((o) => o !== item && Math.hypot(o.x - item.x, o.z - item.z) < gap(item, o));
+    const clearOfTrees = (x, z, self) => allTrees.every((o) => o === self || Math.hypot(o.x - x, o.z - z) >= (o.species === 'spruce' ? 2.2 : 1.6));
+    // trunk point inside a collider that is not its own trunk box
+    const foreignHit = (item, ownW) =>
+      world.colliders.some((c) => {
+        const w = c.maxX - c.minX;
+        const ccx = (c.minX + c.maxX) / 2;
+        const ccz = (c.minZ + c.maxZ) / 2;
+        if (Math.abs(ccx - item.x) < 0.05 && Math.abs(ccz - item.z) < 0.05 && Math.abs(w - ownW) < 0.1) return false;
+        const cx = Math.max(c.minX, Math.min(item.x, c.maxX));
+        const cz = Math.max(c.minZ, Math.min(item.z, c.maxZ));
+        return Math.hypot(item.x - cx, item.z - cz) < 0.25;
+      });
+    const relocate = (list, radius, ownW, nearDistrict = true) => {
+      for (const item of list) {
+        if (!offending(item.x, item.z) && !cramped(item) && !foreignHit(item, ownW)) continue;
+        let placed = null;
+        for (let ring = 1; ring <= 26 && !placed; ring++) {
+          const rr = ring * 0.7;
+          const steps = Math.max(8, Math.round((rr * TAU) / 0.7));
+          for (let i = 0; i < steps; i++) {
+            const a = i * 2.39996 + ring * 0.61;
+            const x = item.x + Math.cos(a) * rr;
+            const z = item.z + Math.sin(a) * rr;
+            if (offending(x, z)) continue;
+            // the belt sits mostly outside the playable bounds, where
+            // okPlace always fails; fences still reach it near the edge
+            if (nearDistrict || (Math.abs(x) < 107 && Math.abs(z) < 107)) {
+              if (!okPlace(x, z, radius)) continue;
+            }
+            if (!clearOfTrees(x, z, item)) continue;
+            placed = [x, z];
+            break;
+          }
+        }
+        if (placed) {
+          item.x = placed[0];
+          item.z = placed[1];
+        } else {
+          console.warn(`[trees] no valid spot near (${item.x.toFixed(1)}, ${item.z.toFixed(1)}), keeping it`);
+        }
+      }
+    };
+    relocate(west, 1.4, 0.6);
+    relocate(east, 1.4, 0.6);
+    relocate(farNorth, 1.4, 0.6);
+    relocate(central, 1.8, 0.6);
+    relocate(roadside, 1.4, 0.6);
+    relocate(belt, 1.4, 0.6, false);
+    relocate(spruces, 2.2, 1.4);
+  }
+
+  // trunk colliders follow the final (possibly relocated) positions
   for (const b of [...west, ...east, ...farNorth, ...central, ...roadside, ...belt]) {
     ctx.addBoxCollider(b.x, b.z, 0.5, 0.5, 0.05);
   }
