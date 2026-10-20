@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { clamp, damp, lerp, Rng, smoothstep, TAU } from './util.js';
 import { SEASONS, TIME_PRESETS, WORLD, sunDirection } from './config.js';
 import { makeLeafTexture, makeSoftCircleTexture, makeSmokeTexture } from './textures.js';
+import { Mist } from './world/mist.js';
 
 const SKY_VERT = /* glsl */ `
   varying vec3 vDir;
@@ -150,6 +151,7 @@ export class Environment {
     this.buildLights();
     this.buildStars();
     this.buildClouds();
+    this.buildMist();
     this.buildWeather();
     this.buildSmoke();
     this.applyFog();
@@ -310,8 +312,12 @@ export class Environment {
     }
   }
 
-  buildWeather() {
-    const q = this.quality === 'high' ? 1 : 0.55;
+  buildMist() {
+    this.mist = new Mist(this.scene);
+    this.mistColor = new THREE.Color();
+  }
+
+  buildWeather() {    const q = this.quality === 'high' ? 1 : 0.55;
     this.snowLayers = [
       new Weather(this.scene, 'snow', Math.round(2200 * q), 0.11, { opacity: 0.95, color: 0xf2f7ff }),
       new Weather(this.scene, 'snow', Math.round(1200 * q), 0.2, { opacity: 0.7, color: 0xe8f0ff }),
@@ -476,6 +482,12 @@ export class Environment {
       cloud.sprite.material.opacity = c.cloudOpacity;
       cloud.sprite.material.color.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.55);
     }
+
+    // drifting ground mist: density follows the fog preset and season
+    const seasonFog = SEASONS[this.season].fogMul;
+    const mistDensity = clamp((c.fogDensity * seasonFog - 0.006) / 0.008, 0, 1);
+    this.mistColor.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.4);
+    this.mist.update(dt, t, this.wind, camera.position, mistDensity, this.mistColor);
 
     // street lamps and windows
     const lampWarm = new THREE.Color(0xffb066);

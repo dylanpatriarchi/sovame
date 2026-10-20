@@ -1231,8 +1231,7 @@ export function makeLeafTexture(size = 64) {
   return tex;
 }
 
-export function makeSmokeTexture(size = 128) {
-  const rng = new Rng(17);
+export function makeSmokeTexture(size = 128) {  const rng = new Rng(17);
   const canvas = makeCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
@@ -1248,6 +1247,37 @@ export function makeSmokeTexture(size = 128) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, TAU);
     ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * Wide horizontal wisp for the drifting mist planes: an elongated radial
+ * gradient with a few offset lobes, fading to zero on every side.
+ */
+export function makeMistTexture(w = 256, h = 128) {
+  const rng = new Rng(241);
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  for (let i = 0; i < 9; i++) {
+    const x = w * 0.5 + rng.float(-w * 0.22, w * 0.22);
+    const y = h * 0.5 + rng.float(-h * 0.16, h * 0.16);
+    const rx = rng.float(w * 0.16, w * 0.4);
+    const ry = rx * rng.float(0.28, 0.5);
+    const a = rng.float(0.1, 0.26);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rx);
+    g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    ctx.translate(-x, -y);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
