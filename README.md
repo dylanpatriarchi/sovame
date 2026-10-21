@@ -22,6 +22,7 @@ npm run preview  # serve the production build
 | `Space` | jump |
 | `C` | crouch |
 | `E` | turn the kiosk radio on/off (within ~7 m) |
+| `F` | have a smoke at a quiet spot (courtyard bench, bus stop, stairwell landing); `F` again to stop |
 | `Esc` | pause / release the mouse |
 
 Mouse look uses pointer lock. Season, time of day, snow amount, volume, mouse

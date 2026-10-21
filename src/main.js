@@ -10,6 +10,7 @@ import { Environment } from './environment.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
 import { UI } from './ui.js';
+import { Smoke, smokeSpots } from './smoke.js';
 import { PLAYER, SETTINGS_DEFAULTS } from './config.js';
 import { clamp } from './util.js';
 
@@ -75,7 +76,7 @@ async function boot() {
   renderer.info.autoReset = false;
 
   const sound = new Sound({ volume: settings.volume });
-  const state = { mode: 'loading', elapsed: 0, introT: 0, interior: null, transitioning: false };
+  const state = { mode: 'loading', elapsed: 0, introT: 0, interior: null, transitioning: false, smoking: false };
 
   const ui = new UI({
     settings,
@@ -143,6 +144,22 @@ async function boot() {
   await nextFrame();
 
   const player = new Player({ camera, world, domElement: canvas, settings });
+
+  // smoke spots: F at the bench, the bus stop and a stairwell landing
+  const smoke = new Smoke({ scene, camera, world, env, sound });
+  for (const spot of smokeSpots(world)) {
+    world.interactables.push({
+      id: spot.id,
+      key: 'KeyF',
+      x: spot.x,
+      z: spot.z,
+      y: spot.y,
+      radius: spot.radius,
+      available: () => smoke.available(spot),
+      prompt: () => 'F — have a smoke',
+      onUse: () => startSmoke(spot),
+    });
+  }
   player.setFootprintStyle('snow', settings.season);
   ui.setProgress(0.94, 'Final touches');
   await nextFrame();
@@ -222,13 +239,14 @@ async function boot() {
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = true;
+    player.enabled = !state.smoking;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
   }
 
   function toTitle() {
+    if (state.smoking) endSmoke(false);
     state.mode = 'title';
     state.introT = 0;
     state.interior = null;
@@ -242,11 +260,14 @@ async function boot() {
 
   /* --------------------------------------------------- interactions */
 
-  /** Nearest interactable within its radius, indoors or out. */
-  function nearestInteractable() {
+  /** Nearest interactable within its radius, indoors or out (optionally for one key). */
+  function nearestInteractable(key) {
     let best = null;
     let bestDist = Infinity;
     for (const it of world.interactables) {
+      if (key && (it.key ?? 'KeyE') !== key) continue;
+      if (it.available && !it.available()) continue;
+      if (it.y !== undefined && Math.abs(player.position.y - it.y) > 0.6) continue;
       const d = Math.hypot(it.x - player.position.x, it.z - player.position.z);
       if (d < it.radius && d < bestDist) {
         best = it;
@@ -275,6 +296,51 @@ async function boot() {
     });
   }
 
+  /** Sits down (fade) or stays standing, then hands the view to the sequence. */
+  function startSmoke(spot) {
+    if (state.transitioning || state.smoking) return;
+    const begin = () => {
+      const seat = spot.seat;
+      player.teleport(seat.x, seat.z, seat.yaw);
+      player.pitch = seat.pitch;
+      player.eyeOverride = seat.eyeY === null ? null : seat.eyeY - world.heightAt(seat.x, seat.z);
+      if (player.eyeOverride !== null) player.eye = player.eyeOverride;
+      player.enabled = false;
+      state.smoking = true;
+      smoke.start(spot);
+      lastPrompt = null;
+      ui.setPrompt(null);
+    };
+    if (!spot.stand) {
+      begin();
+      return;
+    }
+    state.transitioning = true;
+    ui.fadeTransition(begin).finally(() => {
+      state.transitioning = false;
+    });
+  }
+
+  /** Back on your feet: fade up from the bench (or just carry on, standing). */
+  function endSmoke(animate = true) {
+    const spot = smoke.active;
+    smoke.stop();
+    state.smoking = false;
+    const stand = () => {
+      player.eyeOverride = null;
+      if (spot?.stand) player.teleport(spot.stand.x, spot.stand.z, player.yaw);
+      if (state.mode === 'playing') player.enabled = true;
+    };
+    if (!animate || !spot?.stand) {
+      stand();
+      return;
+    }
+    state.transitioning = true;
+    ui.fadeTransition(stand).finally(() => {
+      state.transitioning = false;
+    });
+  }
+
   /* --------------------------------------------------- HUD */
 
   let zoneTimer = 0;
@@ -299,7 +365,7 @@ async function boot() {
   }
 
   function updatePrompt() {
-    const it = nearestInteractable();
+    const it = state.smoking ? null : nearestInteractable();
     const text = it && !state.transitioning ? it.prompt() : null;
     if (text !== lastPrompt) {
       lastPrompt = text;
@@ -314,12 +380,15 @@ async function boot() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     composer.setSize(window.innerWidth, window.innerHeight);
+    smoke.onResize();
   });
 
   window.addEventListener('keydown', (event) => {
-    if (event.code === 'KeyE' && state.mode === 'playing' && !state.transitioning) {
-      nearestInteractable()?.onUse();
+    if ((event.code === 'KeyE' || event.code === 'KeyF') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
+      nearestInteractable(event.code)?.onUse();
     }
+    // F again cuts the break short
+    if (event.code === 'KeyF' && state.mode === 'playing' && state.smoking && !state.transitioning && smoke.t > 0.3) endSmoke();
     if (event.code === 'Escape' && state.mode === 'playing') {
       // the browser exits pointer lock: the pause comes from onLockChange
       pause();
@@ -359,7 +428,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke };
 
   /* --------------------------------------------------- loop */
 
@@ -385,6 +454,7 @@ async function boot() {
       camera.updateProjectionMatrix();
     } else if (state.mode === 'playing') {
       player.update(dt);
+      if (smoke.update(dt, state.elapsed)) endSmoke();
     }
 
     env.update(dt, state.elapsed, camera);
