@@ -183,7 +183,7 @@ function makeDoorTexture(seed) {
 
 /** The landing window: painted courtyard view at blue hour, frost on the
  * panes, dark frame. Emissive, so it glows cold against the warm stairwell. */
-function makeWindowViewTexture(seed) {
+export function makeWindowViewTexture(seed) {
   return makeSignTexture(256, 320, (c, W, H) => {
     const rng = new Rng(seed);
     const horizon = H * 0.56;
@@ -270,7 +270,7 @@ function makeWindowViewTexture(seed) {
 }
 
 /** Ribbed radiator panel with rust bleeding from the edges. */
-function makeRadiatorTexture(seed) {
+export function makeRadiatorTexture(seed) {
   return makeSignTexture(128, 96, (c, W, H) => {
     const rng = new Rng(seed);
     c.fillStyle = '#7c786d';
@@ -302,7 +302,7 @@ const STAIR_X0 = -2.12; // flight against the left wall
 const STAIR_X1 = -0.72;
 const STAIR_Z0 = -0.9; // first step starts here
 const LAND_Z = 2.1; // landing starts where the flight ends
-const LAND_H = STEPS * RISE;
+export const LAND_H = STEPS * RISE;
 
 function buildStairwell(ctx, spec, index) {
   const { world, materials: M } = ctx;
@@ -494,6 +494,7 @@ export function buildInteriors(ctx) {
     world.interiors.push({
       id: spec.id,
       caption: `Entrance ${spec.entrance} · building ${bSpec.number}`,
+      flatBase: spec.flatBase,
       bounds: { x0: cx - 2.2, x1: cx + 2.2, z0: cz - 3.2, z1: cz + 3.2 },
       doorOut: { x: door.pad.x, z: door.pad.z },
       doorIn: { x: cx, z: cz - 2.75 },

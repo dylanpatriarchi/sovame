@@ -594,6 +594,75 @@ if (belowLanding) {
   if (belowLanding.text?.startsWith('F')) logs.push('[smoke] landing spot triggers from the floor below');
 }
 
+// flats: from a landing through the padded door, look around, kitchen radio, back out
+const flatInfo = await page.evaluate(async () => {
+  const game = window.__game;
+  const flat = game.world.flats?.[0];
+  if (!flat) return null;
+  game.state.mode = 'playing';
+  game.state.interior = flat.parent;
+  game.sound.setIndoors(true);
+  game.env.setIndoors(true);
+  game.player.teleport(flat.doorOut.x + 0.3, flat.doorOut.z, Math.PI / 2);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return { id: flat.id, prompt: document.getElementById('prompt').textContent, y: game.player.position.y };
+});
+if (flatInfo) {
+  console.log(`→ flat ${flatInfo.id}: landing prompt "${flatInfo.prompt}" (y=${flatInfo.y.toFixed(2)})`);
+  if (!flatInfo.prompt.startsWith('E — go into flat')) logs.push('[flat] door prompt missing on the landing');
+  await page.keyboard.press('KeyE');
+  try {
+    await page.waitForFunction(() => window.__game.state.interior?.kind === 'flat' && !window.__game.state.transitioning, { timeout: 20000 });
+  } catch {
+    logs.push('[flat] did not enter the flat');
+  }
+  for (const [shot, setup] of [
+    ['18-flat-room', { dx: 4.4, dz: 3.0, yaw: Math.PI + 0.6, pitch: -0.08 }],
+    ['19-flat-kitchen', { dx: 1.5, dz: 2.9, yaw: Math.PI - 0.35, pitch: -0.12 }],
+  ]) {
+    await page.evaluate((s) => {
+      const game = window.__game;
+      const b = game.state.interior.bounds;
+      game.player.teleport(b.x0 + s.dx, b.z0 + s.dz, s.yaw);
+      game.player.pitch = s.pitch;
+    }, setup);
+    await wait(900);
+    await page.screenshot({ path: `${OUT}/${shot}.png` });
+  }
+  const radio = await page.evaluate(async () => {
+    const game = window.__game;
+    const r = game.state.interior.radio;
+    game.player.teleport(r.x + 1.1, r.z - 0.75, Math.PI / 2);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return document.getElementById('prompt').textContent;
+  });
+  console.log(`→ kitchen radio prompt: "${radio}"`);
+  if (!radio.includes('radio')) logs.push('[flat] kitchen radio prompt missing');
+  await page.evaluate(() => {
+    const game = window.__game;
+    const d = game.state.interior.doorIn;
+    game.player.teleport(d.x, d.z + 0.3, 0);
+  });
+  await wait(500);
+  await page.keyboard.press('KeyE');
+  try {
+    await page.waitForFunction(() => window.__game.state.interior?.kind !== 'flat' && !window.__game.state.transitioning, { timeout: 20000 });
+  } catch {
+    logs.push('[flat] did not leave the flat');
+  }
+  const back = await page.evaluate(() => ({ id: window.__game.state.interior?.id ?? null, y: window.__game.player.position.y }));
+  console.log(`→ after leaving the flat: interior=${back.id}, y=${back.y.toFixed(2)}`);
+  if (!back.id || back.y < 1.2) logs.push('[flat] did not come back out on the landing');
+  await page.evaluate(() => {
+    const game = window.__game;
+    game.state.interior = null;
+    game.sound.setIndoors(false);
+    game.env.setIndoors(false);
+  });
+} else {
+  logs.push('[flat] world.flats missing');
+}
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;
