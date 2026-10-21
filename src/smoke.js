@@ -62,9 +62,10 @@ export function smokeSpots(world) {
     const cz = (interior.bounds.z0 + interior.bounds.z1) / 2;
     spots.push({
       id: 'smoke:landing',
-      x: cx + 0.4,
-      z: cz + 2.5,
-      radius: 1.4,
+      x: cx,
+      z: cz + 2.6,
+      y: world.heightAt(cx, cz + 2.6), // only on the landing, not from the floor below
+      radius: 2.3,
       seat: { x: cx + 0.35, z: cz + 2.28, yaw: Math.PI, eyeY: null, pitch: -0.2 },
       stand: null,
       indoor: true,

@@ -153,6 +153,7 @@ async function boot() {
       key: 'KeyF',
       x: spot.x,
       z: spot.z,
+      y: spot.y,
       radius: spot.radius,
       available: () => smoke.available(spot),
       prompt: () => 'F — have a smoke',
@@ -266,6 +267,7 @@ async function boot() {
     for (const it of world.interactables) {
       if (key && (it.key ?? 'KeyE') !== key) continue;
       if (it.available && !it.available()) continue;
+      if (it.y !== undefined && Math.abs(player.position.y - it.y) > 0.6) continue;
       const d = Math.hypot(it.x - player.position.x, it.z - player.position.z);
       if (d < it.radius && d < bestDist) {
         best = it;
@@ -386,7 +388,7 @@ async function boot() {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
-    if (event.code === 'KeyF' && state.mode === 'playing' && state.smoking && !state.transitioning && smoke.t > 2) endSmoke();
+    if (event.code === 'KeyF' && state.mode === 'playing' && state.smoking && !state.transitioning && smoke.t > 0.3) endSmoke();
     if (event.code === 'Escape' && state.mode === 'playing') {
       // the browser exits pointer lock: the pause comes from onLockChange
       pause();

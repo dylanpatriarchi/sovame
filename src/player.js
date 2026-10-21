@@ -150,7 +150,9 @@ export class Player {
   }
 
   requestLock() {
-    if (this.dom.requestPointerLock) this.dom.requestPointerLock();
+    // newer browsers return a promise: a refusal is handled by the
+    // pointerlockerror retry in main.js, so don't let it surface as uncaught
+    if (this.dom.requestPointerLock) this.dom.requestPointerLock()?.catch?.(() => {});
   }
 
   releaseLock() {

@@ -579,6 +579,21 @@ for (const [id, at, shot] of smokeShots) {
   }
 }
 
+// regression: the landing spot must not trigger from the stairwell floor below
+const belowLanding = await page.evaluate(async () => {
+  const game = window.__game;
+  const it = game.world.interactables.find((i) => i.id === 'smoke:landing');
+  if (!it) return null;
+  game.player.teleport(it.x + 1.2, it.z - 0.8, Math.PI);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const prompt = document.getElementById('prompt');
+  return { y: game.player.position.y, text: prompt.classList.contains('visible') ? prompt.textContent : null };
+});
+if (belowLanding) {
+  console.log(`→ under the landing (y=${belowLanding.y.toFixed(2)}): prompt=${JSON.stringify(belowLanding.text)}`);
+  if (belowLanding.text?.startsWith('F')) logs.push('[smoke] landing spot triggers from the floor below');
+}
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;
