@@ -438,7 +438,8 @@ await page.evaluate(() => {
   g.player.teleport(11.6, -1.5, 0);
   g.player.pitch = 0;
 });
-await wait(700);
+// the collision-grid sweep above can stall the page: wait for frames, not ms
+await page.waitForFunction(() => document.getElementById('prompt').classList.contains('visible'), { timeout: 10000 }).catch(() => {});
 let prompt = await promptState();
 check(prompt.visible && prompt.text === 'E — turn on the radio', `radio prompt appears ("${prompt.text}")`);
 await page.keyboard.press('KeyE');

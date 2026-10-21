@@ -537,6 +537,9 @@ export class Environment {
       lamp.coneMat.opacity = c.lamp * 0.09 * flicker;
     });
     this.world.setWindowLit(c.windowLit * 0.95);
+    // entrance porches follow the street lamps; facades get a faint night lift
+    this.world.porches?.update(c.lamp, camX, camZ, this.indoor > 0.5);
+    if (this.world.facadeLift) this.world.facadeLift.value = 0.075 * clamp((1.05 - c.hemiIntensity) / 0.5, 0, 1) * c.lamp;
     // TV windows: slow cool flicker, gated by the window-light preset
     const tvGate = smoothstep(0.25, 0.5, c.windowLit);
     for (const tv of this.world.tvMats) {
