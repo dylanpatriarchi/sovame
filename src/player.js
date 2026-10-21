@@ -54,6 +54,7 @@ export class Player {
     this.fovBase = 68;
     this.fovTarget = 68;
     this.shake = 0;
+    this.eyeOverride = null; // seated eye height during a smoke break
     this.buildFootprints();
     this.bind();
   }
@@ -237,7 +238,7 @@ export class Player {
     }
 
     // eye height (crouched) and breathing
-    this.eyeTarget = this.crouching ? PLAYER.crouchHeight : PLAYER.eyeHeight;
+    this.eyeTarget = this.eyeOverride ?? (this.crouching ? PLAYER.crouchHeight : PLAYER.eyeHeight);
     this.eye = damp(this.eye, this.eyeTarget, 9, dt);
     const bobAmount = clamp(horizontal / PLAYER.walkSpeed, 0, 1.4);
     const bobY = Math.sin(this.bob * 2) * 0.035 * bobAmount;

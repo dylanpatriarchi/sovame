@@ -285,6 +285,52 @@ export class Sound {
     osc.stop(t + 0.2);
   }
 
+  /** Breath-shaped noise: a filter sweep under a slow attack/release. */
+  breath({ time, duration, attack, from, to, q, level }) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = q;
+    filter.frequency.setValueAtTime(from, time);
+    filter.frequency.exponentialRampToValueAtTime(to, time + duration);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(level, time + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(time, this.rng.float(0, 1.5), duration + 0.1);
+    src.stop(time + duration + 0.12);
+  }
+
+  /** Lighter: flint click, a short gas hiss. */
+  lighter() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.burst({ time: t, freq: 3200, q: 2.5, duration: 0.03, level: 0.08, type: 'highpass' });
+    this.burst({ time: t + 0.05, freq: 2400, q: 1.6, duration: 0.025, level: 0.05 });
+    this.breath({ time: t + 0.07, duration: 0.9, attack: 0.05, from: 900, to: 700, q: 0.6, level: 0.018 });
+  }
+
+  /** A drag: soft inhale with the faint crackle of burning paper. */
+  inhale(duration = 1.5) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.breath({ time: t, duration, attack: duration * 0.45, from: 900, to: 1500, q: 0.8, level: 0.03 });
+    const crackles = 5 + Math.floor(this.rng.float(0, 5));
+    for (let i = 0; i < crackles; i++) {
+      this.burst({ time: t + this.rng.float(0.2, duration), freq: this.rng.float(2500, 5200), q: 3, duration: 0.012, level: this.rng.float(0.006, 0.016) });
+    }
+  }
+
+  /** Long, low exhale. */
+  exhale(duration = 2.2) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.breath({ time: t, duration, attack: 0.18, from: 650, to: 380, q: 0.7, level: 0.035 });
+  }
+
   toggleRadio(force) {
     if (!this.ready) return false;
     this.radioOn = force === undefined ? !this.radioOn : force;

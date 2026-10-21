@@ -504,6 +504,81 @@ console.log('→ north courtyard viewpoint: (-13.5, 137) facing north-west');
 await wait(700);
 await page.screenshot({ path: `${OUT}/14-north-courtyard.png` });
 
+// smoke spots: walk up, press F, frame the sequence mid-drag, cut it short
+const smokeShots = [
+  ['smoke:bench', 4.4, '15-smoke-bench'],
+  ['smoke:bus', 7.6, '16-smoke-bus'],
+  ['smoke:landing', 16.2, '17-smoke-landing'],
+];
+for (const [id, at, shot] of smokeShots) {
+  const spot = await page.evaluate((spotId) => {
+    const game = window.__game;
+    game.state.mode = 'playing';
+    const it = game.world.interactables.find((i) => i.id === spotId);
+    if (!it) return null;
+    const interior = game.world.interiorAt(it.x, it.z);
+    game.state.interior = interior ?? null;
+    game.sound.setIndoors(!!interior);
+    game.env.setIndoors(!!interior);
+    game.player.teleport(it.x, it.z, game.player.yaw);
+    return { x: it.x, z: it.z, indoor: !!interior };
+  }, id);
+  if (!spot) {
+    logs.push(`[smoke] spot ${id} not registered`);
+    continue;
+  }
+  await wait(500);
+  const prompt = await page.evaluate(() => document.getElementById('prompt').textContent);
+  if (!prompt.startsWith('F')) logs.push(`[smoke] ${id}: prompt was "${prompt}"`);
+  await page.keyboard.press('KeyF');
+  try {
+    await page.waitForFunction(() => window.__game.state.smoking && !window.__game.state.transitioning, { timeout: 20000 });
+  } catch {
+    logs.push(`[smoke] ${id}: sequence did not start`);
+    continue;
+  }
+  if (spot.indoor) {
+    try {
+      await page.waitForFunction(() => window.__game.env.indoor > 0.9, { timeout: 20000 });
+    } catch {
+      logs.push('[smoke] landing: indoor fade did not settle');
+    }
+  }
+  // let the stream build up for a moment before the frame we want
+  await page.evaluate((t) => window.__game.smoke.seek(t - 1.6), at);
+  await wait(2500);
+  await page.evaluate((t) => window.__game.smoke.seek(t), at);
+  await wait(400);
+  await page.screenshot({ path: `${OUT}/${shot}.png` });
+  const live = await page.evaluate(() => ({
+    particles: window.__game.smoke.particles.filter((p) => p.alive).length,
+    t: window.__game.smoke.t,
+  }));
+  console.log(`→ ${id}: t=${live.t.toFixed(1)} s, ${live.particles} smoke particles alive`);
+  if (live.particles === 0) logs.push(`[smoke] ${id}: no smoke particles`);
+  await page.keyboard.press('KeyF');
+  try {
+    await page.waitForFunction(() => !window.__game.state.smoking && !window.__game.state.transitioning, { timeout: 20000 });
+  } catch {
+    logs.push(`[smoke] ${id}: F did not end the sequence`);
+  }
+  const after = await page.evaluate((spotId) => {
+    const game = window.__game;
+    const it = game.world.interactables.find((i) => i.id === spotId);
+    return { enabled: game.player.enabled, eye: game.player.eyeOverride, available: it.available() };
+  }, id);
+  if (!after.enabled || after.eye !== null) logs.push(`[smoke] ${id}: player not restored after the sequence`);
+  if (after.available) logs.push(`[smoke] ${id}: no cooldown after the sequence`);
+  if (spot.indoor) {
+    await page.evaluate(() => {
+      const game = window.__game;
+      game.state.interior = null;
+      game.sound.setIndoors(false);
+      game.env.setIndoors(false);
+    });
+  }
+}
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;
