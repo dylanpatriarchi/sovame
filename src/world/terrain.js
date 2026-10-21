@@ -26,7 +26,9 @@ export const WALK_PATHS = [
   { x0: -14.4, x1: WORLD.roadHalfWidth + 3.2, z0: 1, z1: 3.4 },
   { x0: -26, x1: -9.4, z0: -8, z1: 12, plaza: true },
   { x0: -14, x1: WORLD.roadHalfWidth + 3.2, z0: -78.5, z1: -76.1 },
-  { x0: 26, x1: 40, z0: -26.4, z1: -24 },
+  // along B2's courtyard face, serving its entrance doors (b7-court among
+  // them): it must run north of the facade, never into the building
+  { x0: 26, x1: 40, z0: -24, z1: -21.6 },
 ];
 
 /**
