@@ -10,6 +10,7 @@ import { buildProps } from './props.js';
 import { buildVegetation } from './vegetation.js';
 import { buildPeople } from './people.js';
 import { buildInteriors } from './interiors.js';
+import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 
 export class World {
@@ -73,7 +74,13 @@ export class World {
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
       ['Trees, bushes and crows', () => buildVegetation(this.ctx)],
-      ['Warm stairwells', () => buildInteriors(this.ctx)],
+      [
+        'Warm stairwells and flats',
+        () => {
+          buildInteriors(this.ctx);
+          buildFlats(this.ctx);
+        },
+      ],
     ];
     for (let i = 0; i < stages.length; i++) {
       onProgress?.(i / stages.length, stages[i][0]);
@@ -261,8 +268,12 @@ export class World {
     return best;
   }
 
-  /** The stairwell interior containing the point, if any. */
+  /** The stairwell or flat interior containing the point, if any. */
   interiorAt(x, z) {
+    for (const it of this.flats ?? []) {
+      const b = it.bounds;
+      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
+    }
     for (const it of this.interiors) {
       const b = it.bounds;
       if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
