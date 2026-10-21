@@ -10,6 +10,7 @@ import { buildProps } from './props.js';
 import { buildVegetation } from './vegetation.js';
 import { buildPeople } from './people.js';
 import { buildInteriors } from './interiors.js';
+import { buildEntrances, addFacadeLift } from './entrances.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -58,7 +59,14 @@ export class World {
    */
   async build(onProgress) {
     const stages = [
-      ['Apartment blocks and courtyards', () => buildBuildings(this.ctx)],
+      [
+        'Apartment blocks and courtyards',
+        () => {
+          buildBuildings(this.ctx);
+          buildEntrances(this.ctx);
+          addFacadeLift(this);
+        },
+      ],
       ['Roads, snow and paths', () => buildTerrain(this.ctx)],
       ['District props', () => buildProps(this.ctx)],
       // routes are validated lazily on the first update, once the trees
