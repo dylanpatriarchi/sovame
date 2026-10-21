@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World } from './world/index.js';
 import { INTERIOR_LAYER } from './world/interiors.js';
+import { setFlatLight } from './world/flats.js';
 import { Environment } from './environment.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
@@ -130,6 +131,38 @@ async function boot() {
       onUse: () => useDoor(interior, false),
     });
   }
+  // one flat behind a padded door on each landing, with a kitchen radio
+  const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
+  for (const flat of world.flats) {
+    world.interactables.push({
+      id: `${flat.id}:enter`,
+      x: flat.doorOut.x,
+      z: flat.doorOut.z,
+      y: flat.doorOut.y,
+      radius: 1.1,
+      prompt: () => `E — go into flat ${flat.number}`,
+      onUse: () => useDoor(flat, true),
+    });
+    world.interactables.push({
+      id: `${flat.id}:exit`,
+      x: flat.doorIn.x,
+      z: flat.doorIn.z,
+      radius: 1.0,
+      prompt: () => 'E — back to the stairwell',
+      onUse: () => useDoor(flat, false),
+    });
+    world.interactables.push({
+      id: `${flat.id}:radio`,
+      x: flat.radio.x + 0.9,
+      z: flat.radio.z - 0.6,
+      radius: 1.5,
+      prompt: radioPrompt,
+      onUse: () => {
+        sound.toggleRadio();
+        sound.ui('tick');
+      },
+    });
+  }
 
   const env = new Environment({
     scene,
@@ -219,6 +252,7 @@ async function boot() {
   function enterWorld() {
     state.mode = 'playing';
     state.interior = null;
+    setFlatLight(world, null);
     sound.setIndoors(false);
     env.setIndoors(false);
     player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnYaw);
@@ -250,6 +284,7 @@ async function boot() {
     state.mode = 'title';
     state.introT = 0;
     state.interior = null;
+    setFlatLight(world, null);
     sound.setIndoors(false);
     env.setIndoors(false);
     player.enabled = false;
@@ -277,7 +312,8 @@ async function boot() {
     return best;
   }
 
-  /** Steps through a stairwell door: fade to black, teleport, fade back. */
+  /** Steps through a door: fade to black, teleport, fade back. A flat's
+   * outside is its stairwell, a stairwell's outside is the district. */
   function useDoor(interior, entering) {
     if (state.transitioning) return;
     state.transitioning = true;
@@ -286,9 +322,10 @@ async function boot() {
       const spawn = entering ? interior.inSpawn : interior.outSpawn;
       player.teleport(spawn.x, spawn.z, spawn.yaw);
       player.pitch = entering ? 0.03 : -0.02;
-      state.interior = entering ? interior : null;
-      sound.setIndoors(entering);
-      env.setIndoors(entering);
+      state.interior = entering ? interior : (interior.parent ?? null);
+      sound.setIndoors(!!state.interior);
+      env.setIndoors(!!state.interior);
+      setFlatLight(world, state.interior?.kind === 'flat' ? state.interior : null, state.interior);
       lastPrompt = null;
       updateZone();
     }).finally(() => {
@@ -357,7 +394,7 @@ async function boot() {
 
   function updateZone() {
     if (state.interior) {
-      ui.setZone('Подъезд', state.interior.caption);
+      ui.setZone(state.interior.kind === 'flat' ? `Квартира ${state.interior.number}` : 'Подъезд', state.interior.caption);
       return;
     }
     const zone = world.zoneAt(player.position.x, player.position.z);
@@ -461,7 +498,8 @@ async function boot() {
     world.update(dt, state.elapsed);
     world.people?.update(dt, state.elapsed, player.position, env.temperature);
     sound.updateWind(env.wind.gust);
-    sound.update(dt, state.elapsed, camera.position, world.points.radio);
+    // inside a flat the music comes from the kitchen radio
+    sound.update(dt, state.elapsed, camera.position, state.interior?.radio ?? world.points.radio);
 
     if (state.mode === 'playing') {
       zoneTimer += dt;

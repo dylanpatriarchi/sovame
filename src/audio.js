@@ -242,6 +242,23 @@ export class Sound {
           rate: this.rng.float(1.4, 2.2),
         });
       }
+    } else if (surface === 'wood') {
+      // parquet: a dull knock, now and then a board creaks
+      this.burst({ time: t, freq: this.rng.float(380, 620), q: 1.2, duration: 0.07, level: 0.09 * amp, type: 'lowpass' });
+      this.burst({ time: t + 0.012, freq: this.rng.float(1300, 1900), q: 1.6, duration: 0.03, level: 0.035 * amp });
+      if (this.rng.chance(0.14)) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(this.rng.float(180, 260), t + 0.05);
+        osc.frequency.exponentialRampToValueAtTime(this.rng.float(120, 170), t + 0.3);
+        gain.gain.setValueAtTime(0.0001, t + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.012, t + 0.09);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+        osc.connect(gain).connect(this.master);
+        osc.start(t + 0.05);
+        osc.stop(t + 0.34);
+      }
     } else if (surface === 'ice') {
       this.burst({ time: t, freq: 3400, q: 2.4, duration: 0.05, level: 0.1 * amp, rate: 2.2 });
       this.burst({ time: t + 0.01, freq: 900, q: 1.2, duration: 0.08, level: 0.05 * amp });
