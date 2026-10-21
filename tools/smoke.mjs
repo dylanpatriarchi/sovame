@@ -455,6 +455,55 @@ if (roadsideSpot) {
   logs.push('[trees] no poplars found for the roadside shot');
 }
 
+// northern expansion: bounds probes, zone captions, then two shots in the
+// new cluster (coordinates logged for the record)
+const expansion = await page.evaluate(() => {
+  const game = window.__game;
+  game.state.mode = 'playing';
+  game.env.snapTo(game.env.preset);
+  const w = game.world;
+  const probes = {
+    oldEdgeRoadFree: !w.collides(0, 104, 0.36), // the avenue passes the old fence line
+    oldEdgeSidewalkFree: !w.collides(-7.6, 110, 0.36), // sidewalk continues north
+    courtyardPathFree: !w.collides(-30, 133, 0.36), // new courtyard spine
+    eastArmFree: !w.collides(50, 128, 0.36), // Zavodskaya street
+    newBuildingBlocked: w.collides(-30, 151, 0.36), // inside B10
+    northFenceBlocked: w.collides(50, 175.8, 0.36), // new boundary fence
+    beyondNorthBlocked: w.collides(0, 181, 0.36), // past the new north edge
+    beyondEastBlocked: w.collides(109, 0, 0.36), // east edge unchanged
+    beyondSouthBlocked: w.collides(0, -109, 0.36), // south edge unchanged
+  };
+  const zones = {
+    courtyard: w.zoneAt(-30, 133)?.name ?? null,
+    arm: w.zoneAt(50, 128)?.name ?? null,
+    avenueNorth: w.zoneAt(0, 150)?.name ?? null,
+  };
+  game.player.teleport(2, 107, Math.PI);
+  game.player.pitch = 0.03;
+  return { probes, zones, viewpoint: { x: 2, z: 107, yaw: Math.PI } };
+});
+console.log(`→ expansion probes: ${JSON.stringify(expansion.probes)}`);
+console.log(`→ expansion zones: courtyard="${expansion.zones.courtyard}", arm="${expansion.zones.arm}", avenueNorth="${expansion.zones.avenueNorth}"`);
+{
+  const fails = Object.entries(expansion.probes).filter(([, ok]) => !ok).map(([k]) => k);
+  if (fails.length) logs.push(`[expansion] bounds probes failed: ${fails.join(', ')}`);
+  if (expansion.zones.courtyard !== 'Двор дома № 24') logs.push(`[expansion] unexpected courtyard zone: ${expansion.zones.courtyard}`);
+  if (expansion.zones.arm !== 'Улица Заводская') logs.push(`[expansion] unexpected arm zone: ${expansion.zones.arm}`);
+}
+console.log(`→ new district viewpoint: (${expansion.viewpoint.x}, ${expansion.viewpoint.z}) facing north`);
+await wait(900);
+await page.screenshot({ path: `${OUT}/13-new-district.png` });
+
+// inside the new west courtyard: benches, lamp, B10's brick facade
+await page.evaluate(() => {
+  const game = window.__game;
+  game.player.teleport(-13.5, 137, Math.PI * 0.78);
+  game.player.pitch = 0.02;
+});
+console.log('→ north courtyard viewpoint: (-13.5, 137) facing north-west');
+await wait(700);
+await page.screenshot({ path: `${OUT}/14-north-courtyard.png` });
+
 // indicative performance
 const fps = await page.evaluate(async () => {
   let frames = 0;

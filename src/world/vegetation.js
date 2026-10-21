@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, DEG, lerp, clamp } from '../util.js';
 import { WORLD } from '../config.js';
-import { PARKING_LOT, WALK_PATHS } from './terrain.js';
+import { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } from './terrain.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -489,6 +489,16 @@ export function buildVegetation(ctx) {
     if (pond && Math.hypot(x - pond.x, z - pond.z) < pond.r + 2.6) return false;
     return true;
   };
+  // relocation candidates for the historic clusters must see the world they
+  // were seeded into (bounds and colliders before the northern expansion),
+  // otherwise a handful of edge trees drift and every cluster after them
+  // shifts with the stream
+  const okPlaceHistoric = (x, z, r = 1.4) => {
+    if (world.collidesHistoric(x, z, r)) return false;
+    if (world.heightAtHistoric(x, z) > 0.05) return false;
+    if (pond && Math.hypot(x - pond.x, z - pond.z) < pond.r + 2.6) return false;
+    return true;
+  };
   const scatter = (list, count, x0, x1, z0, z1, radius = 1.4) => {
     let tries = 0;
     let placed = 0;
@@ -523,6 +533,50 @@ export function buildVegetation(ctx) {
     (rng.chance(0.6) ? belt : spruces).push({ x, z });
   }
 
+  /* ---------------- northern cluster scatter (dedicated seed) ------------
+   * Everything below feeds rngNorth only: the historic scatter above — and
+   * the spruces, bushes and crows drawn from the shared stream after it —
+   * stays bit-identical. */
+  const rngNorth = new Rng(606606);
+  const north = [];
+  const northEast = [];
+  const roadsideNorth = [];
+  const scatterN = (list, count, x0, x1, z0, z1, radius = 1.4) => {
+    let tries = 0;
+    let placed = 0;
+    while (placed < count && tries < count * 30) {
+      tries++;
+      const x = rngNorth.float(x0, x1);
+      const z = rngNorth.float(z0, z1);
+      if (!okPlace(x, z, radius)) continue;
+      list.push({ x, z });
+      placed++;
+    }
+  };
+  scatterN(north, 16, -60, -13, 106, 146);
+  scatterN(northEast, 14, 13, 92, 105, 162);
+  scatterN(roadsideNorth, 7, 10.6, 13.6, 108, 170);
+  scatterN(roadsideNorth, 7, -13.6, -10.6, 108, 174);
+  // the woodland belt thins where the district grew north: these trees are
+  // felled, but they stay in their lists as zero-scale stumps so every RNG
+  // draw after them — and therefore every surviving tree's transform and
+  // every historic relocation — holds bit-identical
+  for (const b of belt) {
+    if (Math.abs(b.x) < 100 && b.z > 100) b.dead = true;
+  }
+  for (const s of spruces) {
+    if (Math.abs(s.x) < 100 && s.z > 100) s.dead = true;
+  }
+  // a fresh arc thickens the treeline again beyond the new fence line
+  for (let i = 0; i < 40; i++) {
+    const a = rngNorth.float(0.3, Math.PI - 0.3);
+    const r = rngNorth.float(186, 238);
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    if (Math.abs(x) < 24) continue;
+    belt.push({ x, z });
+  }
+
   /* ---------------- relocation: trunks never stand on hard surfaces,
    * inside another tree or inside a prop collider
    * The historic scatter only avoided the colliders that existed at that
@@ -535,15 +589,20 @@ export function buildVegetation(ctx) {
   {
     const R = WORLD.roadHalfWidth;
     const CROSS = WORLD.crossroadZ;
+    const CROSS2 = WORLD.crossroad2Z;
     const SW = WORLD.sidewalkWidth;
     const hardRects = [
-      [-R, R, -116, 116], // main road
+      [-R, R, -116, 184], // main road
       [-116, 116, CROSS - 6, CROSS + 6], // crossroad
+      [R, 100, CROSS2 - 6, CROSS2 + 6], // Zavodskaya street
       [PARKING_LOT.x0, PARKING_LOT.x1, PARKING_LOT.z0, PARKING_LOT.z1],
-      [R, R + SW, -116, 116], // sidewalks
-      [-R - SW, -R, -116, 116],
+      [PARKING_NORTH.x0, PARKING_NORTH.x1, PARKING_NORTH.z0, PARKING_NORTH.z1],
+      [R, R + SW, -116, 184], // sidewalks
+      [-R - SW, -R, -116, 184],
       [-116, 116, CROSS + 6, CROSS + 6 + SW],
       [-116, 116, CROSS - 6 - SW, CROSS - 6],
+      [R + SW, 100, CROSS2 - 6 - SW, CROSS2 - 6],
+      [R + SW, 100, CROSS2 + 6, CROSS2 + 6 + SW],
     ];
     const inRect = (x, z, r, pad) => x >= r[0] - pad && x <= r[1] + pad && z >= r[2] - pad && z <= r[3] + pad;
     const offending = (x, z) => {
@@ -551,16 +610,21 @@ export function buildVegetation(ctx) {
       if (s === 'asphalt' || s === 'stone') return true;
       if (hardRects.some((r) => inRect(x, z, r, 0.6))) return true;
       if (WALK_PATHS.some((p) => inRect(x, z, [p.x0, p.x1, p.z0, p.z1], 0.6))) return true;
+      if (NEW_WALK_PATHS.some((p) => inRect(x, z, [p.x0, p.x1, p.z0, p.z1], 0.6))) return true;
       return false;
     };
     for (const b of [...west, ...east, ...farNorth, ...belt]) b.species = 'birch';
+    for (const b of [...north, ...northEast]) b.species = 'birch';
     for (const b of central) b.species = 'yard';
     for (const b of roadside) b.species = 'poplar';
+    for (const b of roadsideNorth) b.species = 'poplar';
     for (const s of spruces) s.species = 'spruce';
-    const allTrees = [...west, ...east, ...farNorth, ...central, ...roadside, ...belt, ...spruces];
+    // the historic pool is exactly the tree set the relocations were tuned
+    // against (felled belt trees included); the new clusters relocate
+    // against the living trees only
+    const allTreesHistoric = [...west, ...east, ...farNorth, ...central, ...roadside, ...belt, ...spruces];
+    const allTrees = [...allTreesHistoric, ...north, ...northEast, ...roadsideNorth].filter((t) => !t.dead);
     const gap = (a, b) => (a.species === 'spruce' || b.species === 'spruce' ? 2.2 : 1.2);
-    const cramped = (item) => allTrees.some((o) => o !== item && Math.hypot(o.x - item.x, o.z - item.z) < gap(item, o));
-    const clearOfTrees = (x, z, self) => allTrees.every((o) => o === self || Math.hypot(o.x - x, o.z - z) >= (o.species === 'spruce' ? 2.2 : 1.6));
     // trunk point inside a collider that is not its own trunk box
     const foreignHit = (item, ownW) =>
       world.colliders.some((c) => {
@@ -572,8 +636,13 @@ export function buildVegetation(ctx) {
         const cz = Math.max(c.minZ, Math.min(item.z, c.maxZ));
         return Math.hypot(item.x - cx, item.z - cz) < 0.25;
       });
-    const relocate = (list, radius, ownW, nearDistrict = true) => {
+    const relocate = (list, radius, ownW, nearDistrict = true, historic = false) => {
+      const ok = historic ? okPlaceHistoric : okPlace;
+      const pool = historic ? allTreesHistoric : allTrees;
+      const cramped = (item) => pool.some((o) => o !== item && Math.hypot(o.x - item.x, o.z - item.z) < gap(item, o));
+      const clearOfTrees = (x, z, self) => pool.every((o) => o === self || Math.hypot(o.x - x, o.z - z) >= (o.species === 'spruce' ? 2.2 : 1.6));
       for (const item of list) {
+        if (item.dead) continue;
         if (!offending(item.x, item.z) && !cramped(item) && !foreignHit(item, ownW)) continue;
         let placed = null;
         for (let ring = 1; ring <= 26 && !placed; ring++) {
@@ -587,7 +656,7 @@ export function buildVegetation(ctx) {
             // the belt sits mostly outside the playable bounds, where
             // okPlace always fails; fences still reach it near the edge
             if (nearDistrict || (Math.abs(x) < 107 && Math.abs(z) < 107)) {
-              if (!okPlace(x, z, radius)) continue;
+              if (!ok(x, z, radius)) continue;
             }
             if (!clearOfTrees(x, z, item)) continue;
             placed = [x, z];
@@ -602,18 +671,25 @@ export function buildVegetation(ctx) {
         }
       }
     };
-    relocate(west, 1.4, 0.6);
-    relocate(east, 1.4, 0.6);
-    relocate(farNorth, 1.4, 0.6);
-    relocate(central, 1.8, 0.6);
-    relocate(roadside, 1.4, 0.6);
-    relocate(belt, 1.4, 0.6, false);
-    relocate(spruces, 2.2, 1.4);
+    relocate(west, 1.4, 0.6, true, true);
+    relocate(east, 1.4, 0.6, true, true);
+    relocate(farNorth, 1.4, 0.6, true, true);
+    relocate(central, 1.8, 0.6, true, true);
+    relocate(roadside, 1.4, 0.6, true, true);
+    relocate(belt, 1.4, 0.6, false, true);
+    relocate(spruces, 2.2, 1.4, true, true);
+    relocate(north, 1.4, 0.6);
+    relocate(northEast, 1.4, 0.6);
+    relocate(roadsideNorth, 1.4, 0.6);
   }
 
   // trunk colliders follow the final (possibly relocated) positions
   for (const b of [...west, ...east, ...farNorth, ...central, ...roadside, ...belt]) {
+    if (b.dead) continue;
     ctx.addBoxCollider(b.x, b.z, 0.5, 0.5, 0.05);
+  }
+  for (const b of [...north, ...northEast, ...roadsideNorth]) {
+    ctx.addBoxCollider(b.x, b.z, 0.5, 0.5, 0.05, true);
   }
 
   /* ------------------------------------------- materials (with wind sway) */
@@ -647,6 +723,10 @@ export function buildVegetation(ctx) {
     { key: 'roadside', species: 'poplar', list: roadside, scale: [0.85, 1.2], tilt: 0.03 },
     { key: 'belt-south', species: 'birch', list: belt.filter((b) => b.z < 0), scale: [0.9, 1.35], tilt: 0.05 },
     { key: 'belt-north', species: 'birch', list: belt.filter((b) => b.z >= 0), scale: [0.9, 1.35], tilt: 0.05 },
+    { key: 'north', species: 'birch', list: north, scale: [0.8, 1.25], tilt: 0.05 },
+    { key: 'north-east', species: 'birch', list: northEast, scale: [0.8, 1.25], tilt: 0.05 },
+    // labelled apart so the historic poplar mean (smoke framing) stays put
+    { key: 'roadside-north', species: 'poplar', alias: 'poplar-north', list: roadsideNorth, scale: [0.85, 1.2], tilt: 0.03 },
   ];
 
   const treeSpots = [];
@@ -668,6 +748,12 @@ export function buildVegetation(ctx) {
       const s = regionRng.float(region.scale[0], region.scale[1]);
       dummy.scale.set(s, s * regionRng.float(0.92, 1.12), s);
       dummy.updateMatrix();
+      // felled belt trees consume their draws but leave no geometry behind,
+      // so every surviving tree keeps its seeded variant and transform
+      if (item.dead) {
+        if (variant.snow) regionRng.float(-0.35, 0.35);
+        continue;
+      }
       woodParts.push(variant.wood.clone().applyMatrix4(dummy.matrix));
       if (variant.foliage) foliageParts.push(variant.foliage.clone().applyMatrix4(dummy.matrix));
       if (variant.dead) deadParts.push(variant.dead.clone().applyMatrix4(dummy.matrix));
@@ -676,7 +762,7 @@ export function buildVegetation(ctx) {
         const storm = 2.6 + regionRng.float(-0.35, 0.35) - yaw;
         snowParts.push(variant.snow.clone().rotateY(storm).applyMatrix4(dummy.matrix));
       }
-      treeSpots.push({ x: item.x, z: item.z, species: region.species });
+      treeSpots.push({ x: item.x, z: item.z, species: region.alias ?? region.species });
     }
     if (!woodParts.length) continue;
     const mesh = new THREE.Mesh(mergeGeometries(woodParts, false), spec.wood === 'birch' ? birchMat : barkMat);
@@ -685,7 +771,7 @@ export function buildVegetation(ctx) {
     mesh.receiveShadow = true;
     group.add(mesh);
   }
-  for (const s of spruces) treeSpots.push({ x: s.x, z: s.z, species: 'spruce' });
+  for (const s of spruces) if (!s.dead) treeSpots.push({ x: s.x, z: s.z, species: 'spruce' });
   world.treeSpots = treeSpots;
   world.treeSway = sway;
 
@@ -720,6 +806,8 @@ export function buildVegetation(ctx) {
       dummy.rotation.set(rng.float(-tiltRange, tiltRange), rng.float(0, TAU), rng.float(-tiltRange, tiltRange));
       const s = rng.float(scaleRange[0], scaleRange[1]);
       dummy.scale.set(s, s * rng.float(0.9, 1.15), s);
+      // felled spruces keep their draws but collapse to nothing (see belt)
+      if (item.dead) dummy.scale.set(0, 0, 0);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     });
@@ -730,6 +818,7 @@ export function buildVegetation(ctx) {
 
   const spruceMesh = makeInstanced(spruceGeometry(), new THREE.MeshStandardMaterial({ color: 0x22452f, roughness: 0.92 }), spruces, [0.75, 1.15], 0.03);
   for (const s of spruces) {
+    if (s.dead) continue;
     ctx.addBoxCollider(s.x, s.z, 1.2, 1.2, 0.1);
   }
   const snowMesh = new THREE.InstancedMesh(spruceSnowGeometry(), M.snow, spruces.length);
@@ -794,4 +883,62 @@ export function buildVegetation(ctx) {
       }
     }
   });
+
+  /* ---------------------------------------------- northern cluster extras */
+  // two more crows ride the wind over the new courtyards (far-detail group:
+  // they join the same updater and appear once the player walks north)
+  for (const [cx, cz] of [
+    [-24, 134],
+    [38, 142],
+  ]) {
+    const { group: crow, wings } = makeCrowMesh();
+    const radius = rngNorth.float(20, 34);
+    const height = rngNorth.float(18, 28);
+    const speed = rngNorth.float(0.05, 0.1) * rngNorth.sign();
+    const phase = rngNorth.float(0, TAU);
+    crow.position.set(cx + radius, height, cz);
+    crow.scale.setScalar(rngNorth.float(0.85, 1.15));
+    world.farDetails.add(crow);
+    crows.push({ crow, wings, cx, cz, radius, height, speed, phase, flap: rngNorth.float(5.5, 8.5) });
+  }
+
+  // bushes in the new courtyards, clear of the trampled paths
+  {
+    const northBushes = [];
+    const onPath = (x, z) => NEW_WALK_PATHS.some((p) => x >= p.x0 - 0.8 && x <= p.x1 + 0.8 && z >= p.z0 - 0.8 && z <= p.z1 + 0.8);
+    const scatterB = (count, x0, x1, z0, z1) => {
+      let tries = 0;
+      let placed = 0;
+      while (placed < count && tries < count * 30) {
+        tries++;
+        const x = rngNorth.float(x0, x1);
+        const z = rngNorth.float(z0, z1);
+        if (onPath(x, z)) continue;
+        if (!okPlace(x, z, 1.0)) continue;
+        northBushes.push({ x, z });
+        placed++;
+      }
+    };
+    scatterB(10, -58, -14, 108, 144);
+    scatterB(8, 14, 90, 106, 160);
+    const bushGeo = bushGeometry(1);
+    const mkBush = (mat, scaleRange) => {
+      const mesh = new THREE.InstancedMesh(bushGeo, mat, northBushes.length);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      northBushes.forEach((b, i) => {
+        dummy.position.set(b.x, 0, b.z);
+        dummy.rotation.set(rngNorth.float(-0.1, 0.1), rngNorth.float(0, TAU), rngNorth.float(-0.1, 0.1));
+        const s = rngNorth.float(scaleRange[0], scaleRange[1]);
+        dummy.scale.set(s, s * rngNorth.float(0.9, 1.15), s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      group.add(mesh);
+      return mesh;
+    };
+    group.add(ctx.seasonable('autumn', mkBush(new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), [0.8, 1.4])));
+    group.add(ctx.seasonable('winter', mkBush(new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.95, flatShading: true }), [0.75, 1.25])));
+  }
 }

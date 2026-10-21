@@ -1,6 +1,7 @@
 // District props: bus stop, kiosk, playground, cars, street lamps, monument,
 // notice boards, New Year fir, power poles and wires.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU } from '../util.js';
 import { makeSignTexture, makeGlowTexture, makeSoftCircleTexture, makeBeamTexture } from '../textures.js';
 import { makeStarMesh } from './buildings.js';
@@ -105,6 +106,93 @@ export function buildProps(ctx) {
   makeLamp(-8.2, 96, 0);
   makeLamp(-30, -13.5, 0.6);
   makeLamp(27, 26, -2.2);
+
+  /* ------------------------------------------------ northern cluster lamps */
+  // Same poles as makeLamp, but the static parts of all four bake into one
+  // mesh per material; only the glow/pool/beam stay per lamp (they flicker
+  // on their own phase). The PointLight pool in environment.js culls itself.
+  {
+    const statics = new Map(); // material -> geometry parts
+    const addStatic = (geo, mat) => {
+      if (!statics.has(mat)) statics.set(mat, []);
+      statics.get(mat).push(geo);
+    };
+    const makeNorthLamp = (x, z, facing) => {
+      const rotY = new THREE.Matrix4().makeRotationY(facing);
+      const part = (geo, mat, lx, ly, lz, rz = 0) => {
+        if (rz) geo.rotateZ(rz);
+        geo.translate(lx, ly, lz);
+        geo.applyMatrix4(rotY);
+        geo.translate(x, 0, z);
+        addStatic(geo, mat);
+      };
+      part(new THREE.CylinderGeometry(0.24, 0.3, 0.6, 10), M.concreteDark, 0, 0.3, 0);
+      part(new THREE.CylinderGeometry(0.075, 0.11, 7.2, 10), M.metal, 0, 3.9, 0);
+      part(new THREE.BoxGeometry(1.5, 0.09, 0.09), M.metal, 0.7, 7.45, 0, -0.12);
+      part(new THREE.BoxGeometry(0.86, 0.22, 0.38), lampHeadMat, 1.42, 7.35, 0);
+      part(new THREE.BoxGeometry(0.7, 0.06, 0.3), lampGlassMat, 1.42, 7.23, 0);
+
+      const g = new THREE.Group();
+      const light = new THREE.PointLight(0xff9d3c, 0, 30, 2);
+      light.position.set(1.42, 7.1, 0);
+      g.add(light);
+      const glow = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: glowTex, color: 0xffc681, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      glow.scale.set(2.6, 2.6, 1);
+      glow.position.copy(light.position);
+      g.add(glow);
+      const pool = new THREE.Mesh(
+        new THREE.PlaneGeometry(17, 17),
+        new THREE.MeshBasicMaterial({
+          map: glowTex,
+          color: 0xffa54d,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(1.42, 0.18, 0);
+      g.add(pool);
+      const beamMat = new THREE.MeshBasicMaterial({
+        map: beamTex,
+        color: 0xffbe78,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const coneParts = [];
+      for (const ry of [0, Math.PI / 2]) {
+        const card = beamGeo.clone();
+        card.rotateY(ry);
+        coneParts.push(card);
+      }
+      const coneGeo = mergeGeometries(coneParts, false);
+      const cone = new THREE.Mesh(coneGeo, beamMat);
+      cone.position.set(1.42, 3.62, 0);
+      g.add(cone);
+
+      g.position.set(x, 0, z);
+      g.rotation.y = facing;
+      group.add(g);
+      ctx.addBoxCollider(x, z, 0.5, 0.5, 0.15, true);
+      world.lamps.push({ light, glow, pool, cone, coneMat: beamMat, group: g, height: 7.4 });
+    };
+    makeNorthLamp(8.2, 124, Math.PI); // avenue, south-east corner of the junction
+    makeNorthLamp(-8.2, 150, 0); // avenue west sidewalk, mid-cluster
+    makeNorthLamp(52, 135.9, Math.PI / 2); // Zavodskaya, north sidewalk
+    makeNorthLamp(-34, 131, 2.6); // west courtyard, by the path crossing
+    for (const [mat, parts] of statics) {
+      const merged = new THREE.Mesh(mergeGeometries(parts, false), mat);
+      merged.castShadow = true;
+      merged.receiveShadow = true;
+      group.add(merged);
+    }
+  }
 
   /* ---------------------------------------------------------- bus stop */
   {
@@ -802,6 +890,58 @@ export function buildProps(ctx) {
     world.points.wires = tops;
   }
 
+  /* ------------------------------------------ poles and wires, north extension */
+  // The line follows the avenue into the new cluster. Poles bake into two
+  // meshes (wood, insulators) and the three new spans into one.
+  {
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x6f6a62, roughness: 0.9 });
+    const wireMat = new THREE.MeshStandardMaterial({ color: 0x1b1d1e, roughness: 0.8 });
+    const x = -12.6;
+    const woodParts = [];
+    const insParts = [];
+    const tops = [];
+    // heights alternate like the historic line, which ends at z = 96, h 8.6
+    [
+      [120, 8.4],
+      [144, 8.6],
+      [168, 8.4],
+    ].forEach(([z, h]) => {
+      const pole = new THREE.CylinderGeometry(0.13, 0.19, h, 8);
+      pole.translate(x, h / 2, z);
+      woodParts.push(pole);
+      const arm = new THREE.BoxGeometry(2.2, 0.12, 0.12);
+      arm.translate(x, h - 0.7, z);
+      woodParts.push(arm);
+      for (const dx of [-0.95, 0, 0.95]) {
+        const ins = new THREE.CylinderGeometry(0.07, 0.06, 0.2, 6);
+        ins.translate(x + dx, h - 0.55, z);
+        insParts.push(ins);
+      }
+      ctx.addBoxCollider(x, z, 0.5, 0.5, 0.1, true);
+      tops.push(new THREE.Vector3(x, h - 0.45, z));
+    });
+    const wireParts = [];
+    let prev = new THREE.Vector3(x, 8.6 - 0.45, 96);
+    for (const top of tops) {
+      for (const dx of [-0.95, 0, 0.95]) {
+        const mid = new THREE.Vector3((prev.x + top.x) / 2 + dx, (prev.y + top.y) / 2 - 0.55, (prev.z + top.z) / 2);
+        const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(prev.x + dx, prev.y, prev.z), mid, new THREE.Vector3(top.x + dx, top.y, top.z)]);
+        wireParts.push(new THREE.TubeGeometry(curve, 10, 0.026, 4, false));
+      }
+      prev = top;
+    }
+    const wood = new THREE.Mesh(mergeGeometries(woodParts, false), poleMat);
+    wood.castShadow = true;
+    wood.receiveShadow = true;
+    group.add(wood);
+    const insulators = new THREE.Mesh(mergeGeometries(insParts, false), M.glassPane);
+    group.add(insulators);
+    const wires = new THREE.Mesh(mergeGeometries(wireParts, false), wireMat);
+    wires.castShadow = false;
+    group.add(wires);
+    world.points.wires = [...(world.points.wires ?? []), ...tops];
+  }
+
   /* ---------------------------------------------------------- bulky waste */
   {
     // dumpster platform
@@ -831,9 +971,221 @@ export function buildProps(ctx) {
   /* ---------------------------------------------------------- pond zone */
   ctx.addZone('Каток', 'Ice rink', 24, 46, 6, 28);
 
+  /* ------------------------------------------------ northern cluster props */
+  // Cars, benches, bins, a notice board and a dumpster pad for the new
+  // courtyards. Everything merges per material and lives in the far-detail
+  // group: from the historic district these are sub-pixel specks in the fog.
+  {
+    const fd = world.farDetails;
+    const bake = (geo, mat, season = null, cast = true) => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      fd.add(season ? ctx.seasonable(season, mesh) : mesh);
+      return mesh;
+    };
+
+    // parked cars on the Zavodskaya pad
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xd8d4c2, roughness: 0.35, metalness: 0.2, emissive: 0x1a1608 });
+    const tailMat = new THREE.MeshStandardMaterial({ color: 0x7a2018, roughness: 0.4 });
+    const makeNorthCar = (x, z, ry, color) => {
+      const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.28 });
+      const body = [];
+      const bxb = (w, h, d, lx, ly, lz) => {
+        const g = new THREE.BoxGeometry(w, h, d);
+        g.translate(lx, ly, lz);
+        body.push(g);
+      };
+      bxb(1.72, 0.66, 4.1, 0, 0.66, 0);
+      bxb(1.6, 0.72, 2.05, 0, 1.24, -0.12);
+      bxb(1.56, 0.1, 2.0, 0, 1.62, -0.12);
+      const glassBand = new THREE.BoxGeometry(1.63, 0.36, 2.08);
+      glassBand.translate(0, 1.32, -0.12);
+      const rubber = [];
+      const lightMetal = [];
+      for (const dx of [-0.86, 0.86]) {
+        for (const dz of [-1.35, 1.35]) {
+          const wheel = new THREE.CylinderGeometry(0.34, 0.34, 0.22, 12);
+          wheel.rotateZ(Math.PI / 2);
+          wheel.translate(dx, 0.34, dz);
+          rubber.push(wheel);
+          const hub = new THREE.CylinderGeometry(0.16, 0.16, 0.24, 10);
+          hub.rotateZ(Math.PI / 2);
+          hub.translate(dx, 0.34, dz);
+          lightMetal.push(hub);
+        }
+      }
+      for (const dz of [-2.12, 2.12]) {
+        const bumper = new THREE.BoxGeometry(1.74, 0.14, 0.12);
+        bumper.translate(0, 0.52, dz);
+        lightMetal.push(bumper);
+      }
+      for (const dx of [-0.86, 0.86]) {
+        const mirror = new THREE.BoxGeometry(0.16, 0.08, 0.06);
+        mirror.translate(dx, 1.34, 0.85);
+        lightMetal.push(mirror);
+      }
+      const head = [];
+      const tail = [];
+      for (const dx of [-0.55, 0.55]) {
+        const hl = new THREE.BoxGeometry(0.26, 0.16, 0.06);
+        hl.translate(dx, 0.82, 2.06);
+        head.push(hl);
+        const tl = new THREE.BoxGeometry(0.2, 0.12, 0.05);
+        tl.translate(dx, 0.82, -2.06);
+        tail.push(tl);
+      }
+      const snowTop = new THREE.BoxGeometry(1.5, 0.14, 1.9);
+      snowTop.translate(0, 1.74, -0.12);
+      const snowHood = new THREE.BoxGeometry(1.62, 0.1, 1.5);
+      snowHood.translate(0, 1.03, 1.35);
+      const snowParts = mergeGeometries([snowTop, snowHood], false);
+      const groups = [
+        [mergeGeometries(body, false), bodyMat, null],
+        [glassBand, M.glass, null],
+        [mergeGeometries(rubber, false), M.rubber, null],
+        [mergeGeometries(lightMetal, false), M.metalLight, null],
+        [mergeGeometries(head, false), headMat, null],
+        [mergeGeometries(tail, false), tailMat, null],
+        [snowParts, M.snow, 'winter'],
+      ];
+      for (const [geo, mat, season] of groups) {
+        geo.rotateY(ry);
+        geo.translate(x, 0, z);
+        bake(geo, mat, season);
+      }
+      ctx.addBoxCollider(x, z, 2.2, 4.4, 0.15, true);
+    };
+    makeNorthCar(64, 111.5, 0.04, 0x54585e);
+    makeNorthCar(71.5, 111.5, -0.05, 0x6b4a3a);
+
+    // benches around the new courtyard paths
+    const makeNorthBench = (x, z, ry) => {
+      const metal = [];
+      for (const dx of [-0.75, 0.75]) {
+        const leg = new THREE.BoxGeometry(0.09, 0.44, 0.5);
+        leg.translate(dx, 0.22, 0);
+        metal.push(leg);
+      }
+      const wood = [];
+      for (let i = 0; i < 3; i++) {
+        const slat = new THREE.BoxGeometry(1.8, 0.06, 0.14);
+        slat.translate(0, 0.46, -0.2 + i * 0.2);
+        wood.push(slat);
+      }
+      for (let i = 0; i < 2; i++) {
+        const slat = new THREE.BoxGeometry(1.8, 0.14, 0.06);
+        slat.translate(0, 0.72 + i * 0.2, -0.28);
+        wood.push(slat);
+      }
+      const snow = new THREE.BoxGeometry(1.84, 0.06, 0.5);
+      snow.translate(0, 0.52, -0.05);
+      for (const [geo, mat, season] of [
+        [mergeGeometries(metal, false), M.metal, null],
+        [mergeGeometries(wood, false), woodMat, null],
+        [snow, M.snow, 'winter'],
+      ]) {
+        geo.rotateY(ry);
+        geo.translate(x, 0, z);
+        bake(geo, mat, season);
+      }
+      ctx.addBoxCollider(x, z, 2.0, 0.7, 0.1, true);
+    };
+    makeNorthBench(-27.5, 129.2, 0);
+    makeNorthBench(-38, 136.8, Math.PI);
+    makeNorthBench(30, 141.4, Math.PI);
+    makeNorthBench(44, 141.4, Math.PI);
+
+    // bins, one beside each bench row
+    const binParts = [];
+    const lidParts = [];
+    for (const [bx, bz] of [[-25.8, 130.1], [32, 140.2]]) {
+      const bin = new THREE.CylinderGeometry(0.28, 0.24, 0.8, 12);
+      bin.translate(bx, 0.4, bz);
+      binParts.push(bin);
+      const lid = new THREE.CylinderGeometry(0.3, 0.3, 0.06, 12);
+      lid.translate(bx, 0.83, bz);
+      lidParts.push(lid);
+      ctx.addBoxCollider(bx, bz, 0.6, 0.6, 0.1, true);
+    }
+    bake(mergeGeometries(binParts, false), M.metal);
+    bake(mergeGeometries(lidParts, false), M.metalLight);
+
+    // notice board by B10's east entrances, facing the courtyard path
+    {
+      const bx = -20;
+      const bz = 142.6;
+      const w = 3.4;
+      const h = 2.1;
+      const legH = 1.3;
+      const texture = ctx.TEXTURES.posterSlava(512, 320);
+      const poster = new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.8,
+        emissive: 0xffffff,
+        emissiveMap: texture,
+        emissiveIntensity: 0.12,
+      });
+      world.posterMats.push(poster);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), M.paintBlue);
+      back.position.set(bx, legH + h / 2, bz);
+      back.castShadow = true;
+      back.receiveShadow = true;
+      fd.add(back);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.1, h - 0.1), poster);
+      face.position.set(bx, legH + h / 2, bz - 0.07);
+      face.rotation.y = Math.PI;
+      fd.add(face);
+      const postParts = [];
+      for (const dx of [-w * 0.32, w * 0.32]) {
+        const post = new THREE.BoxGeometry(0.14, legH + h, 0.14);
+        post.translate(dx, (legH + h) / 2, 0.16);
+        postParts.push(post);
+      }
+      bake(mergeGeometries(postParts, false), M.metal);
+      const snow = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.1, 0.2), M.snow);
+      snow.position.set(bx, legH + h + 0.05, bz);
+      fd.add(ctx.seasonable('winter', snow));
+      ctx.addBoxCollider(bx, bz, w, 0.6, 0.2, true);
+    }
+
+    // dumpster pad on the arm, serving B11/B13
+    {
+      const pad = new THREE.BoxGeometry(4.6, 0.14, 2.4);
+      pad.translate(89, 0.09, 112);
+      bake(pad, M.concreteDark, null, false);
+      const containerMat = new THREE.MeshStandardMaterial({ color: 0x4d5a4c, roughness: 0.75, metalness: 0.35 });
+      const boxes = [];
+      const lids = [];
+      const snows = [];
+      for (let i = 0; i < 2; i++) {
+        const cx = 88 + i * 1.5;
+        const tilt = 0.06 * (i === 0 ? 1 : -1);
+        const box = new THREE.BoxGeometry(1.2, 1.0, 1.0);
+        box.translate(cx, 0.66, 112);
+        boxes.push(box);
+        const lid = new THREE.BoxGeometry(1.26, 0.1, 1.06);
+        lid.rotateZ(tilt);
+        lid.translate(cx, 1.2, 112);
+        lids.push(lid);
+        const snow = new THREE.BoxGeometry(1.28, 0.1, 1.08);
+        snow.rotateZ(tilt);
+        snow.translate(cx, 1.28, 112);
+        snows.push(snow);
+      }
+      bake(mergeGeometries(boxes, false), containerMat);
+      bake(mergeGeometries(lids, false), M.metal);
+      bake(mergeGeometries(snows, false), M.snow, 'winter');
+      ctx.addBoxCollider(88.75, 112, 3.6, 1.4, 0.2, true);
+    }
+  }
+
   /* ---------------------------------------------------------- street zones */
-  ctx.addZone('Улица Космонавтов', 'Cosmonauts Avenue', -12, 12, -110, 110);
+  ctx.addZone('Улица Космонавтов', 'Cosmonauts Avenue', -12, 12, -110, 178);
   ctx.addZone('Двор дома № 12', 'Courtyard of building 12', -64, -10, -46, -2);
   ctx.addZone('Двор дома № 7', 'Courtyard of building 7', 12, 60, -24, 56);
-  ctx.addZone('Северный микрорайон', 'Northern district', -WORLD.bounds, WORLD.bounds, -WORLD.bounds, WORLD.bounds);
+  ctx.addZone('Двор дома № 24', 'Courtyard of building 24', -58, -10, 104, 146);
+  ctx.addZone('Улица Заводская', 'Zavodskaya street', 9, 100, 116, 140);
+  ctx.addZone('Двор дома № 2', 'Courtyard of building 2', 14, 92, 140, 172);
+  ctx.addZone('Северный микрорайон', 'Northern district', -WORLD.bounds, WORLD.bounds, -WORLD.bounds, WORLD.boundsNorth);
 }

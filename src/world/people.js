@@ -142,13 +142,16 @@ function makeRoutes() {
   return {
     // long ring: north along the east sidewalk, across the avenue at both
     // ends, back south along the west sidewalk; weaves around lamp posts,
-    // the bus stop shelter pad and the stop sign
+    // the bus stop shelter pad and the stop sign. Since the district grew,
+    // the ring keeps going to the new northern end of the avenue before
+    // turning back
     avenue: {
       mode: 'loop',
       points: [
         [7.4, -100], [7.1, -78], [7.1, -6], [7.4, 10], [7.6, 16],
         [6.35, 21], [6.35, 27], [7.6, 32], [7.4, 44], [7.1, 66], [7.2, 100],
-        [-7, 100], [-7, 66], [-7, 30], [-7, -6], [-7, -42], [-7, -78], [-7, -100],
+        [7.0, 124], [7.2, 150], [7.2, 168], [-7, 168], [-7, 150], [-7, 100],
+        [-7, 66], [-7, 30], [-7, -6], [-7, -42], [-7, -78], [-7, -100],
       ],
     },
     // west courtyard: trampled paths and a short cut across the yard,
@@ -176,6 +179,27 @@ function makeRoutes() {
     busStop: {
       mode: 'idle',
       points: [{ x: 8.1, z: 23.0, face: [-1, 0], groundY: 0.3 }],
+    },
+    // west courtyard of the northern cluster: down the avenue extension and
+    // into the yard between B8 and B10, pausing by the benches
+    northCourt: {
+      mode: 'pingpong',
+      points: [
+        { x: -7, z: 112, wait: 1.5 },
+        [-16, 133],
+        { x: -30, z: 133, wait: 3, face: [0, -1] },
+        [-46, 133],
+        { x: -58, z: 133, wait: 2 },
+      ],
+    },
+    // out along Zavodskaya to the parked cars and back to the avenue
+    eastArm: {
+      mode: 'pingpong',
+      points: [
+        { x: 7.4, z: 112, wait: 1 },
+        [30, 120.4],
+        { x: 66, z: 120.4, wait: 2.5, face: [0, -1] },
+      ],
     },
   };
 }
@@ -238,7 +262,9 @@ class Pedestrian {
       this.armR.add(this.bagPivot);
     }
     this.root.scale.setScalar(this.scaleF);
-    world.group.add(this.root);
+    // far-route figures join the far-detail group: hidden until the camera
+    // actually walks north (world.farDetails is visibility-toggled there)
+    (opts.far ? world.farDetails : world.group).add(this.root);
     this.position = this.root.position;
   }
 
@@ -453,6 +479,23 @@ class People {
         name: 'bus stop wait',
         scale: 0.97,
         phase: 4.1,
+      }),
+      new Pedestrian(this.world, partsFor(0), routes.northCourt, {
+        name: 'north courtyard',
+        speed: 1.15,
+        scale: 1.01,
+        phase: 3.6,
+        startFraction: 0.4,
+        far: true,
+      }),
+      new Pedestrian(this.world, partsFor(2), routes.eastArm, {
+        name: 'zavodskaya stroll',
+        speed: 1.2,
+        scale: 0.96,
+        phase: 5.2,
+        startFraction: 0.6,
+        bag: true,
+        far: true,
       }),
     ];
 

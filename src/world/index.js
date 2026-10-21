@@ -17,8 +17,20 @@ export class World {
     this.quality = quality;
     this.group = new THREE.Group();
     this.group.name = 'world';
+    // small props of the far northern cluster: hidden while the camera is
+    // in the historic district, where they would only cost draw calls
+    // (sub-pixel and fog-shrouded at that distance anyway)
+    this.farDetails = new THREE.Group();
+    this.farDetails.name = 'far-north-details';
+    this.group.add(this.farDetails);
     this.rng = new Rng(20260119);
     this.colliders = [];
+    // the world as it stood before the northern expansion: colliders and
+    // heights of the historic district, used by the legacy scatter passes
+    // (mounds, litter, tree relocation) so their seeded placement does not
+    // drift when the playable edge moves
+    this.legacyColliders = [];
+    this.legacyHeightRects = [];
     this.heightRects = [];
     this.surfaceRects = [];
     this.zones = [];
@@ -153,14 +165,23 @@ export class World {
       season: this.season,
       SEASONS,
       TEXTURES: TX,
-      addColliderRect(x0, x1, z0, z1) {
-        self.colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
+      addColliderRect(x0, x1, z0, z1, north = false) {
+        const rect = { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
+        self.colliders.push(rect);
+        if (!north) self.legacyColliders.push(rect);
       },
-      addBoxCollider(cx, cz, w, d, pad = 0.1) {
-        this.addColliderRect(cx - w / 2 - pad, cx + w / 2 + pad, cz - d / 2 - pad, cz + d / 2 + pad);
+      addBoxCollider(cx, cz, w, d, pad = 0.1, north = false) {
+        this.addColliderRect(cx - w / 2 - pad, cx + w / 2 + pad, cz - d / 2 - pad, cz + d / 2 + pad, north);
       },
-      addHeightRect(x0, x1, z0, z1, h) {
-        self.heightRects.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), h });
+      /** A collider of the pre-expansion district that no longer exists:
+       * keeps the historic scatter math identical without blocking anyone. */
+      addLegacyGhostRect(x0, x1, z0, z1) {
+        self.legacyColliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
+      },
+      addHeightRect(x0, x1, z0, z1, h, north = false) {
+        const rect = { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), h };
+        self.heightRects.push(rect);
+        if (!north) self.legacyHeightRects.push(rect);
       },
       addSurfaceRect(x0, x1, z0, z1, type) {
         self.surfaceRects.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), type });
@@ -245,7 +266,7 @@ export class World {
   collides(x, z, r) {
     // interiors sit far outside the district: their own walls bound the
     // player there, the world edge only applies outdoors
-    if (!this.interiorAt(x, z) && (Math.abs(x) > WORLD.bounds || Math.abs(z) > WORLD.bounds)) return true;
+    if (!this.interiorAt(x, z) && (Math.abs(x) > WORLD.bounds || z < -WORLD.bounds || z > WORLD.boundsNorth)) return true;
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
@@ -254,6 +275,28 @@ export class World {
       if (dx * dx + dz * dz < r * r) return true;
     }
     return false;
+  }
+
+  /** Same check against the pre-expansion district (legacy scatter passes). */
+  collidesHistoric(x, z, r) {
+    if (Math.abs(x) > WORLD.bounds || Math.abs(z) > WORLD.bounds) return true;
+    for (const c of this.legacyColliders) {
+      const cx = Math.max(c.minX, Math.min(x, c.maxX));
+      const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
+      const dx = x - cx;
+      const dz = z - cz;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
+  }
+
+  /** Historic height lookup (sidewalks as they were before the expansion). */
+  heightAtHistoric(x, z) {
+    let h = 0;
+    for (const r of this.legacyHeightRects) {
+      if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ && r.h > h) h = r.h;
+    }
+    return h;
   }
 
   /* ---------------------------------------------------------- seasons/lights */
@@ -281,6 +324,9 @@ export class World {
     for (const o of this.winterOnly) o.visible = key === 'winter';
     if (this.snowMounds) this.snowMounds.count = Math.max(1, Math.floor(this.snowMounds.userData.total * s.mounds));
     if (this.leafLitter) this.leafLitter.count = Math.max(0, Math.floor(this.leafLitter.userData.total * (key === 'autumn' ? 1 : s.litter)));
+    // the northern expansion keeps its own instanced meshes (seeded apart)
+    if (this.snowMoundsNorth) this.snowMoundsNorth.count = Math.max(1, Math.floor(this.snowMoundsNorth.userData.total * s.mounds));
+    if (this.leafLitterNorth) this.leafLitterNorth.count = Math.max(0, Math.floor(this.leafLitterNorth.userData.total * (key === 'autumn' ? 1 : s.litter)));
   }
 
   setWindowLit(value) {

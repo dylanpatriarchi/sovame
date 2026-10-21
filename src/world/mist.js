@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { Rng, TAU, smoothstep } from '../util.js';
 import { makeMistTexture } from '../textures.js';
 
-const WRAP = 135;
+const WRAP = 190;
 
 export class Mist {
   constructor(scene) {
@@ -13,7 +13,8 @@ export class Mist {
     const rng = new Rng(5150);
     this.planes = [];
     const geo = new THREE.PlaneGeometry(1, 1);
-    // two wisps over the far avenue ends, two in the courtyards, two roaming
+    // two wisps over the far avenue ends, two in the courtyards, two roaming,
+    // two more up in the northern cluster
     const spots = [
       [rng.float(-8, 8), rng.float(58, 88)],
       [rng.float(-8, 8), rng.float(-88, -58)],
@@ -21,6 +22,8 @@ export class Mist {
       [rng.float(28, 58), rng.float(-20, 40)],
       [rng.float(-80, 80), rng.float(-90, 90)],
       [rng.float(-80, 80), rng.float(-90, 90)],
+      [rng.float(-8, 8), rng.float(112, 168)],
+      [rng.float(-58, 58), rng.float(106, 168)],
     ];
     for (const [x, z] of spots) {
       const mat = new THREE.MeshBasicMaterial({
