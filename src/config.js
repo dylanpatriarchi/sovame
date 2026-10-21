@@ -2,12 +2,17 @@
 import { DEG } from './util.js';
 
 export const WORLD = {
-  /** Half side of the playable area (m). */
+  /** Half side of the playable area (m) — west, east and south edges. */
   bounds: 108,
+  /** North edge of the playable area: the district keeps growing past the
+   * old fence line at z = 104 up to the second residential cluster. */
+  boundsNorth: 180,
   groundSize: 700,
   roadHalfWidth: 6,
   sidewalkWidth: 3.2,
   crossroadZ: 44,
+  /** East arm street of the northern expansion (a T-junction on the avenue). */
+  crossroad2Z: 128,
   /** Reference snow volume used by the particle systems. */
   snowBox: { w: 76, h: 34, d: 76 },
 };

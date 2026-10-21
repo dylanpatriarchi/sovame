@@ -1,5 +1,6 @@
 // Buildings: panel blocks, heating plant, garages, fences, skyline.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, makeCanvas, starPath } from '../util.js';
 import { makeSignTexture, canvasTexture } from '../textures.js';
 
@@ -15,6 +16,24 @@ export const BUILDING_SPECS = [
   { id: 'B4', x: 36, z: 62, w: 40, d: 12, floors: 5, number: '9', street: 'ул. МИРА', base: '#c0b6a4', plinth: '#8a8578', balcony: 0.42, lit: 0.48, seed: 44, tv: true },
   { id: 'B5', x: -30, z: -80, w: 40, d: 12, floors: 5, number: '15', street: 'ул. СЕВЕРНАЯ', base: '#bcb9ae', plinth: '#8b8880', balcony: 0.38, lit: 0.42, seed: 55 },
   { id: 'B7', x: -46, z: 74, w: 36, d: 12, floors: 5, number: '21', street: 'ул. МИРА', base: '#c6bfb0', plinth: '#8f8b80', balcony: 0.44, lit: 0.46, seed: 66 },
+];
+
+/**
+ * Second residential cluster, north of the old fence line (z > 104): the
+ * avenue keeps going to a T-junction on Zavodskaya street, with six more
+ * blocks around two courtyards. Kept apart from BUILDING_SPECS on purpose:
+ * the historic blocks draw roof details from the shared RNG stream in a
+ * fixed order (terrain and vegetation depend on it), so these specs use
+ * their own seeds, and their small trim is merged per material — six extra
+ * blocks for roughly the draw cost of one historic one.
+ */
+export const EXPANSION_SPECS = [
+  { id: 'B8', x: -40, z: 112, w: 30, d: 12, floors: 9, number: '18', street: 'ул. КОСМОНАВТОВ', base: '#a8b0b8', plinth: '#7d7b74', balcony: 0.5, lit: 0.5, seed: 77, tv: true },
+  { id: 'B9', x: 32, z: 112, w: 38, d: 12, floors: 5, number: '20', street: 'ул. КОСМОНАВТОВ', base: '#c9c0b0', plinth: '#8f8b80', balcony: 0.42, lit: 0.46, seed: 88 },
+  { id: 'B10', x: -30, z: 151, w: 44, d: 12, floors: 5, number: '24', street: 'ул. СЕВЕРНАЯ', base: '#9e6f52', plinth: '#6f5140', balcony: 0.3, lit: 0.5, seed: 99, tv: true },
+  { id: 'B11', x: 34, z: 152, w: 36, d: 12, floors: 5, number: '2', street: 'ул. ЗАВОДСКАЯ', base: '#b9b4a6', plinth: '#8a8578', balcony: 0.4, lit: 0.44, seed: 111, tv: true },
+  { id: 'B12', x: -74, z: 112, w: 26, d: 12, floors: 5, number: '22', street: 'ул. СЕВЕРНАЯ', base: '#c2b8a8', plinth: '#8f8b80', balcony: 0.38, lit: 0.42, seed: 122 },
+  { id: 'B13', x: 74, z: 151, w: 24, d: 12, floors: 9, number: '4', street: 'ул. ЗАВОДСКАЯ', base: '#9fa8ae', plinth: '#7d7b74', balcony: 0.52, lit: 0.52, seed: 133, tv: true },
 ];
 
 /**
@@ -259,6 +278,184 @@ export function buildBuildings(ctx) {
     }
   }
 
+  /* ---------------------------------------------------- northern cluster */
+  // Same archetypes as the historic blocks, but every small repeated part is
+  // baked into one mesh per material (apron/pads/access, lips, snow, metal)
+  // and the roof details draw from per-building seeds, leaving the shared
+  // RNG stream untouched.
+  const buildExpansionBlock = (spec) => {
+    const cells = Math.max(4, Math.round(spec.w / CELL_W));
+    const sideCells = Math.max(2, Math.round(spec.d / CELL_W));
+    const detailRng = new Rng(spec.seed + 7000);
+    const facadeRng = new Rng(spec.seed);
+    const sideRng = new Rng(spec.seed + 101);
+
+    let tvPick = null;
+    if (spec.tv) {
+      const tvRng = new Rng(spec.seed + 500);
+      tvPick = {
+        f: tvRng.int(1, spec.floors - 1),
+        c: tvRng.int(0, cells - 1),
+        side: tvRng.sign(),
+        phase: tvRng.float(0, TAU),
+        speed: tvRng.float(0.5, 1.05),
+      };
+    }
+
+    const facade = TX.makeFacadeTextures({
+      floors: spec.floors,
+      cells,
+      base: spec.base,
+      plinth: spec.plinth,
+      rng: facadeRng,
+      entranceEvery: 4,
+      balconyChance: spec.balcony,
+      litChance: spec.lit,
+      winter: false,
+      street: spec.street,
+      number: spec.number,
+      tvCells: tvPick ? new Set([`${tvPick.f}:${tvPick.c}`]) : null,
+    });
+    const side = TX.makeFacadeTextures({
+      floors: spec.floors,
+      cells: sideCells,
+      base: spec.base,
+      plinth: spec.plinth,
+      rng: sideRng,
+      entranceEvery: 99,
+      balconyChance: 0.08,
+      litChance: spec.lit * 0.8,
+      winter: false,
+      street: spec.street,
+      number: spec.number,
+    });
+
+    const mkMat = (t) => {
+      const mat = new THREE.MeshStandardMaterial({
+        map: t.map,
+        emissiveMap: t.emissive,
+        emissive: new THREE.Color(0xffffff),
+        emissiveIntensity: 0.5,
+        roughness: 0.93,
+      });
+      world.windowMats.push(mat);
+      return mat;
+    };
+    const facadeMat = mkMat(facade);
+    const sideMat = mkMat(side);
+
+    const h = spec.floors * FLOOR_H;
+    const geo = new THREE.BoxGeometry(spec.w, h, spec.d);
+    const mats = [sideMat, sideMat, roofMat, M.concreteDark, facadeMat, facadeMat];
+    const mesh = new THREE.Mesh(geo, mats);
+    mesh.position.set(spec.x, h / 2, spec.z);
+    ctx.place(mesh);
+    ctx.addBoxCollider(spec.x, spec.z, spec.w, spec.d, 0.25, true);
+    addSnowLedges(spec.x, spec.z, spec.w, spec.d, h);
+
+    // TV flicker quad, sitting exactly on the baked-dark window
+    if (tvPick) {
+      const cellW = spec.w / cells;
+      const wx =
+        tvPick.side > 0
+          ? spec.x - spec.w / 2 + (tvPick.c + 0.5) * cellW
+          : spec.x + spec.w / 2 - (tvPick.c + 0.5) * cellW;
+      const wz = spec.z + tvPick.side * (spec.d / 2 + 0.03);
+      const tvMat = new THREE.MeshBasicMaterial({
+        map: T.tvGlow,
+        color: 0x8fb4ef,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(cellW * 0.5, FLOOR_H * 0.42), tvMat);
+      quad.position.set(wx, tvPick.f * FLOOR_H + 1.53, wz);
+      if (tvPick.side < 0) quad.rotation.y = Math.PI;
+      world.group.add(quad);
+      world.tvMats.push({ mat: tvMat, phase: tvPick.phase, speed: tvPick.speed });
+    }
+
+    // merged trim: one bake per material
+    const darkParts = [];
+    const whiteParts = [];
+    const snowParts = [];
+    const metalParts = [];
+    const bx = (w, hh, d, x, y, z) => {
+      const g = new THREE.BoxGeometry(w, hh, d);
+      g.translate(x, y, z);
+      return g;
+    };
+
+    // perimeter apron / отмостка
+    darkParts.push(bx(spec.w + 1.8, 0.06, spec.d + 1.8, spec.x, 0.04, spec.z));
+
+    // entrance pads on both long sides
+    const cw = spec.w / cells;
+    for (let c = 0; c < cells; c++) {
+      if (c % 4 !== 3) continue;
+      const localX = -spec.w / 2 + (c + 0.5) * cw;
+      for (const s of [1, -1]) {
+        const px = spec.x + s * localX;
+        const pz = spec.z + s * (spec.d / 2 + 0.55);
+        darkParts.push(bx(2.4, 0.26, 1.5, px, 0.13, pz));
+        darkParts.push(bx(2.4, 0.13, 0.4, px, 0.065, pz + s * 0.9));
+      }
+    }
+
+    // roof lip + snow
+    const lipH = 0.45;
+    const lips = [
+      { w: spec.w + 0.3, d: 0.3, x: 0, z: spec.d / 2 },
+      { w: spec.w + 0.3, d: 0.3, x: 0, z: -spec.d / 2 },
+      { w: 0.3, d: spec.d + 0.3, x: spec.w / 2, z: 0 },
+      { w: 0.3, d: spec.d + 0.3, x: -spec.w / 2, z: 0 },
+    ];
+    for (const lip of lips) {
+      whiteParts.push(bx(lip.w, lipH, lip.d, spec.x + lip.x, h + lipH / 2 - 0.1, spec.z + lip.z));
+      snowParts.push(bx(lip.w + 0.04, 0.09, lip.d + 0.04, spec.x + lip.x, h + lipH - 0.08, spec.z + lip.z));
+    }
+
+    // roof access + snow cap
+    darkParts.push(bx(3.2, 2.7, 3.4, spec.x + spec.w * 0.22, h + 1.25, spec.z));
+    snowParts.push(bx(3.5, 0.14, 3.7, spec.x + spec.w * 0.22, h + 2.66, spec.z));
+
+    // roof vents
+    for (let i = 0; i < detailRng.int(3, 6); i++) {
+      const g = new THREE.CylinderGeometry(0.14, 0.16, detailRng.float(0.4, 0.9), 8);
+      g.translate(spec.x + detailRng.float(-spec.w * 0.42, spec.w * 0.42), h + 0.3, spec.z + detailRng.float(-spec.d * 0.32, spec.d * 0.32));
+      metalParts.push(g);
+    }
+
+    // TV antennas
+    for (let i = 0; i < 2; i++) {
+      const ax = spec.x + (i === 0 ? -1 : 1) * spec.w * detailRng.float(0.18, 0.4);
+      const az = spec.z + detailRng.sign() * (spec.d / 2 - 0.4);
+      const mast = new THREE.CylinderGeometry(0.05, 0.06, 3.6, 6);
+      mast.translate(ax, h + 1.8, az);
+      metalParts.push(mast);
+      for (let j = 0; j < 4; j++) {
+        const bar = new THREE.CylinderGeometry(0.02, 0.02, detailRng.float(0.7, 1.5), 4);
+        bar.rotateZ(Math.PI / 2);
+        bar.translate(ax, h + 0.6 + j * 0.72, az);
+        metalParts.push(bar);
+      }
+    }
+
+    const bakeTrim = (parts, material, season = null) => {
+      if (!parts.length) return;
+      const merged = new THREE.Mesh(mergeGeometries(parts, false), material);
+      merged.castShadow = true;
+      merged.receiveShadow = true;
+      world.group.add(season ? ctx.seasonable(season, merged) : merged);
+    };
+    bakeTrim(darkParts, M.concreteDark);
+    bakeTrim(whiteParts, M.concreteWhite);
+    bakeTrim(snowParts, M.snow, 'winter');
+    bakeTrim(metalParts, M.metal);
+  };
+  for (const spec of EXPANSION_SPECS) buildExpansionBlock(spec);
+
   /* ---------------------------------------------------- kindergarten no. 5 */
   {
     const x = 20;
@@ -456,12 +653,62 @@ export function buildBuildings(ctx) {
   // district limits along the two road axes
   panelFence(-70, -104, -14, -104);
   panelFence(14, -104, 70, -104);
-  panelFence(-70, 104, -14, 104);
-  panelFence(14, 104, 70, 104);
   panelFence(-104, -70, -104, -14);
   panelFence(-104, 14, -104, 70);
   panelFence(104, -70, 104, -14);
   panelFence(104, 14, 104, 70);
+  // the old north edge (z = 104) opened up: the avenue now runs on to the
+  // second cluster. New limits sit at the expanded edges; unlike the
+  // historic runs these bake panels, posts and snow into one mesh per
+  // material, so the extra ~240 m of fence costs a handful of draw calls.
+  const panelFenceMerged = (x0, z0, x1, z1) => {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len = Math.hypot(dx, dz);
+    const panels = Math.max(1, Math.round(len / 2.6));
+    const angle = Math.atan2(dz, dx);
+    const panelParts = [];
+    const postParts = [];
+    const snowParts = [];
+    for (let i = 0; i < panels; i++) {
+      const t = (i + 0.5) / panels;
+      const px = x0 + dx * t;
+      const pz = z0 + dz * t;
+      const panel = new THREE.BoxGeometry(2.5, 2.3, 0.32);
+      panel.rotateY(-angle);
+      panel.translate(px, 1.15, pz);
+      panelParts.push(panel);
+      const t2 = (i + 1) / panels;
+      const post = new THREE.BoxGeometry(0.34, 2.7, 0.34);
+      post.rotateY(-angle);
+      post.translate(x0 + dx * t2, 1.35, z0 + dz * t2);
+      postParts.push(post);
+      if (i % 2 === 0) {
+        const snow = new THREE.BoxGeometry(2.55, 0.1, 0.36);
+        snow.rotateY(-angle);
+        snow.translate(px, 2.35, pz);
+        snowParts.push(snow);
+      }
+    }
+    const bake = (parts, material, season = null) => {
+      const merged = new THREE.Mesh(mergeGeometries(parts, false), material);
+      merged.castShadow = true;
+      merged.receiveShadow = true;
+      world.group.add(season ? ctx.seasonable(season, merged) : merged);
+    };
+    bake(panelParts, fenceMat);
+    bake(postParts, M.concreteDark);
+    bake(snowParts, M.snow, 'winter');
+    ctx.addColliderRect(Math.min(x0, x1) - 0.3, Math.max(x0, x1) + 0.3, Math.min(z0, z1) - 0.3, Math.max(z0, z1) + 0.3, true);
+  };
+  panelFenceMerged(-80, 176, -14, 176);
+  panelFenceMerged(14, 176, 80, 176);
+  panelFenceMerged(-104, 70, -104, 176);
+  panelFenceMerged(104, 70, 104, 176);
+  // ghosts of the removed z = 104 fence runs: the historic scatter passes
+  // still see them, the player does not
+  ctx.addLegacyGhostRect(-70.3, -13.7, 103.7, 104.3);
+  ctx.addLegacyGhostRect(13.7, 70.3, 103.7, 104.3);
 
   /* ---------------------------------------------------- microdistrict sign */
   const signTex = makeSignTexture(1024, 320, (c, W, H) => {
@@ -499,7 +746,7 @@ export function buildBuildings(ctx) {
     world.group.add(ctx.seasonable('winter', snow));
   };
   signFor(-20, -103, 0);
-  signFor(20, 103, Math.PI);
+  signFor(20, 174, Math.PI);
 
   /* ---------------------------------------------------- distant skyline */
   const distantMat = new THREE.MeshStandardMaterial({ color: 0x3b434e, roughness: 1 });
@@ -529,6 +776,7 @@ export function buildBuildings(ctx) {
   world.windowMats.push(distantLitMat);
 
   const ring = new Rng(777);
+  const skylineBoxes = [];
   for (let i = 0; i < 46; i++) {
     const a = ring.float(0, TAU);
     const r = ring.float(150, 300);
@@ -544,6 +792,20 @@ export function buildBuildings(ctx) {
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     world.group.add(mesh);
+    skylineBoxes.push(mesh);
+  }
+  // the northern cluster (playable up to z = 180) now occupies space the
+  // ring used to have to itself: boxes that would stand among the new
+  // blocks slide outward along their own bearing, keeping the belt unbroken
+  for (let i = 0; i < skylineBoxes.length; i++) {
+    const mesh = skylineBoxes[i];
+    const { x, z } = mesh.position;
+    if (Math.abs(x) < 132 && z > 96 && z < 206) {
+      const a = Math.atan2(z, x);
+      const r = 215 + (i % 7) * 9;
+      mesh.position.x = Math.cos(a) * r;
+      mesh.position.z = Math.sin(a) * r;
+    }
   }
   // industrial sites
   const factory = (x, z, h = 44) => {

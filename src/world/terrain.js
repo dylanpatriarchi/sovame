@@ -1,10 +1,14 @@
 // Ground, roads, sidewalks, paths, ice and snow mounds.
 import * as THREE from 'three';
-import { TAU } from '../util.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Rng, TAU } from '../util.js';
 import { WORLD } from '../config.js';
 
 /** Parking pad in the east courtyard (asphalt). Shared with vegetation. */
 export const PARKING_LOT = { x0: 40, x1: 56, z0: -21, z1: 5 };
+
+/** Parking pad on Zavodskaya street, in the northern cluster (asphalt). */
+export const PARKING_NORTH = { x0: 60, x1: 76, z0: 106, z1: 118 };
 
 /**
  * Trampled walkways through the yards. Their surface type stays 'snow', so
@@ -23,6 +27,24 @@ export const WALK_PATHS = [
   { x0: -26, x1: -9.4, z0: -8, z1: 12, plaza: true },
   { x0: -14, x1: WORLD.roadHalfWidth + 3.2, z0: -78.5, z1: -76.1 },
   { x0: 26, x1: 40, z0: -26.4, z1: -24 },
+];
+
+/**
+ * Walkways of the northern cluster. Kept in a separate list on purpose: the
+ * historic snow-mound scatter samples WALK_PATHS with the shared RNG and
+ * must keep its exact distribution; vegetation checks both lists when
+ * keeping trunks off the paths.
+ */
+export const NEW_WALK_PATHS = [
+  { x0: -62, x1: -9.4, z0: 131.8, z1: 134.2 }, // west courtyard, east-west spine
+  { x0: -31.2, x1: -28.8, z0: 119, z1: 144.5 }, // west courtyard, north-south spine
+  { x0: -44.5, x1: -42.1, z0: 119, z1: 131.8 }, // spur to B8's west entrances
+  { x0: -76.8, x1: -74.4, z0: 119, z1: 131.8 }, // spur to B12's entrances
+  { x0: 9.4, x1: 11.6, z0: 110, z1: 118.8 }, // shortcut along B9's west wall
+  { x0: 11.4, x1: 50, z0: 116.1, z1: 118.5 }, // along B9's north facade
+  { x0: 24, x1: 48, z0: 139.6, z1: 142 }, // east courtyard, east-west
+  { x0: 33.2, x1: 35.6, z0: 137.4, z1: 145.2 }, // to B11's entrances
+  { x0: 72.8, x1: 75.2, z0: 137.4, z1: 145 }, // to B13's entrance
 ];
 
 /** Plane with scaled UVs: the texture repeats every `tile` meters. */
@@ -60,7 +82,22 @@ export function buildTerrain(ctx) {
   const { world, materials: M, textures: T, rng } = ctx;
   const R = WORLD.roadHalfWidth;
   const CROSS = WORLD.crossroadZ;
+  const CROSS2 = WORLD.crossroad2Z;
+  // the avenue overruns the district fences at both ends, same as it always
+  // did to the south: the road mesh and its lanes reach past the new north
+  // fence (z = 176) up to here
+  const ROAD_Z0 = -116;
+  const ROAD_Z1 = 184;
+  const ROAD_LEN = ROAD_Z1 - ROAD_Z0;
+  const ROAD_MID = (ROAD_Z0 + ROAD_Z1) / 2;
   const free = (x, z, r = 1.6) => !world.collides(x, z, r);
+  // the legacy scatter below (puddles, mounds, litter) runs against the
+  // pre-expansion world: same bounds, same colliders, so the shared-RNG
+  // stream keeps its historic length and every historic placement holds
+  const freeHistoric = (x, z, r = 1.6) => !world.collidesHistoric(x, z, r);
+  // everything the northern cluster adds beyond the historic layout draws
+  // from this dedicated seed, so not a single historic placement shifts
+  const rngNorth = new Rng(440440);
 
   /* ------------------------------------------------ ground */
   const groundMat = new THREE.MeshStandardMaterial({
@@ -88,9 +125,10 @@ export function buildTerrain(ctx) {
   roadPlainMat.userData = { winterTex: T.asphaltPlainWinter, autumnTex: T.asphaltPlain, winterRough: T.asphaltPlainRoughWinter, autumnRough: T.asphaltPlainRough };
   world.roadMats.push(roadMat, roadPlainMat);
 
-  const mainRoad = tiledPlane(R * 2, 232, 12, roadMat, 0.02);
+  const mainRoad = tiledPlane(R * 2, ROAD_LEN, 12, roadMat, 0.02);
+  mainRoad.position.z = ROAD_MID;
   world.group.add(mainRoad);
-  ctx.addSurfaceRect(-R, R, -116, 116, 'asphalt');
+  ctx.addSurfaceRect(-R, R, ROAD_Z0, ROAD_Z1, 'asphalt');
 
   const crossRoad = tiledPlane(12, 232, 12, roadMat, 0.021);
   crossRoad.rotation.y = Math.PI / 2;
@@ -98,19 +136,35 @@ export function buildTerrain(ctx) {
   world.group.add(crossRoad);
   ctx.addSurfaceRect(-116, 116, CROSS - 6, CROSS + 6, 'asphalt');
 
+  // Zavodskaya street: the east arm of the northern cluster's T-junction
+  const armRoad = tiledPlane(12, 94, 12, roadMat, 0.021);
+  armRoad.rotation.y = Math.PI / 2;
+  armRoad.position.set(R + 47, 0.021, CROSS2);
+  world.group.add(armRoad);
+  ctx.addSurfaceRect(R, R + 94, CROSS2 - 6, CROSS2 + 6, 'asphalt');
+
   // parking lot in the east courtyard
   const lot = tiledPlane(16, 26, 12, roadPlainMat, 0.018);
   lot.position.set(48, 0.018, -8);
   world.group.add(lot);
   ctx.addSurfaceRect(PARKING_LOT.x0, PARKING_LOT.x1, PARKING_LOT.z0, PARKING_LOT.z1, 'asphalt');
 
+  // parking pad on the new arm
+  const lotNorth = tiledPlane(PARKING_NORTH.x1 - PARKING_NORTH.x0, PARKING_NORTH.z1 - PARKING_NORTH.z0, 12, roadPlainMat, 0.018);
+  lotNorth.position.set((PARKING_NORTH.x0 + PARKING_NORTH.x1) / 2, 0.018, (PARKING_NORTH.z0 + PARKING_NORTH.z1) / 2);
+  world.group.add(lotNorth);
+  ctx.addSurfaceRect(PARKING_NORTH.x0, PARKING_NORTH.x1, PARKING_NORTH.z0, PARKING_NORTH.z1, 'asphalt');
+
   /* ------------------------------------------------ sidewalks */
   const walkMat = new THREE.MeshStandardMaterial({ map: T.sidewalk, roughness: 0.92 });
   const walks = [
-    { x0: R, x1: R + WORLD.sidewalkWidth, z0: -116, z1: 116 },
-    { x0: -R - WORLD.sidewalkWidth, x1: -R, z0: -116, z1: 116 },
+    { x0: R, x1: R + WORLD.sidewalkWidth, z0: ROAD_Z0, z1: ROAD_Z1 },
+    { x0: -R - WORLD.sidewalkWidth, x1: -R, z0: ROAD_Z0, z1: ROAD_Z1 },
     { x0: -116, x1: 116, z0: CROSS + 6, z1: CROSS + 6 + WORLD.sidewalkWidth },
     { x0: -116, x1: 116, z0: CROSS - 6 - WORLD.sidewalkWidth, z1: CROSS - 6 },
+    // along the east arm, starting clear of the avenue sidewalks
+    { x0: R + WORLD.sidewalkWidth, x1: 100, z0: CROSS2 - 6 - WORLD.sidewalkWidth, z1: CROSS2 - 6 },
+    { x0: R + WORLD.sidewalkWidth, x1: 100, z0: CROSS2 + 6, z1: CROSS2 + 6 + WORLD.sidewalkWidth },
   ];
   for (const w of walks) {
     const cx = (w.x0 + w.x1) / 2;
@@ -126,19 +180,29 @@ export function buildTerrain(ctx) {
     top.position.set(cx, 0.141, cz);
     world.group.add(top);
 
-    ctx.addHeightRect(w.x0, w.x1, w.z0, w.z1, 0.14);
+    // the historic height registry stops at the old road end (z = 116):
+    // the avenue extension registers as 'north' so legacy passes keep
+    // reading the heights they were seeded with
+    if (w.z0 >= 116) {
+      ctx.addHeightRect(w.x0, w.x1, w.z0, w.z1, 0.14, true);
+    } else if (w.z1 > 116) {
+      ctx.addHeightRect(w.x0, w.x1, w.z0, 116, 0.14);
+      ctx.addHeightRect(w.x0, w.x1, 116, w.z1, 0.14, true);
+    } else {
+      ctx.addHeightRect(w.x0, w.x1, w.z0, w.z1, 0.14);
+    }
     ctx.addSurfaceRect(w.x0, w.x1, w.z0, w.z1, 'stone');
   }
 
   // curbs
   for (const side of [-1, 1]) {
-    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 232), M.concreteWhite);
-    curb.position.set(side * (R + 0.17), 0.1, 0);
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, ROAD_LEN), M.concreteWhite);
+    curb.position.set(side * (R + 0.17), 0.1, ROAD_MID);
     curb.receiveShadow = true;
     world.group.add(curb);
   }
 
-  // manholes
+  // manholes (the two northern ones merge into a single far-detail mesh)
   for (const [mx, mz] of [[7.6, 2], [-7.8, -18.5], [7.4, -52]]) {
     const mesh = new THREE.Mesh(
       new THREE.CircleGeometry(0.36, 20),
@@ -149,11 +213,25 @@ export function buildTerrain(ctx) {
     mesh.receiveShadow = true;
     world.group.add(mesh);
   }
+  {
+    const parts = [];
+    for (const [mx, mz] of [[-7.4, 152], [52, CROSS2]]) {
+      const g = new THREE.CircleGeometry(0.36, 20);
+      g.rotateX(-Math.PI / 2);
+      g.translate(mx, 0.15, mz);
+      parts.push(g);
+    }
+    const mesh = new THREE.Mesh(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: T.manhole, roughness: 0.7, metalness: 0.35 }));
+    mesh.receiveShadow = true;
+    world.farDetails.add(mesh);
+  }
 
   /* ------------------------------------------------ trampled paths */
   const pathMat = new THREE.MeshStandardMaterial({ map: T.path, roughness: 0.88 });
+  // the legacy list keeps its own name: the mound scatter below samples it
+  // with the shared RNG and must see the historic entries only
   const paths = WALK_PATHS;
-  for (const p of paths) {
+  for (const p of [...WALK_PATHS, ...NEW_WALK_PATHS]) {
     const cx = (p.x0 + p.x1) / 2;
     const cz = (p.z0 + p.z1) / 2;
     const y = p.plaza ? 0.045 : 0.03;
@@ -193,13 +271,13 @@ export function buildTerrain(ctx) {
     emissive: 0x0c1522,
     emissiveIntensity: 0.5,
   });
-  const dropPuddle = (x, z, y, seasonKey) => {
+  const dropPuddle = (x, z, y, seasonKey, parent = world.group) => {
     const mesh = new THREE.Mesh(new THREE.CircleGeometry(rng.float(0.6, 1.6), 18), puddleMat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.scale.set(rng.float(1, 1.7), rng.float(0.55, 1), 1);
     mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
-    world.group.add(ctx.seasonable(seasonKey, mesh));
+    parent.add(ctx.seasonable(seasonKey, mesh));
   };
   // winter: meltwater sheets and dark ice, mostly along the curb line
   let placedW = 0;
@@ -207,7 +285,7 @@ export function buildTerrain(ctx) {
     const nearCurb = rng.chance(0.6);
     const x = nearCurb ? rng.sign() * (R - rng.float(0.5, 2.2)) : rng.float(-84, 80);
     const z = rng.float(-100, 100);
-    if (!nearCurb && !free(x, z, 3)) continue;
+    if (!nearCurb && !freeHistoric(x, z, 3)) continue;
     dropPuddle(x, z, nearCurb ? 0.028 : 0.05, 'winter');
     placedW++;
   }
@@ -217,9 +295,36 @@ export function buildTerrain(ctx) {
     const nearCurb = rng.chance(0.5);
     const x = nearCurb ? rng.sign() * (R - rng.float(0.5, 2.2)) : rng.float(-84, 80);
     const z = rng.float(-100, 100);
-    if (!nearCurb && !free(x, z, 3)) continue;
+    if (!nearCurb && !freeHistoric(x, z, 3)) continue;
     dropPuddle(x, z, nearCurb ? 0.024 : 0.05, 'autumn');
     placedA++;
+  }
+  // northern cluster: same meltwater language, own seed, far-detail group
+  const dropPuddleN = (x, z, y, seasonKey) => {
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(rngNorth.float(0.6, 1.6), 18), puddleMat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.scale.set(rngNorth.float(1, 1.7), rngNorth.float(0.55, 1), 1);
+    mesh.position.set(x, y, z);
+    mesh.receiveShadow = true;
+    world.farDetails.add(ctx.seasonable(seasonKey, mesh));
+  };
+  let placedWN = 0;
+  for (let i = 0; i < 60 && placedWN < 7; i++) {
+    const nearCurb = rngNorth.chance(0.6);
+    const x = nearCurb ? rngNorth.sign() * (R - rngNorth.float(0.5, 2.2)) : rngNorth.float(10, 92);
+    const z = nearCurb ? rngNorth.float(104, 178) : rngNorth.float(106, 172);
+    if (!nearCurb && !free(x, z, 3)) continue;
+    dropPuddleN(x, z, nearCurb ? 0.028 : 0.05, 'winter');
+    placedWN++;
+  }
+  let placedAN = 0;
+  for (let i = 0; i < 60 && placedAN < 5; i++) {
+    const nearCurb = rngNorth.chance(0.5);
+    const x = nearCurb ? rngNorth.sign() * (R - rngNorth.float(0.5, 2.2)) : rngNorth.float(10, 92);
+    const z = nearCurb ? rngNorth.float(104, 178) : rngNorth.float(106, 172);
+    if (!nearCurb && !free(x, z, 3)) continue;
+    dropPuddleN(x, z, nearCurb ? 0.024 : 0.05, 'autumn');
+    placedAN++;
   }
 
   /* ------------------------------------------------ snowy edges */
@@ -238,10 +343,12 @@ export function buildTerrain(ctx) {
     mesh.rotation.y = ry;
     world.group.add(mesh);
   };
-  edge(1.5, 232, R + 0.9, 0, 0);
-  edge(1.5, 232, -R - 0.9, 0, Math.PI);
+  edge(1.5, ROAD_LEN, R + 0.9, ROAD_MID, 0);
+  edge(1.5, ROAD_LEN, -R - 0.9, ROAD_MID, Math.PI);
   edge(1.5, 232, 0, CROSS + 6.9, Math.PI / 2);
   edge(1.5, 232, 0, CROSS - 6.9, -Math.PI / 2);
+  edge(1.5, 94, R + 47, CROSS2 + 6.9, Math.PI / 2);
+  edge(1.5, 94, R + 47, CROSS2 - 6.9, -Math.PI / 2);
 
   /* ------------------------------------------------ snow mounds */
   const moundGeo = new THREE.SphereGeometry(1, 9, 6);
@@ -256,7 +363,7 @@ export function buildTerrain(ctx) {
   const dummy = new THREE.Object3D();
   const spots = [];
   const addSpot = (x, z) => {
-    if (free(x, z, 1.5)) spots.push([x, z]);
+    if (freeHistoric(x, z, 1.5)) spots.push([x, z]);
   };
   for (let i = 0; i < 240; i++) {
     const side = i % 2 ? 1 : -1;
@@ -308,7 +415,7 @@ export function buildTerrain(ctx) {
   for (let i = 0; i < 70 && clusters.length < 60; i++) {
     const x = rng.float(-92, 92);
     const z = rng.float(-92, 92);
-    if (world.heightAt(x, z) > 0.1 || !free(x, z, 2)) continue;
+    if (world.heightAtHistoric(x, z) > 0.1 || !freeHistoric(x, z, 2)) continue;
     clusters.push([x, z]);
   }
   let li = 0;
@@ -316,7 +423,7 @@ export function buildTerrain(ctx) {
     const [cx, cz] = clusters[i % clusters.length];
     const x = cx + rng.float(-4.5, 4.5);
     const z = cz + rng.float(-4.5, 4.5);
-    if (world.heightAt(x, z) > 0.1) continue;
+    if (world.heightAtHistoric(x, z) > 0.1) continue;
     dummy.position.set(x, 0.055 + rng.float(0, 0.02), z);
     dummy.rotation.set(-Math.PI / 2 + rng.float(-0.22, 0.22), 0, rng.float(0, TAU));
     const s = rng.float(0.75, 1.7);
@@ -333,4 +440,86 @@ export function buildTerrain(ctx) {
   if (litter.instanceColor) litter.instanceColor.needsUpdate = true;
   world.leafLitter = litter;
   world.group.add(ctx.seasonable('autumn', litter));
+
+  /* -------------------------------- northern cluster: mounds and litter ----
+   * Own instanced meshes fed by rngNorth, so the historic scatter above
+   * stays bit-identical. Both live in the far-detail group. */
+  {
+    const totalN = 150;
+    const moundsN = new THREE.InstancedMesh(moundGeo, moundMat, totalN);
+    moundsN.castShadow = true;
+    moundsN.receiveShadow = true;
+    moundsN.userData.total = totalN;
+    const spotsN = [];
+    // mounds pile on soil and sidewalks, never on the asphalt lanes
+    const addSpotN = (x, z) => {
+      if (world.surfaceAt(x, z) === 'asphalt') return;
+      if (free(x, z, 1.5)) spotsN.push([x, z]);
+    };
+    for (let i = 0; i < 90; i++) {
+      const side = i % 2 ? 1 : -1;
+      addSpotN(side * (R + rngNorth.float(0.7, 2.8)), rngNorth.float(104, 180));
+    }
+    for (let i = 0; i < 50; i++) {
+      const edgeZ = (rngNorth.chance(0.5) ? CROSS2 - 6 - rngNorth.float(0.7, 2.4) : CROSS2 + 6 + rngNorth.float(0.7, 2.4));
+      addSpotN(rngNorth.float(8, 98), edgeZ);
+    }
+    for (let i = 0; i < 90; i++) {
+      const p = rngNorth.pick(NEW_WALK_PATHS);
+      const alongX = p.x1 - p.x0 > p.z1 - p.z0;
+      if (alongX) addSpotN(rngNorth.float(p.x0, p.x1), rngNorth.chance(0.5) ? p.z0 - rngNorth.float(0.5, 1.6) : p.z1 + rngNorth.float(0.5, 1.6));
+      else addSpotN(rngNorth.chance(0.5) ? p.x0 - rngNorth.float(0.5, 1.6) : p.x1 + rngNorth.float(0.5, 1.6), rngNorth.float(p.z0, p.z1));
+    }
+    for (let i = 0; i < 60; i++) addSpotN(rngNorth.float(-88, 92), rngNorth.float(106, 174));
+    spotsN.sort(() => rngNorth.next() - 0.5);
+    const countN = Math.min(totalN, spotsN.length);
+    moundsN.count = countN;
+    for (let i = 0; i < countN; i++) {
+      const [x, z] = spotsN[i];
+      dummy.position.set(x + rngNorth.float(-0.4, 0.4), rngNorth.float(-0.3, -0.12), z + rngNorth.float(-0.4, 0.4));
+      dummy.rotation.set(0, rngNorth.float(0, TAU), 0);
+      const s = rngNorth.float(0.7, 1.25);
+      dummy.scale.set(s * rngNorth.float(1.2, 2.0), rngNorth.float(0.34, 0.66), s * rngNorth.float(0.9, 1.5));
+      dummy.updateMatrix();
+      moundsN.setMatrixAt(i, dummy.matrix);
+    }
+    moundsN.instanceMatrix.needsUpdate = true;
+    world.farDetails.add(ctx.seasonable('winter', moundsN));
+    world.snowMoundsNorth = moundsN;
+  }
+  {
+    const leafTotalN = 420;
+    const litterN = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.26, 0.2), litterMat, leafTotalN);
+    litterN.userData.total = leafTotalN;
+    litterN.receiveShadow = true;
+    const clustersN = [];
+    for (let i = 0; i < 60 && clustersN.length < 26; i++) {
+      const x = rngNorth.float(-86, 90);
+      const z = rngNorth.float(106, 172);
+      if (world.heightAt(x, z) > 0.1 || !free(x, z, 2)) continue;
+      clustersN.push([x, z]);
+    }
+    let liN = 0;
+    for (let i = 0; i < leafTotalN * 2 && liN < leafTotalN && clustersN.length; i++) {
+      const [cx, cz] = clustersN[i % clustersN.length];
+      const x = cx + rngNorth.float(-4.5, 4.5);
+      const z = cz + rngNorth.float(-4.5, 4.5);
+      if (world.heightAt(x, z) > 0.1) continue;
+      dummy.position.set(x, 0.055 + rngNorth.float(0, 0.02), z);
+      dummy.rotation.set(-Math.PI / 2 + rngNorth.float(-0.22, 0.22), 0, rngNorth.float(0, TAU));
+      const s = rngNorth.float(0.75, 1.7);
+      dummy.scale.set(s, s, s);
+      dummy.updateMatrix();
+      litterN.setMatrixAt(liN, dummy.matrix);
+      color.setHex(palette[Math.floor(rngNorth.next() * palette.length)]);
+      litterN.setColorAt(liN, color);
+      liN++;
+    }
+    litterN.count = liN;
+    litterN.userData.total = liN;
+    litterN.instanceMatrix.needsUpdate = true;
+    if (litterN.instanceColor) litterN.instanceColor.needsUpdate = true;
+    world.leafLitterNorth = litterN;
+    world.farDetails.add(ctx.seasonable('autumn', litterN));
+  }
 }
