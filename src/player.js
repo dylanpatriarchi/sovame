@@ -103,6 +103,8 @@ export class Player {
   }
 
   placeFootprint(x, z, yaw) {
+    // no snow to mark inside a stairwell: footprints pause indoors
+    if (this.world.interiorAt(x, z)) return;
     const side = this.stepSide;
     this.stepSide *= -1;
     const ox = Math.cos(yaw) * 0.14 * side;

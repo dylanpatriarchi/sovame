@@ -26,7 +26,9 @@ export const WALK_PATHS = [
   { x0: -14.4, x1: WORLD.roadHalfWidth + 3.2, z0: 1, z1: 3.4 },
   { x0: -26, x1: -9.4, z0: -8, z1: 12, plaza: true },
   { x0: -14, x1: WORLD.roadHalfWidth + 3.2, z0: -78.5, z1: -76.1 },
-  { x0: 26, x1: 40, z0: -26.4, z1: -24 },
+  // along B2's courtyard face, serving its entrance doors (b7-court among
+  // them): it must run north of the facade, never into the building
+  { x0: 26, x1: 40, z0: -24, z1: -21.6 },
 ];
 
 /**
@@ -41,7 +43,9 @@ export const NEW_WALK_PATHS = [
   { x0: -44.5, x1: -42.1, z0: 119, z1: 131.8 }, // spur to B8's west entrances
   { x0: -76.8, x1: -74.4, z0: 119, z1: 131.8 }, // spur to B12's entrances
   { x0: 9.4, x1: 11.6, z0: 110, z1: 118.8 }, // shortcut along B9's west wall
-  { x0: 11.4, x1: 50, z0: 116.1, z1: 118.5 }, // along B9's north facade
+  // along B9's north facade: a worn apron between the entrance doors and the
+  // arm sidewalk — it must not reach into the building (z < 118)
+  { x0: 11.4, x1: 50, z0: 118, z1: 118.8 },
   { x0: 24, x1: 48, z0: 139.6, z1: 142 }, // east courtyard, east-west
   { x0: 33.2, x1: 35.6, z0: 137.4, z1: 145.2 }, // to B11's entrances
   { x0: 72.8, x1: 75.2, z0: 137.4, z1: 145 }, // to B13's entrance

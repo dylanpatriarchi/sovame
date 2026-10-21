@@ -441,8 +441,9 @@ function buildStairwell(ctx, spec, index) {
   bulb.position.set(0.2, H - 1.23, -0.5);
   group.add(bulb);
 
-  // the one warm light of the stairwell, with a faint mains flicker
-  const light = new THREE.PointLight(0xffb168, 36, 0, 2);
+  // the one warm light of the stairwell, with a faint mains flicker; the
+  // range cutoff keeps it out of the neighboring stairwells 40 m away
+  const light = new THREE.PointLight(0xffb168, 36, 12, 2);
   light.position.set(0.2, H - 1.25, -0.5);
   group.add(light);
   ctx.addUpdater((dt, t) => {
