@@ -326,10 +326,11 @@ check(errors.length === 0, 'walk soak: zero page errors');
  */
 console.log('→ collision probe grid (4 m step)');
 const grid = await page.evaluate(async () => {
-  const { BUILDING_SPECS, EXPANSION_SPECS, WEST_SPECS } = await import('/src/world/buildings.js');
+  const { BUILDING_SPECS, EXPANSION_SPECS, WEST_SPECS, SOUTH_SPECS } = await import('/src/world/buildings.js');
+  const { SOUTH_WALK_PATHS } = await import('/src/world/south.js');
   const { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } = await import('/src/world/terrain.js');
   const w = window.__game.world;
-  const rects = [...BUILDING_SPECS, ...EXPANSION_SPECS, ...WEST_SPECS].map((s) => ({
+  const rects = [...BUILDING_SPECS, ...EXPANSION_SPECS, ...WEST_SPECS, ...SOUTH_SPECS].map((s) => ({
     id: s.id,
     minX: s.x - s.w / 2 - 0.25,
     maxX: s.x + s.w / 2 + 0.25,
@@ -343,6 +344,10 @@ const grid = await page.evaluate(async () => {
     { id: 'chimney', x: -76.4, z: -64.6, w: 2.6, d: 2.6, pad: 0.2 },
     { id: 'garage row', x: -70, z: -15.2, w: 5.6, d: 28.6, pad: 0.2 },
     { id: 'universam', x: -122, z: 63.5, w: 18, d: 9, pad: 0.2 },
+    { id: 'school', x: -50, z: -120, w: 54, d: 14, pad: 0.25 },
+    { id: 'garages north', x: -134.2, z: -113, w: 47.6, d: 6, pad: 0.2 },
+    { id: 'garages south', x: -134.2, z: -129, w: 47.6, d: 6, pad: 0.2 },
+    { id: 'obelisk', x: 80, z: -118, w: 5.4, d: 5.4, pad: 0 },
   ].map((s) => ({ id: s.id, minX: s.x - s.w / 2 - s.pad, maxX: s.x + s.w / 2 + s.pad, minZ: s.z - s.d / 2 - s.pad, maxZ: s.z + s.d / 2 + s.pad }));
   const solid = [...rects, ...structures];
   const insideRect = (x, z, r, inset = 0) => x > r.minX + inset && x < r.maxX - inset && z > r.minZ + inset && z < r.maxZ - inset;
@@ -361,7 +366,7 @@ const grid = await page.evaluate(async () => {
   const phantomRoad = [];
   const phantomOpen = [];
   for (let x = -234; x <= 106; x += 4) {
-    for (let z = -106; z <= 178; z += 4) {
+    for (let z = -194; z <= 178; z += 4) {
       const collides = w.collides(x, z, 0.34);
       const building = solid.find((r) => insideRect(x, z, r));
       if (building && !collides && insideRect(x, z, building, 0.45)) {
@@ -397,7 +402,7 @@ const grid = await page.evaluate(async () => {
   // facade is the house style, burial is a placement bug (regression: the
   // B2 courtyard-face path used to lie entirely inside the building)
   const buriedPaths = [];
-  for (const p of [...WALK_PATHS, ...NEW_WALK_PATHS]) {
+  for (const p of [...WALK_PATHS, ...NEW_WALK_PATHS, ...SOUTH_WALK_PATHS]) {
     const area = (p.x1 - p.x0) * (p.z1 - p.z0);
     let covered = 0;
     for (const r of rects) {

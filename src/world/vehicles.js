@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, damp, TAU } from '../util.js';
 import { WEST_CARS } from './west.js';
+import { SOUTH_CARS } from './south.js';
 
 /* ---------------------------------------------------------- dimensions */
 
@@ -518,6 +519,7 @@ const PARKED = [
   { x: 4.75, z: 86, heading: 0, color: 0xc9c2a8, curb: true },
   { x: -4.75, z: -28, heading: Math.PI, color: 0x8c2f28, curb: true },
   ...WEST_CARS,
+  ...SOUTH_CARS,
 ];
 
 export function buildVehicles(ctx) {
@@ -537,7 +539,7 @@ export function buildVehicles(ctx) {
     if (!spec.curb) {
       const rect = { minX: spec.x - 1.25, maxX: spec.x + 1.25, minZ: spec.z - 2.35, maxZ: spec.z + 2.35, buildOnly: true };
       world.colliders.push(rect);
-      if (!spec.north && !spec.west) ctx.addLegacyGhostRect(rect.minX, rect.maxX, rect.minZ, rect.maxZ);
+      if (!spec.north && !spec.west && !spec.south) ctx.addLegacyGhostRect(rect.minX, rect.maxX, rect.minZ, rect.maxZ);
     }
     const car = new Car(world, parts, mats, { ...spec, id: i });
     world.group.add(car.root);
