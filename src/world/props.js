@@ -385,46 +385,82 @@ export function buildProps(ctx) {
   }
 
   /* ---------------------------------------------------------- playground */
-  const paint = new THREE.MeshStandardMaterial({ color: 0x2f6b8a, roughness: 0.55, metalness: 0.35 });
   const paintFaded = new THREE.MeshStandardMaterial({ color: 0x6b7a80, roughness: 0.7, metalness: 0.3 });
+  /** Steel pipe from a to b (local coordinates), added to parent. */
+  const pipe = (parent, a, b, r, material) => {
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, dir.length(), 8), material);
+    mesh.position.copy(a).addScaledVector(dir, 0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  };
+  /** Merges the direct mesh children of a group per material (moving
+   * parts live in sub-groups and stay as they are): one draw per material. */
+  const bakeChildren = (parent) => {
+    const byMat = new Map();
+    for (const child of [...parent.children]) {
+      if (!child.isMesh || world.winterOnly.includes(child) || world.autumnOnly.includes(child)) continue;
+      child.updateMatrix();
+      const geo = child.geometry.clone().applyMatrix4(child.matrix);
+      if (!byMat.has(child.material)) byMat.set(child.material, []);
+      byMat.get(child.material).push(geo.index ? geo.toNonIndexed() : geo);
+      parent.remove(child);
+    }
+    for (const [material, geos] of byMat) {
+      const mesh = new THREE.Mesh(mergeGeometries(geos, false), material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+    }
+  };
   const swingGroup = new THREE.Group();
   {
+    // the classic двухместные качели: two splayed A-frames of painted pipe,
+    // a crossbar on top and two plank seats on rigid rods, swinging across
+    // the bar (the frame itself is built in the group's local space)
     const cx = -34;
     const cz = -20;
-    // A-frame
-    for (const dx of [-2.4, 2.4]) {
-      for (const dz of [-0.9, 0.9]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 3.0, 8), rustMat);
-        leg.position.set(dx * 0.86, 1.42, dz);
-        leg.rotation.z = dx > 0 ? -0.32 : 0.32;
-        ctx.place(leg);
-      }
+    const swingPaint = new THREE.MeshStandardMaterial({ color: 0x3f6f86, roughness: 0.62, metalness: 0.3 });
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const topY = 2.45;
+    const halfBar = 1.75;
+    for (const x of [-halfBar, halfBar]) {
+      for (const z of [-0.95, 0.95]) pipe(swingGroup, V(x, -0.05, z), V(x, topY, 0), 0.045, swingPaint);
+      pipe(swingGroup, V(x, 0.75, -0.66), V(x, 0.75, 0.66), 0.03, swingPaint); // brace
     }
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 10), rustMat);
-    bar.rotation.x = Math.PI / 2;
-    bar.position.set(0, 2.86, 0);
-    ctx.place(bar);
-    // two swinging seats
-    for (const dz of [-0.6, 0.6]) {
+    pipe(swingGroup, V(-halfBar - 0.12, topY, 0), V(halfBar + 0.12, topY, 0), 0.05, rustMat);
+    for (const sx of [-0.8, 0.8]) {
       const pivot = new THREE.Group();
-      pivot.position.set(0, 2.86, dz);
-      for (const dx of [-0.22, 0.22]) {
-        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.9, 5), M.metal);
-        chain.position.set(dx, -0.95, 0);
-        pivot.add(chain);
+      pivot.position.set(sx, topY, 0);
+      for (const dx of [-0.24, 0.24]) {
+        pipe(pivot, V(dx, 0, 0), V(dx, -1.86, 0), 0.014, M.metal);
+        const eye = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 5, 10), M.metal);
+        eye.rotation.y = Math.PI / 2;
+        eye.position.set(dx, -0.02, 0);
+        pivot.add(eye);
       }
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.06, 0.26), paintFaded);
-      seat.position.set(0, -1.9, 0);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.035, 0.24), M.metal);
+      frame.position.set(0, -1.88, 0);
+      pivot.add(frame);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.22), woodMat);
+      seat.position.set(0, -1.85, 0);
       seat.castShadow = true;
       pivot.add(seat);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.22, 0.04), paintFaded);
-      back.position.set(0, -1.78, -0.13);
-      pivot.add(back);
+      const snow = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.18), M.snow);
+      snow.position.set(0, -1.805, 0);
+      pivot.add(ctx.seasonable('winter', snow));
+      bakeChildren(pivot);
       swingGroup.add(pivot);
+      // an empty swing only stirs in the wind
+      const phase = sx * 2.3;
       world.updaters.push((dt, t) => {
-        pivot.rotation.x = Math.sin(t * 1.1 + dz * 3) * 0.13;
+        pivot.rotation.x = Math.sin(t * 1.35 + phase) * 0.035 + Math.sin(t * 0.41 + phase) * 0.02;
       });
     }
+    bakeChildren(swingGroup);
     swingGroup.position.set(cx, 0, cz);
     group.add(swingGroup);
     ctx.addBoxCollider(cx, cz, 5.6, 2.6, 0.2);
@@ -473,19 +509,32 @@ export function buildProps(ctx) {
   {
     const cx = -49;
     const cz = -30;
-    const fulcrum = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), rustMat);
-    fulcrum.position.set(cx, 0.25, cz);
-    ctx.place(fulcrum);
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.09, 0.34), paintFaded);
-    plank.position.set(cx, 0.62, cz);
-    plank.rotation.z = 0.14;
-    plank.castShadow = true;
-    group.add(plank);
-    for (const dx of [-1.5, 1.5]) {
-      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6), rustMat);
-      handle.position.set(cx + dx, 0.85 + (-dx / 1.5) * 0.21, cz);
-      group.add(handle);
+    // балансир: a pipe trestle with an axle, the plank resting on it with
+    // one end down in the snow and a T-handle in front of each seat
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const seesaw = new THREE.Group();
+    const axleY = 0.55;
+    for (const z of [-0.22, 0.22]) {
+      pipe(seesaw, V(-0.35, 0, z), V(0, axleY, z), 0.035, rustMat);
+      pipe(seesaw, V(0.35, 0, z), V(0, axleY, z), 0.035, rustMat);
     }
+    pipe(seesaw, V(0, axleY, -0.3), V(0, axleY, 0.3), 0.04, M.metal);
+    const beam = new THREE.Group();
+    beam.position.y = axleY + 0.05;
+    beam.rotation.z = 0.3;
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.07, 0.3), woodMat);
+    plank.castShadow = true;
+    plank.receiveShadow = true;
+    beam.add(plank);
+    for (const dx of [-1.25, 1.25]) {
+      pipe(beam, V(dx, 0.03, 0), V(dx, 0.42, 0), 0.02, paintFaded);
+      pipe(beam, V(dx, 0.42, -0.16), V(dx, 0.42, 0.16), 0.02, paintFaded);
+    }
+    bakeChildren(beam);
+    seesaw.add(beam);
+    bakeChildren(seesaw);
+    seesaw.position.set(cx, 0, cz);
+    group.add(seesaw);
     ctx.addBoxCollider(cx, cz, 3.6, 0.8, 0.1);
 
     // slide
@@ -857,7 +906,10 @@ export function buildProps(ctx) {
   {
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x6f6a62, roughness: 0.9 });
     const wireMat = new THREE.MeshStandardMaterial({ color: 0x1b1d1e, roughness: 0.8 });
-    const zs = [-96, -72, -48, -24, 0, 24, 48, 72, 96];
+    // the z = 48 pole used to stand on the cross street's asphalt: it moves
+    // to the far sidewalk edge, its old footprint stays as a legacy ghost
+    // so the historic scatter passes keep their placements
+    const zs = [-96, -72, -48, -24, 0, 24, 53.8, 72, 96];
     const x = -12.6;
     const tops = [];
     zs.forEach((z, i) => {
@@ -873,7 +925,12 @@ export function buildProps(ctx) {
         ins.position.set(x + dx, h - 0.55, z);
         group.add(ins);
       }
-      ctx.addBoxCollider(x, z, 0.5, 0.5, 0.1);
+      if (z === 53.8) {
+        ctx.addBoxCollider(x, z, 0.5, 0.5, 0.1, true);
+        ctx.addLegacyGhostRect(x - 0.35, x + 0.35, 47.65, 48.35);
+      } else {
+        ctx.addBoxCollider(x, z, 0.5, 0.5, 0.1);
+      }
       tops.push(new THREE.Vector3(x, h - 0.45, z));
     });
     for (let i = 0; i < tops.length - 1; i++) {
@@ -1139,7 +1196,7 @@ export function buildProps(ctx) {
       const postParts = [];
       for (const dx of [-w * 0.32, w * 0.32]) {
         const post = new THREE.BoxGeometry(0.14, legH + h, 0.14);
-        post.translate(dx, (legH + h) / 2, 0.16);
+        post.translate(bx + dx, (legH + h) / 2, bz + 0.16);
         postParts.push(post);
       }
       bake(mergeGeometries(postParts, false), M.metal);

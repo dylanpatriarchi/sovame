@@ -134,17 +134,22 @@ export function makeAsphaltTexture({ dashes = true, size = 512, winter = false }
     ctx.strokeRect(rng.float(0, size), rng.float(0, size), w, h);
     ctx.restore();
   }
-  // cracks
-  ctx.strokeStyle = 'rgba(24,25,28,0.75)';
-  for (let i = 0; i < 40; i++) {
-    ctx.lineWidth = rng.float(0.8, 2.2);
+  // cracks: few, hairline, running mostly along or across the lane with a
+  // slight meander (random-walk zig-zags read as scribbles at eye level)
+  ctx.strokeStyle = 'rgba(28,30,33,0.38)';
+  for (let i = 0; i < 14; i++) {
+    ctx.lineWidth = rng.float(0.6, 1.3);
     let x = rng.float(0, size);
     let y = rng.float(0, size);
+    let a = rng.chance(0.6) ? Math.PI / 2 + rng.float(-0.25, 0.25) : rng.float(-0.3, 0.3);
     ctx.beginPath();
     ctx.moveTo(x, y);
-    for (let s = 0; s < 7; s++) {
-      x += rng.float(-26, 26);
-      y += rng.float(-26, 26);
+    const steps = rng.int(5, 12);
+    for (let s = 0; s < steps; s++) {
+      a += rng.float(-0.35, 0.35);
+      const len = rng.float(6, 14);
+      x += Math.cos(a) * len;
+      y += Math.sin(a) * len;
       ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -309,16 +314,18 @@ export function makeSidewalkTexture(size = 512) {
   for (let i = 0; i < 40; i++) {
     wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(10, 40), 'rgba(222,229,238,0.8)', rng.float(0.1, 0.35));
   }
-  ctx.strokeStyle = 'rgba(62,64,64,0.6)';
-  for (let i = 0; i < 26; i++) {
-    ctx.lineWidth = rng.float(0.8, 1.8);
+  ctx.strokeStyle = 'rgba(62,64,64,0.35)';
+  for (let i = 0; i < 12; i++) {
+    ctx.lineWidth = rng.float(0.6, 1.2);
     let x = rng.float(0, size);
     let y = rng.float(0, size);
+    let a = rng.float(0, TAU);
     ctx.beginPath();
     ctx.moveTo(x, y);
     for (let s = 0; s < 4; s++) {
-      x += rng.float(-30, 30);
-      y += rng.float(-30, 30);
+      a += rng.float(-0.5, 0.5);
+      x += Math.cos(a) * rng.float(8, 18);
+      y += Math.sin(a) * rng.float(8, 18);
       ctx.lineTo(x, y);
     }
     ctx.stroke();
