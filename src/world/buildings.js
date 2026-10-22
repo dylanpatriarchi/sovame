@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng, TAU, makeCanvas, starPath } from '../util.js';
 import { makeSignTexture, canvasTexture } from '../textures.js';
 
-const FLOOR_H = 3.0;
+export const FLOOR_H = 3.0;
 const CELL_W = 3.4;
 
 /** Panel blocks of the district. Shared with the stairwell interiors, which
