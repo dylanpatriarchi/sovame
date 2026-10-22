@@ -7,7 +7,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng, makeCanvas } from '../util.js';
 import { canvasTexture, makeSignTexture, makeSoftCircleTexture } from '../textures.js';
-import { INTERIOR_LAYER, LAND_H, makeRadiatorTexture, makeWindowViewTexture } from './interiors.js';
+import { INTERIOR_LAYER, LAND_H, STAIRWELL_D, makeRadiatorTexture, makeWindowViewTexture } from './interiors.js';
+import { FLOOR_H } from './buildings.js';
+import { paneMaterial, portalMatrix } from '../windowview.js';
 
 const X0 = -3.5;
 const X1 = 3.5;
@@ -239,7 +241,14 @@ function colored(geometry, hex) {
 
 /* ---------------------------------------------------------- build */
 
-function buildFlat(ctx, stairwell, index) {
+/** Padded door textures, one per flat number actually shown. */
+const doorTextures = new Map();
+function doorTexture(number) {
+  if (!doorTextures.has(number)) doorTextures.set(number, makePaddedDoorTexture(number, 900 + number * 7));
+  return doorTextures.get(number);
+}
+
+function buildFlat(ctx, stairwell, index, variant) {
   const { world, materials: M } = ctx;
   const style = FLAT_STYLES[index % FLAT_STYLES.length];
   const seed = 900 + index * 37;
@@ -307,7 +316,7 @@ function buildFlat(ctx, stairwell, index) {
   addMesh(new THREE.BoxGeometry(X1 - X0 + 2 * WT, 0.08, Z1 - Z0 + 2 * WT).translate(0, FH + 0.04, 0), new THREE.MeshStandardMaterial({ color: 0xd9d4c8, roughness: 0.95 }));
 
   /* ---- doors ---- */
-  const doorMat = new THREE.MeshStandardMaterial({ map: makePaddedDoorTexture(stairwell.flatNumber, seed + 2), roughness: 0.7 });
+  const doorMat = new THREE.MeshStandardMaterial({ map: doorTexture(stairwell.flatBase ?? 1), roughness: 0.7 });
   addMesh(new THREE.BoxGeometry(0.92, 2.04, 0.06), doorMat).position.set(-2.2, 1.02, Z0 + 0.03);
   // bathroom door, closed: painted panel with the little figure window
   box(0.06, 2.0, 0.78, BATH_X - 0.07, 1.0, -2.62, 0xe6e1d4);
@@ -376,21 +385,37 @@ function buildFlat(ctx, stairwell, index) {
   box(0.02, 0.18, 0.16, X0 + 0.115, 1.6, 3.3, 0xc8b88e); // grille cloth
   cyl(0.025, 0.025, 0.03, X0 + 0.125, 1.44, 3.24, 0x2a2a2a, 8);
 
-  /* ---- room (x > SPLIT_X, z > HALL_Z) ---- */
-  // sofa against the east wall
-  box(0.85, 0.42, 2.0, X1 - 0.45, 0.21, 1.4, style.sofa);
-  box(0.25, 0.55, 2.0, X1 - 0.15, 0.6, 1.4, style.sofa);
-  box(0.85, 0.3, 0.18, X1 - 0.45, 0.55, 0.32, style.sofa);
-  box(0.85, 0.3, 0.18, X1 - 0.45, 0.55, 2.48, style.sofa);
-  box(0.4, 0.14, 0.4, X1 - 0.5, 0.5, 2.05, 0xc9a046); // cushion
-  // wall carpet above the sofa
-  const carpet = addMesh(new THREE.PlaneGeometry(2.3, 1.6), new THREE.MeshStandardMaterial({ map: makeCarpetTexture(style.carpet, seed + 3), roughness: 0.98 }));
+  /* ---- room (x > SPLIT_X, z > HALL_Z): a living room or a bedroom ---- */
+  const living = variant === 'living';
+  if (living) {
+    // sofa against the east wall
+    box(0.85, 0.42, 2.0, X1 - 0.45, 0.21, 1.4, style.sofa);
+    box(0.25, 0.55, 2.0, X1 - 0.15, 0.6, 1.4, style.sofa);
+    box(0.85, 0.3, 0.18, X1 - 0.45, 0.55, 0.32, style.sofa);
+    box(0.85, 0.3, 0.18, X1 - 0.45, 0.55, 2.48, style.sofa);
+    box(0.4, 0.14, 0.4, X1 - 0.5, 0.5, 2.05, 0xc9a046); // cushion
+  } else {
+    // double bed, headboard on the east wall, under the wall carpet
+    box(2.0, 0.3, 1.5, X1 - 1.0, 0.2, 1.4, 0x5a3a24);
+    box(0.06, 0.95, 1.56, X1 - 0.03, 0.5, 1.4, 0x4e321e);
+    box(0.06, 0.55, 1.56, X1 - 2.0, 0.3, 1.4, 0x4e321e);
+    box(1.94, 0.16, 1.44, X1 - 1.0, 0.43, 1.4, 0xe9e4d8); // mattress and sheet
+    box(1.45, 0.07, 1.5, X1 - 1.22, 0.53, 1.4, style.sofa); // blanket
+    box(0.42, 0.12, 0.6, X1 - 0.3, 0.57, 1.05, 0xf3f0e8); // pillows
+    box(0.42, 0.12, 0.6, X1 - 0.3, 0.57, 1.75, 0xf3f0e8);
+    box(0.45, 0.5, 0.4, X1 - 0.25, 0.25, 0.3, 0x5a3a24); // bedside table
+    cyl(0.07, 0.1, 0.05, X1 - 0.25, 0.53, 0.3, 0x2a2a2a); // alarm clock base
+    box(0.12, 0.12, 0.06, X1 - 0.25, 0.6, 0.3, 0xb84a32); // the clock
+  }
+  // wall carpet above the sofa or the bed
+  const carpetMat = new THREE.MeshStandardMaterial({ map: makeCarpetTexture(style.carpet, seed + 3), roughness: 0.98 });
+  const carpet = addMesh(new THREE.PlaneGeometry(2.3, 1.6), carpetMat);
   carpet.rotation.y = -Math.PI / 2;
   carpet.position.set(X1 - 0.012, 1.55, 1.4);
   // floor rug
   const rug = addMesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ map: makeCarpetTexture([style.carpet[2], style.carpet[1], style.carpet[0]], seed + 4), roughness: 1, polygonOffset: true, polygonOffsetFactor: -1 }));
   rug.rotation.x = -Math.PI / 2;
-  rug.position.set(1.3, 0.006, 1.5);
+  rug.position.set(living ? 1.3 : 0.75, 0.006, living ? 1.5 : 2.6);
   // wall unit (стенка) along the partition: wardrobe, glass shelves, TV niche
   const unitX = SPLIT_X + WT / 2 + 0.25;
   box(0.5, 2.2, 0.8, unitX, 1.1, -1.05 + 0.4 + 0.05, 0x5a3a24); // wardrobe
@@ -408,24 +433,43 @@ function buildFlat(ctx, stairwell, index) {
       z += w + 0.005;
     }
   }
-  // the TV: a CRT on the low cabinet, screen faces the sofa
-  box(0.5, 0.48, 0.58, unitX + 0.02, 0.99, 0.75, 0x2b2622);
-  box(0.03, 0.06, 0.06, unitX + 0.28, 0.82, 1.0, 0x8a8a8a); // knob
-  const screenMat = new THREE.MeshBasicMaterial({ color: 0x8fb4ef });
-  const screen = addMesh(new THREE.PlaneGeometry(0.42, 0.32), screenMat);
-  screen.rotation.y = Math.PI / 2;
-  screen.position.set(unitX + 0.275, 1.01, 0.72);
-  const tvGlow = addMesh(
-    new THREE.PlaneGeometry(2.6, 2.0),
-    new THREE.MeshBasicMaterial({ map: makeSoftCircleTexture(128, '150,180,240', 2.2), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  tvGlow.rotation.x = -Math.PI / 2;
-  tvGlow.position.set(unitX + 1.2, 0.012, 0.8);
-  // armchair by the window, floor lamp beside it
-  box(0.7, 0.4, 0.7, 2.6, 0.2, 3.35, style.sofa);
-  box(0.7, 0.55, 0.18, 2.6, 0.62, 3.65, style.sofa);
-  cyl(0.015, 0.015, 1.5, 3.15, 0.75, 3.6, 0x2a2a2a, 6);
-  cyl(0.14, 0.14, 0.03, 3.15, 0.015, 3.6, 0x2a2a2a);
+  let screenMat = null;
+  let tvGlow = null;
+  if (living) {
+    // the TV: a CRT on the low cabinet, screen faces the sofa
+    box(0.5, 0.48, 0.58, unitX + 0.02, 0.99, 0.75, 0x2b2622);
+    box(0.03, 0.06, 0.06, unitX + 0.28, 0.82, 1.0, 0x8a8a8a); // knob
+    screenMat = new THREE.MeshBasicMaterial({ color: 0x8fb4ef });
+    const screen = addMesh(new THREE.PlaneGeometry(0.42, 0.32), screenMat);
+    screen.rotation.y = Math.PI / 2;
+    screen.position.set(unitX + 0.275, 1.01, 0.72);
+    tvGlow = addMesh(
+      new THREE.PlaneGeometry(2.6, 2.0),
+      new THREE.MeshBasicMaterial({ map: makeSoftCircleTexture(128, '150,180,240', 2.2), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    tvGlow.rotation.x = -Math.PI / 2;
+    tvGlow.position.set(unitX + 1.2, 0.012, 0.8);
+    // armchair by the window, floor lamp beside it
+    box(0.7, 0.4, 0.7, 2.6, 0.2, 3.35, style.sofa);
+    box(0.7, 0.55, 0.18, 2.6, 0.62, 3.65, style.sofa);
+    cyl(0.015, 0.015, 1.5, 3.15, 0.75, 3.6, 0x2a2a2a, 6);
+    cyl(0.14, 0.14, 0.03, 3.15, 0.015, 3.6, 0x2a2a2a);
+  } else {
+    // the niche holds the good crystal and a record player
+    box(0.4, 0.14, 0.4, unitX + 0.02, 0.82, 0.55, 0x3a2a20);
+    cyl(0.15, 0.15, 0.01, unitX + 0.02, 0.9, 0.55, 0x151515, 20);
+    for (let k = 0; k < 4; k++) cyl(0.035, 0.045, 0.14, unitX + 0.05, 0.82, 0.95 + k * 0.1, 0xbfd2dc, 10);
+    // school desk by the window: lamp, exercise books, a chair
+    box(1.1, 0.04, 0.6, 2.62, 0.74, 3.4, 0x7a5a3a);
+    for (const [dx, dz] of [[-0.5, -0.25], [0.5, -0.25], [-0.5, 0.25], [0.5, 0.25]]) box(0.04, 0.72, 0.04, 2.62 + dx, 0.36, 3.4 + dz, 0x5a4026);
+    box(0.3, 0.02, 0.22, 2.4, 0.77, 3.35, 0x3a6a8a);
+    box(0.3, 0.02, 0.22, 2.45, 0.79, 3.33, 0xd8d2c0);
+    cyl(0.07, 0.09, 0.03, 3.0, 0.775, 3.55, 0x2c4a32);
+    cyl(0.012, 0.012, 0.34, 3.0, 0.93, 3.55, 0x2c4a32, 6);
+    box(0.42, 0.04, 0.42, 2.62, 0.45, 2.85, 0x6b4a2e); // chair
+    box(0.42, 0.42, 0.04, 2.62, 0.68, 2.66, 0x6b4a2e);
+    for (const [dx, dz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) box(0.03, 0.45, 0.03, 2.62 + dx, 0.22, 2.85 + dz, 0x5a4026);
+  }
   // ceiling chandelier: three small shades
   for (let k = 0; k < 3; k++) {
     const a = (k / 3) * Math.PI * 2;
@@ -441,13 +485,23 @@ function buildFlat(ctx, stairwell, index) {
     { x: -2.15, w: 1.2 },
     { x: 1.35, w: 1.5 },
   ];
+  const panes = [];
   windows.forEach((win, k) => {
-    const view = addMesh(
-      new THREE.PlaneGeometry(win.w, 1.35),
-      new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: makeWindowViewTexture(seed + 10 + k), emissiveIntensity: 0.85, roughness: 0.5 })
-    );
+    const view = addMesh(new THREE.PlaneGeometry(win.w, 1.35), paneMaterial(world, makeWindowViewTexture(seed + 10 + k), 0.85));
     view.rotation.y = Math.PI;
     view.position.set(win.x, 1.6, Z1 - 0.008);
+    panes.push(view);
+    // white-painted wooden frames: two casements, transom, the fortochka
+    const fz = Z1 - 0.04;
+    const fc = 0xe4ded0;
+    box(win.w + 0.12, 0.07, 0.08, win.x, 1.6 + 0.71, fz, fc);
+    box(win.w + 0.12, 0.07, 0.08, win.x, 1.6 - 0.71, fz, fc);
+    box(0.07, 1.42, 0.08, win.x - win.w / 2 - 0.03, 1.6, fz, fc);
+    box(0.07, 1.42, 0.08, win.x + win.w / 2 + 0.03, 1.6, fz, fc);
+    box(0.06, 1.35, 0.07, win.x, 1.6, fz, fc);
+    box(win.w, 0.05, 0.07, win.x, 1.6 + 0.3, fz, fc);
+    box(0.04, 0.37, 0.06, win.x - win.w / 4, 1.6 + 0.49, fz - 0.01, fc);
+    box(0.05, 0.12, 0.03, win.x + 0.06, 1.55, fz - 0.05, 0xb9a46a); // latch
     box(win.w + 0.16, 0.05, 0.22, win.x, 0.9, Z1 - 0.1, 0xe8e2d4); // sill
     addMesh(new THREE.BoxGeometry(win.w * 0.8, 0.5, 0.1), radiatorMat).position.set(win.x, 0.45, Z1 - 0.12);
   });
@@ -456,7 +510,7 @@ function buildFlat(ctx, stairwell, index) {
   box(0.4, 2.2, 0.04, 1.35 + 0.95, 1.4, Z1 - 0.2, 0x7a3a2a);
   addMesh(
     new THREE.PlaneGeometry(1.6, 1.9),
-    new THREE.MeshStandardMaterial({ color: 0xf2efe6, transparent: true, opacity: 0.35, roughness: 1, depthWrite: false, side: THREE.DoubleSide })
+    new THREE.MeshStandardMaterial({ color: 0xf2efe6, transparent: true, opacity: 0.13, roughness: 1, depthWrite: false, side: THREE.DoubleSide })
   ).position.set(1.35, 1.4, Z1 - 0.15);
   box(2.4, 0.04, 0.06, 1.35, 2.52, Z1 - 0.2, 0x8a7a5a); // curtain rail
 
@@ -470,7 +524,8 @@ function buildFlat(ctx, stairwell, index) {
     lampGeos.push(new THREE.SphereGeometry(0.045, 10, 6).translate(1.3 + Math.cos(a) * 0.2, FH - 0.45, 1.2 + Math.sin(a) * 0.2));
   }
   lampGeos.push(new THREE.CylinderGeometry(0.08, 0.26, 0.2, 18, 1, true).translate(-2.2, FH - 0.8, 3.2));
-  lampGeos.push(new THREE.CylinderGeometry(0.14, 0.22, 0.3, 16, 1, true).translate(3.15, 1.55, 3.6));
+  if (living) lampGeos.push(new THREE.CylinderGeometry(0.14, 0.22, 0.3, 16, 1, true).translate(3.15, 1.55, 3.6));
+  else lampGeos.push(new THREE.CylinderGeometry(0.05, 0.12, 0.12, 14, 1, true).translate(3.0, 1.12, 3.5));
   lampGeos.push(new THREE.SphereGeometry(0.18, 16, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2).scale(1, 0.45, 1).translate(-0.6, FH, -2.8));
   addMesh(mergeGeometries(lampGeos), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.9, 1.15, 0.55), side: THREE.DoubleSide }));
 
@@ -498,9 +553,14 @@ function buildFlat(ctx, stairwell, index) {
   C(X0, X0 + 0.62, -0.3, 1.52); // stove + cabinet
   C(SPLIT_X - WT / 2 - 0.64, SPLIT_X - WT / 2, HALL_Z, HALL_Z + 0.72); // fridge
   C(-2.82, -1.58, 2.82, 3.68); // table
-  C(X1 - 0.9, X1, 0.22, 2.58); // sofa
   C(SPLIT_X, unitX + 0.27, HALL_Z, 2.62); // wall unit
-  C(2.24, 3.3, 3.0, Z1); // armchair + lamp
+  if (living) {
+    C(X1 - 0.9, X1, 0.22, 2.58); // sofa
+    C(2.24, 3.3, 3.0, Z1); // armchair + lamp
+  } else {
+    C(X1 - 2.05, X1, 0.08, 2.18); // bed and bedside table
+    C(2.04, 3.2, 3.08, 3.72); // desk
+  }
   C(X0, X0 + 0.42, -3.6, -1.5); // coats and shoe cabinet
   ctx.addSurfaceRect(cx + X0, cx + X1, cz + Z0, cz + Z1, 'wood');
   ctx.addSurfaceRect(cx + X0, cx + SPLIT_X, cz + HALL_Z, cz + Z1, 'concrete');
@@ -511,49 +571,81 @@ function buildFlat(ctx, stairwell, index) {
     group,
     cx,
     cz,
+    panes,
+    doorMat,
+    wallpaper,
+    carpetMat,
     radio: new THREE.Vector3(cx + X0 + 0.15, 1.55, cz + 3.3),
     // kitchen pendant, room chandelier, hall ceiling dome
     lights: [new THREE.Vector3(cx - 2.2, FH - 1.0, cz + 2.7), new THREE.Vector3(cx + 0.8, FH - 0.6, cz + 0.2), new THREE.Vector3(cx - 0.6, FH - 0.35, cz - 2.8)],
-    tv: { screenMat, glowMat: tvGlow.material, phase: rng.float(0, 6) },
+    tv: screenMat ? { screenMat, glowMat: tvGlow.material, phase: rng.float(0, 6) } : null,
   };
 }
+
+/** Where each landing door leads: the left-wall flat looks out on the
+ * entrance side, the one behind the far wall on the opposite facade. */
+const SLOTS = [
+  { variant: 'living', offset: 2, windowSide: 1, along: -1 },
+  { variant: 'bedroom', offset: 3, windowSide: -1, along: 0 },
+];
 
 /** Flat doors on the landings and the flats behind them. */
 export function buildFlats(ctx) {
   const { world } = ctx;
   world.flats = [];
-  // the flat door: padded leatherette on the landing's left wall
-  world.interiors.forEach((stairwell, index) => {
+  const wallpapers = FLAT_STYLES.map((st, k) => makeWallpaperTexture(st.wall, 950 + k * 13));
+  const carpets = FLAT_STYLES.map((st, k) => makeCarpetTexture(st.carpet, 970 + k * 17));
+  world.interiors.forEach((stairwell, si) => {
     const scx = (stairwell.bounds.x0 + stairwell.bounds.x1) / 2;
     const scz = (stairwell.bounds.z0 + stairwell.bounds.z1) / 2;
-    stairwell.flatNumber = (stairwell.flatBase ?? 1) + 2;
-    const door = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 2.0, 0.92),
-      new THREE.MeshStandardMaterial({ map: makePaddedDoorTexture(stairwell.flatNumber, 900 + index * 37 + 2), roughness: 0.7 })
-    );
-    // the texture's front faces +x on this side
-    door.position.set(scx - 2.2 + 0.11, LAND_H + 1.0, scz + 2.62);
-    door.layers.set(INTERIOR_LAYER);
-    world.group.add(door);
+    SLOTS.forEach((slot, k) => {
+      const index = si * 2 + k;
+      const number = (stairwell.flatBase ?? 1) + slot.offset;
+      // the padded door on the landing: left wall, or the far wall beside the window
+      const landingDoorMat = new THREE.MeshStandardMaterial({ map: doorTexture(number), roughness: 0.7 });
+      const door = k === 0 ? new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.0, 0.92), landingDoorMat) : new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.0, 0.06), landingDoorMat);
+      // the texture's front faces +x (left wall) or -z (far wall)
+      if (k === 0) door.position.set(scx - 2.2 + 0.11, LAND_H + 1.0, scz + 2.62);
+      else {
+        door.rotation.y = Math.PI;
+        door.position.set(scx + 1.62, LAND_H + 1.0, scz + STAIRWELL_D / 2 - 0.11);
+      }
+      door.layers.set(INTERIOR_LAYER);
+      world.group.add(door);
 
-    const f = buildFlat(ctx, stairwell, index);
-    world.flats.push({
-      id: `${stairwell.id}:flat`,
-      kind: 'flat',
-      number: stairwell.flatNumber,
-      caption: `Flat ${stairwell.flatNumber} · ${stairwell.caption.toLowerCase()}`,
-      parent: stairwell,
-      bounds: { x0: f.cx + X0, x1: f.cx + X1, z0: f.cz + Z0, z1: f.cz + Z1 },
-      // landing side: in front of the padded door
-      doorOut: { x: scx - 1.75, z: scz + 2.62, y: LAND_H },
-      outSpawn: { x: scx - 1.35, z: scz + 2.62, yaw: -Math.PI / 2 },
-      // inside: just past the flat's own door, facing into the hall
-      doorIn: { x: f.cx - 2.2, z: f.cz + Z0 + 0.45 },
-      inSpawn: { x: f.cx - 2.2, z: f.cz + Z0 + 1.0, yaw: Math.PI },
-      radio: f.radio,
-      lightPos: f.lights,
-      tv: f.tv,
-      group: f.group,
+      const f = buildFlat(ctx, stairwell, index, slot.variant);
+      const flat = {
+        id: k === 0 ? `${stairwell.id}:flat` : `${stairwell.id}:flat${k + 1}`,
+        kind: 'flat',
+        slot,
+        number,
+        caption: `Flat ${number} · ${stairwell.caption.toLowerCase()}`,
+        parent: stairwell,
+        bounds: { x0: f.cx + X0, x1: f.cx + X1, z0: f.cz + Z0, z1: f.cz + Z1 },
+        // landing side: in front of the padded door
+        doorOut: k === 0 ? { x: scx - 1.75, z: scz + 2.62, y: LAND_H } : { x: scx + 1.62, z: scz + 2.72, y: LAND_H },
+        doorFacing: k === 0 ? { x: -1, z: 0 } : { x: 0, z: 1 },
+        outSpawn: k === 0 ? { x: scx - 1.35, z: scz + 2.62, yaw: -Math.PI / 2 } : { x: scx + 1.55, z: scz + 2.4, yaw: 0 },
+        // inside: just past the flat's own door, facing into the hall
+        doorIn: { x: f.cx - 2.2, z: f.cz + Z0 + 0.45 },
+        inSpawn: { x: f.cx - 2.2, z: f.cz + Z0 + 1.0, yaw: Math.PI },
+        // outer face of the window wall: lands on the facade
+        windowRef: new THREE.Vector3(f.cx, 0, f.cz + Z1 + WT),
+        panes: f.panes,
+        radio: f.radio,
+        lightPos: f.lights,
+        tv: f.tv,
+        group: f.group,
+        /** Renumbers the flat (both sides of its door) and redecorates it. */
+        setNumber(n, look) {
+          flat.number = n;
+          landingDoorMat.map = doorTexture(n);
+          f.doorMat.map = doorTexture(n);
+          f.wallpaper.map = wallpapers[look % wallpapers.length];
+          f.carpetMat.map = carpets[(look + k) % carpets.length];
+        },
+      };
+      world.flats.push(flat);
     });
   });
 
@@ -562,6 +654,7 @@ export function buildFlats(ctx) {
   for (const light of world.flatLights) world.group.add(light);
   ctx.addUpdater((dt, t) => {
     for (const flat of world.flats) {
+      if (!flat.tv) continue;
       const k = 0.55 + 0.3 * Math.sin(t * 1.7 + flat.tv.phase) * Math.sin(t * 0.63 + flat.tv.phase * 2) + (Math.sin(t * 0.21 + flat.tv.phase) > 0.9 ? 0.25 : 0);
       flat.tv.screenMat.color.setRGB(0.45 * k, 0.6 * k, 0.95 * k);
       flat.tv.glowMat.opacity = 0.08 + 0.08 * k;
@@ -569,11 +662,51 @@ export function buildFlats(ctx) {
   });
 }
 
+/**
+ * Numbers the landing's flats for the stairwell's current floor and entrance
+ * (four flats a floor, as on the mailboxes) and gives them a look of their own.
+ */
+export function numberFlats(world, stairwell) {
+  const a = stairwell.address;
+  const floors = a?.spec.floors ?? 5;
+  const base = a ? (a.entrance - 1) * 4 * floors + 1 : (stairwell.flatBase ?? 1);
+  const seed = a ? Math.abs(Math.round(a.x * 3.1 + a.spec.z * 1.7)) : 0;
+  for (const flat of world.flats ?? []) {
+    if (flat.parent !== stairwell) continue;
+    const n = base + (stairwell.floor - 1) * 4 + flat.slot.offset;
+    flat.setNumber(n, seed + stairwell.floor);
+    flat.caption = `Flat ${n} · floor ${stairwell.floor} · ${stairwell.caption.toLowerCase()}`;
+  }
+}
+
+/**
+ * Where a flat's windows really are: same floor and entrance as its
+ * stairwell, a cell or two along the block, on the facade it faces.
+ */
+export function flatView(flat) {
+  const stairwell = flat.parent;
+  const a = stairwell.address;
+  if (!a) return null;
+  const spec = a.spec;
+  const side = a.side * flat.slot.windowSide;
+  const half = spec.w / 2 - 4.2;
+  const x = Math.min(spec.x + half, Math.max(spec.x - half, a.x + flat.slot.along * a.side * 5.1));
+  const facadeZ = spec.z + side * (spec.d / 2);
+  // ground-floor flats sit a little above the street, like the real ones
+  const y = (stairwell.floor - 1) * FLOOR_H + 0.1;
+  return {
+    toWorld: portalMatrix(flat.windowRef, new THREE.Vector3(x, y, facadeZ), side),
+    point: new THREE.Vector3(x, 0, facadeZ + side * 0.03),
+    normal: new THREE.Vector3(0, 0, side),
+    panes: flat.panes,
+  };
+}
+
 /** Parks the shared flat lights in the given flat (or turns them off) and
- * shows only the flat reachable from where the player is. */
+ * shows only the flats reachable from where the player is. */
 export function setFlatLight(world, flat, interior = flat) {
   for (const f of world.flats ?? []) f.group.visible = !!interior && (f === interior || f.parent === interior);
-  const levels = [9, 20, 6];
+  const levels = [5.5, 11, 3.5];
   world.flatLights?.forEach((light, i) => {
     if (flat) light.position.copy(flat.lightPos[i]);
     light.intensity = flat ? levels[i] : 0;
