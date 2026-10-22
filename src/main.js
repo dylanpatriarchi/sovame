@@ -12,6 +12,7 @@ import { Player } from './player.js';
 import { Sound } from './audio.js';
 import { UI } from './ui.js';
 import { Smoke, smokeSpots } from './smoke.js';
+import { Driving } from './driving.js';
 import { PLAYER, SETTINGS_DEFAULTS } from './config.js';
 import { clamp } from './util.js';
 
@@ -193,6 +194,25 @@ async function boot() {
       onUse: () => startSmoke(spot),
     });
   }
+  // every parked car: E to get in (the prompt follows the car around)
+  const driving = new Driving({ camera, world, player, sound, env });
+  for (const car of world.cars ?? []) {
+    world.interactables.push({
+      id: `car-${car.id}`,
+      get x() {
+        return car.x;
+      },
+      get z() {
+        return car.z;
+      },
+      // measured from the bodywork, not the car's center
+      distanceTo: (x, z) => car.distanceTo(x, z),
+      radius: 1.3,
+      available: () => !driving.active && !state.interior,
+      prompt: () => 'E — get in the car',
+      onUse: () => enterCar(car),
+    });
+  }
   player.setFootprintStyle('snow', settings.season);
   ui.setProgress(0.94, 'Final touches');
   await nextFrame();
@@ -250,6 +270,7 @@ async function boot() {
   }
 
   function enterWorld() {
+    leaveCarNow();
     state.mode = 'playing';
     state.interior = null;
     setFlatLight(world, null);
@@ -281,6 +302,7 @@ async function boot() {
 
   function toTitle() {
     if (state.smoking) endSmoke(false);
+    leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
     state.interior = null;
@@ -303,7 +325,7 @@ async function boot() {
       if (key && (it.key ?? 'KeyE') !== key) continue;
       if (it.available && !it.available()) continue;
       if (it.y !== undefined && Math.abs(player.position.y - it.y) > 0.6) continue;
-      const d = Math.hypot(it.x - player.position.x, it.z - player.position.z);
+      const d = it.distanceTo ? it.distanceTo(player.position.x, player.position.z) : Math.hypot(it.x - player.position.x, it.z - player.position.z);
       if (d < it.radius && d < bestDist) {
         best = it;
         bestDist = d;
@@ -331,6 +353,38 @@ async function boot() {
     }).finally(() => {
       state.transitioning = false;
     });
+  }
+
+  /** Into the driver's seat: a short fade, the door, the starter. */
+  function enterCar(car) {
+    if (state.transitioning || driving.active) return;
+    state.transitioning = true;
+    ui.fadeTransition(() => {
+      driving.enter(car);
+      lastPrompt = null;
+    }).finally(() => {
+      state.transitioning = false;
+    });
+  }
+
+  function leaveCar() {
+    if (state.transitioning || !driving.active || Math.abs(driving.car.speed) > 1.5) return;
+    state.transitioning = true;
+    ui.fadeTransition(() => {
+      if (!driving.exit()) sound.ui('tick');
+      lastPrompt = null;
+    }).finally(() => {
+      state.transitioning = false;
+    });
+  }
+
+  /** Back to the title (or a restart) with the engine still running. */
+  function leaveCarNow() {
+    if (!driving.active) return;
+    driving.car.setDriven(false);
+    driving.car = null;
+    world.carBeam.light.intensity = 0;
+    sound.engineStop();
   }
 
   /** Sits down (fade) or stays standing, then hands the view to the sequence. */
@@ -402,8 +456,13 @@ async function boot() {
   }
 
   function updatePrompt() {
-    const it = state.smoking ? null : nearestInteractable();
-    const text = it && !state.transitioning ? it.prompt() : null;
+    let text = null;
+    if (driving.active) {
+      text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
+    } else {
+      const it = state.smoking ? null : nearestInteractable();
+      text = it && !state.transitioning ? it.prompt() : null;
+    }
     if (text !== lastPrompt) {
       lastPrompt = text;
       ui.setPrompt(text);
@@ -421,6 +480,15 @@ async function boot() {
   });
 
   window.addEventListener('keydown', (event) => {
+    if (driving.active && state.mode === 'playing') {
+      if (event.code === 'KeyE' && !event.repeat) leaveCar();
+      if (event.code === 'KeyV' && !event.repeat) driving.toggleView();
+      if (event.code === 'Escape') {
+        pause();
+        player.releaseLock();
+      }
+      return;
+    }
     if ((event.code === 'KeyE' || event.code === 'KeyF') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
       nearestInteractable(event.code)?.onUse();
     }
@@ -465,7 +533,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving };
 
   /* --------------------------------------------------- loop */
 
@@ -490,8 +558,12 @@ async function boot() {
       camera.fov = 62;
       camera.updateProjectionMatrix();
     } else if (state.mode === 'playing') {
-      player.update(dt);
+      if (driving.active) driving.update(dt, player.enabled ? player.keys : {});
+      else player.update(dt);
       if (smoke.update(dt, state.elapsed)) endSmoke();
+    } else if (driving.active) {
+      // paused behind the wheel: idle the engine
+      sound.engineUpdate(0, 0);
     }
 
     env.update(dt, state.elapsed, camera);

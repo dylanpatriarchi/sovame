@@ -302,6 +302,93 @@ export class Sound {
     osc.stop(t + 0.2);
   }
 
+  /* ------------------------------------------------ car */
+
+  /** A tired four-cylinder: firing-rate saw + sub square through a lowpass,
+   * a breath of intake noise on top; pitch follows a 4-speed gearbox. */
+  engineStart() {
+    if (!this.ready || this.engine) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(0.11, t + 0.35);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 380;
+    filter.Q.value = 2.2;
+    const saw = ctx.createOscillator();
+    saw.type = 'sawtooth';
+    const sub = ctx.createOscillator();
+    sub.type = 'square';
+    const subGain = ctx.createGain();
+    subGain.gain.value = 0.45;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.noise;
+    noise.loop = true;
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.value = 620;
+    noiseFilter.Q.value = 0.9;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.05;
+    saw.connect(filter);
+    sub.connect(subGain).connect(filter);
+    noise.connect(noiseFilter).connect(noiseGain).connect(filter);
+    filter.connect(out).connect(this.master);
+    saw.start(t);
+    sub.start(t);
+    noise.start(t);
+    // starter motor grinding before it catches
+    this.burst({ time: t, freq: 220, q: 3, duration: 0.45, level: 0.07, type: 'bandpass', rate: 0.6 });
+    this.engine = { out, filter, saw, sub, noise, noiseGain, rpm: 850 };
+    this.engineUpdate(0, 0);
+  }
+
+  engineUpdate(speed, throttle) {
+    const e = this.engine;
+    if (!e) return;
+    const gears = [0, 6.5, 12, 17.5, 30];
+    let g = 0;
+    while (g < gears.length - 2 && speed > gears[g + 1]) g++;
+    const span = gears[g + 1] - gears[g];
+    const inGear = clamp((speed - gears[g]) / span, 0, 1);
+    const target = 850 + inGear * 3300 * (g === 0 ? 0.9 : 0.75) + throttle * (g === 0 ? 900 : 350) + (g > 0 ? 1100 : 0);
+    e.rpm += (target - e.rpm) * 0.08;
+    const t = this.ctx.currentTime;
+    const firing = (e.rpm / 60) * 2;
+    e.saw.frequency.setTargetAtTime(firing, t, 0.05);
+    e.sub.frequency.setTargetAtTime(firing / 2, t, 0.05);
+    e.filter.frequency.setTargetAtTime(260 + throttle * 520 + e.rpm * 0.12, t, 0.08);
+    e.noiseGain.gain.setTargetAtTime(0.03 + throttle * 0.06, t, 0.1);
+    e.out.gain.setTargetAtTime(0.08 + throttle * 0.05 + Math.min(speed / 23, 1) * 0.03, t, 0.1);
+  }
+
+  engineStop() {
+    const e = this.engine;
+    if (!e) return;
+    this.engine = null;
+    const t = this.ctx.currentTime;
+    e.out.gain.setTargetAtTime(0.0001, t, 0.12);
+    for (const node of [e.saw, e.sub, e.noise]) node.stop(t + 0.7);
+  }
+
+  /** Door: a latch click and a sheet-metal thump. */
+  door() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.burst({ time: t, freq: 2600, q: 2, duration: 0.03, level: 0.05 });
+    this.burst({ time: t + 0.02, freq: 160, q: 1.2, duration: 0.18, level: 0.16, type: 'lowpass' });
+  }
+
+  /** Bodywork meeting a wall, a fence or another car. */
+  thud(impact = 0.5) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.burst({ time: t, freq: 120, q: 0.9, duration: 0.35, level: 0.12 + impact * 0.25, type: 'lowpass' });
+    this.burst({ time: t + 0.01, freq: 1800, q: 1.4, duration: 0.12, level: 0.04 + impact * 0.08, rate: 1.6 });
+  }
+
   /** Breath-shaped noise: a filter sweep under a slow attack/release. */
   breath({ time, duration, attack, from, to, q, level }) {
     const ctx = this.ctx;
