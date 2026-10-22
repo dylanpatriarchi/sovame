@@ -37,6 +37,25 @@ export const EXPANSION_SPECS = [
 ];
 
 /**
+ * Third cluster, west of the old district limit (x < -104): the cross
+ * street runs on to ул. Строителей (x = -170), a north–south street with
+ * two rows of blocks on either side. Built exactly like the northern
+ * expansion: own seeds, trim merged per material.
+ */
+export const WEST_SPECS = [
+  { id: 'W1', x: -136, z: 18, w: 40, d: 12, floors: 9, number: '31', street: 'ул. СТРОИТЕЛЕЙ', base: '#aeb4b6', plinth: '#7f7d76', balcony: 0.5, lit: 0.52, seed: 211, tv: true },
+  { id: 'W2', x: -206, z: 18, w: 44, d: 12, floors: 5, number: '33', street: 'ул. СТРОИТЕЛЕЙ', base: '#c4bcaa', plinth: '#8f8b80', balcony: 0.42, lit: 0.46, seed: 222 },
+  { id: 'W3', x: -136, z: -30, w: 36, d: 12, floors: 5, number: '29', street: 'ул. СТРОИТЕЛЕЙ', base: '#bab6aa', plinth: '#8a8578', balcony: 0.4, lit: 0.44, seed: 233, tv: true },
+  { id: 'W4', x: -206, z: -36, w: 40, d: 12, floors: 5, number: '35', street: 'ул. СТРОИТЕЛЕЙ', base: '#a5715a', plinth: '#6f5140', balcony: 0.3, lit: 0.5, seed: 244 },
+  { id: 'W5', x: -136, z: 78, w: 42, d: 12, floors: 5, number: '27', street: 'ул. МИРА', base: '#c2b9a7', plinth: '#8a8578', balcony: 0.44, lit: 0.46, seed: 255 },
+  { id: 'W6', x: -208, z: 80, w: 36, d: 12, floors: 9, number: '37', street: 'ул. СТРОИТЕЛЕЙ', base: '#a3abb2', plinth: '#7d7b74', balcony: 0.52, lit: 0.5, seed: 266, tv: true },
+  { id: 'W7', x: -136, z: 130, w: 30, d: 12, floors: 12, number: '25', street: 'ул. СТРОИТЕЛЕЙ', base: '#b4b9bc', plinth: '#7d7b74', balcony: 0.55, lit: 0.55, seed: 277, tv: true },
+  { id: 'W8', x: -206, z: 140, w: 40, d: 12, floors: 5, number: '39', street: 'ул. СТРОИТЕЛЕЙ', base: '#c8c0ae', plinth: '#8f8b80', balcony: 0.4, lit: 0.44, seed: 288 },
+  { id: 'W9', x: -136, z: -76, w: 40, d: 12, floors: 5, number: '23', street: 'ул. СТРОИТЕЛЕЙ', base: '#bcb7ab', plinth: '#8b8880', balcony: 0.38, lit: 0.42, seed: 299 },
+  { id: 'W10', x: -206, z: -82, w: 36, d: 12, floors: 9, number: '41', street: 'ул. СТРОИТЕЛЕЙ', base: '#9fa8ae', plinth: '#7d7b74', balcony: 0.5, lit: 0.5, seed: 311, tv: true },
+];
+
+/**
  * World coordinates of one painted entrance door: cell c (c % 4 === 3) on a
  * long side (+1 faces +z, -1 faces -z). The facade texture is mirrored on the
  * -z side, hence the x flip — same formula as the entrance pads below.
@@ -455,6 +474,7 @@ export function buildBuildings(ctx) {
     bakeTrim(metalParts, M.metal);
   };
   for (const spec of EXPANSION_SPECS) buildExpansionBlock(spec);
+  for (const spec of WEST_SPECS) buildExpansionBlock(spec);
 
   /* ---------------------------------------------------- kindergarten no. 5 */
   {
@@ -653,8 +673,10 @@ export function buildBuildings(ctx) {
   // district limits along the two road axes
   panelFence(-70, -104, -14, -104);
   panelFence(14, -104, 70, -104);
-  panelFence(-104, -70, -104, -14);
-  panelFence(-104, 14, -104, 70);
+  // the west limit (x = -104) opened up for ул. Строителей: its runs stay
+  // as legacy ghosts so the historic scatter passes keep their placements
+  ctx.addLegacyGhostRect(-104.3, -103.7, -70.3, -13.7);
+  ctx.addLegacyGhostRect(-104.3, -103.7, 13.7, 70.3);
   panelFence(104, -70, 104, -14);
   panelFence(104, 14, 104, 70);
   // the old north edge (z = 104) opened up: the avenue now runs on to the
@@ -703,7 +725,11 @@ export function buildBuildings(ctx) {
   };
   panelFenceMerged(-80, 176, -14, 176);
   panelFenceMerged(14, 176, 80, 176);
-  panelFenceMerged(-104, 70, -104, 176);
+  // the western cluster's limits: its own edge, and the south and north
+  // lines carried on westward
+  panelFenceMerged(-236, -104, -236, 176);
+  panelFenceMerged(-236, -104, -104, -104);
+  panelFenceMerged(-236, 176, -80, 176);
   panelFenceMerged(104, 70, 104, 176);
   // ghosts of the removed z = 104 fence runs: the historic scatter passes
   // still see them, the player does not
@@ -807,6 +833,18 @@ export function buildBuildings(ctx) {
       mesh.position.z = Math.sin(a) * r;
     }
   }
+  // the same for the western cluster (playable down to x = -236)
+  for (let i = 0; i < skylineBoxes.length; i++) {
+    const mesh = skylineBoxes[i];
+    const { x, z } = mesh.position;
+    if (x < -96 && x > -262 && z > -140 && z < 214) {
+      const a = Math.atan2(z, x);
+      // far enough past the west fence (x = -236) to stay a silhouette
+      const r = 345 + (i % 5) * 14;
+      mesh.position.x = Math.cos(a) * r;
+      mesh.position.z = Math.sin(a) * r;
+    }
+  }
   // industrial sites
   const factory = (x, z, h = 44) => {
     const body = new THREE.Mesh(new THREE.BoxGeometry(34, 16, 22), distantMat);
@@ -845,7 +883,8 @@ export function buildBuildings(ctx) {
     const cap = new THREE.Mesh(new THREE.ConeGeometry(5, 2.6, 12), distantMat);
     cap.position.y = 24.8;
     tower.add(cap);
-    tower.position.set(-118, 0, 128);
+    // beyond the western cluster now (it used to stand where W7 is)
+    tower.position.set(-272, 0, 150);
     world.group.add(tower);
   }
 }
