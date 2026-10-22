@@ -526,6 +526,7 @@ export class Environment {
     if (camera) {
       this.world.farDetails.visible = camera.position.z > 48;
       this.world.westDetails.visible = camera.position.x < -64;
+      this.world.southDetails.visible = camera.position.z < -60;
     }
     // only lamps near the camera keep a real PointLight; the rest rely on the glow
     const camX = camera ? camera.position.x : 0;

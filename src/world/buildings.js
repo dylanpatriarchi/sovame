@@ -56,6 +56,19 @@ export const WEST_SPECS = [
 ];
 
 /**
+ * Fourth cluster, south of the old district limit (z < -104): the avenue
+ * and ул. Строителей run on to ул. Школьная (z = -152); these blocks line
+ * its far side, with the school quarter between them and the old district.
+ */
+export const SOUTH_SPECS = [
+  { id: 'S1', x: -60, z: -178, w: 44, d: 12, floors: 9, number: '43', street: 'ул. ШКОЛЬНАЯ', base: '#a9b1b5', plinth: '#7d7b74', balcony: 0.5, lit: 0.52, seed: 411, tv: true },
+  { id: 'S2', x: 34, z: -178, w: 36, d: 12, floors: 5, number: '45', street: 'ул. ШКОЛЬНАЯ', base: '#a26f56', plinth: '#6f5140', balcony: 0.32, lit: 0.48, seed: 422 },
+  { id: 'S3', x: -136, z: -178, w: 36, d: 12, floors: 5, number: '41', street: 'ул. ШКОЛЬНАЯ', base: '#c3bba9', plinth: '#8f8b80', balcony: 0.42, lit: 0.46, seed: 433, tv: true },
+  { id: 'S4', x: -210, z: -178, w: 36, d: 12, floors: 9, number: '39', street: 'ул. ШКОЛЬНАЯ', base: '#a0a9b0', plinth: '#7d7b74', balcony: 0.5, lit: 0.5, seed: 444 },
+  { id: 'S5', x: 82, z: -178, w: 30, d: 12, floors: 5, number: '47', street: 'ул. ШКОЛЬНАЯ', base: '#bfb8a6', plinth: '#8a8578', balcony: 0.4, lit: 0.44, seed: 455, tv: true },
+];
+
+/**
  * World coordinates of one painted entrance door: cell c (c % 4 === 3) on a
  * long side (+1 faces +z, -1 faces -z). The facade texture is mirrored on the
  * -z side, hence the x flip — same formula as the entrance pads below.
@@ -475,6 +488,7 @@ export function buildBuildings(ctx) {
   };
   for (const spec of EXPANSION_SPECS) buildExpansionBlock(spec);
   for (const spec of WEST_SPECS) buildExpansionBlock(spec);
+  for (const spec of SOUTH_SPECS) buildExpansionBlock(spec);
 
   /* ---------------------------------------------------- kindergarten no. 5 */
   {
@@ -670,9 +684,10 @@ export function buildBuildings(ctx) {
   panelFence(-76, -34, -76, 16);
   panelFence(-78, -48, -62, -48);
   panelFence(-62, -50, -62, -70);
-  // district limits along the two road axes
-  panelFence(-70, -104, -14, -104);
-  panelFence(14, -104, 70, -104);
+  // the south limit (z = -104) opened up for the school quarter: its runs
+  // stay as legacy ghosts so the historic scatter keeps its placements
+  ctx.addLegacyGhostRect(-70.3, -13.7, -104.3, -103.7);
+  ctx.addLegacyGhostRect(13.7, 70.3, -104.3, -103.7);
   // the west limit (x = -104) opened up for ул. Строителей: its runs stay
   // as legacy ghosts so the historic scatter passes keep their placements
   ctx.addLegacyGhostRect(-104.3, -103.7, -70.3, -13.7);
@@ -727,8 +742,10 @@ export function buildBuildings(ctx) {
   panelFenceMerged(14, 176, 80, 176);
   // the western cluster's limits: its own edge, and the south and north
   // lines carried on westward
-  panelFenceMerged(-236, -104, -236, 176);
-  panelFenceMerged(-236, -104, -104, -104);
+  panelFenceMerged(-236, -196, -236, 176);
+  // the southern quarter's limits: its own edge and the east line carried down
+  panelFenceMerged(-236, -196, 104, -196);
+  panelFenceMerged(104, -196, 104, -70);
   panelFenceMerged(-236, 176, -80, 176);
   panelFenceMerged(104, 70, 104, 176);
   // ghosts of the removed z = 104 fence runs: the historic scatter passes
@@ -771,7 +788,8 @@ export function buildBuildings(ctx) {
     snow.rotation.y = ry;
     world.group.add(ctx.seasonable('winter', snow));
   };
-  signFor(-20, -103, 0);
+  // the district sign now closes the view down the avenue, past ул. Школьная
+  signFor(-8, -192.5, 0);
   signFor(20, 174, Math.PI);
 
   /* ---------------------------------------------------- distant skyline */
@@ -845,6 +863,17 @@ export function buildBuildings(ctx) {
       mesh.position.z = Math.sin(a) * r;
     }
   }
+  // and for the southern quarter (playable down to z = -196)
+  for (let i = 0; i < skylineBoxes.length; i++) {
+    const mesh = skylineBoxes[i];
+    const { x, z } = mesh.position;
+    if (x > -262 && x < 132 && z < -96 && z > -236) {
+      const a = Math.atan2(z, x);
+      const r = 290 + (i % 6) * 12;
+      mesh.position.x = Math.cos(a) * r;
+      mesh.position.z = Math.sin(a) * r;
+    }
+  }
   // industrial sites
   const factory = (x, z, h = 44) => {
     const body = new THREE.Mesh(new THREE.BoxGeometry(34, 16, 22), distantMat);
@@ -867,7 +896,7 @@ export function buildBuildings(ctx) {
       light.intensity = on ? 6 : 0;
     });
   };
-  factory(-196, -168, 46);
+  factory(-210, -268, 46);
   factory(168, -214, 52);
   factory(150, 190, 38);
 
