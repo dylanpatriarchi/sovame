@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World } from './world/index.js';
 import { INTERIOR_LAYER } from './world/interiors.js';
 import { setFlatLight } from './world/flats.js';
+import { allEntrances } from './world/entrances.js';
 import { Environment } from './environment.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
@@ -114,15 +115,31 @@ async function boot() {
       },
     });
   }
-  for (const interior of world.interiors) {
+  // every entrance door of every block opens: the three furnished
+  // stairwells answer for all of them (the one behind its own door, the
+  // others picked by a stable hash) and remember which door you came in by
+  for (const door of allEntrances()) {
+    const own = world.interiors.find((it) => Math.hypot(it.doorOut.x - door.pad.x, it.doorOut.z - door.pad.z) < 0.1);
+    const hash = Math.abs(Math.round(door.x * 7.3 + door.z * 13.1));
+    const interior = own ?? world.interiors[hash % world.interiors.length];
+    const caption = `Entrance ${door.number} · building ${door.spec.number}`;
     world.interactables.push({
-      id: `${interior.id}:enter`,
-      x: interior.doorOut.x,
-      z: interior.doorOut.z,
-      radius: 2.6,
+      id: `door-${door.spec.id}-${door.cell}-${door.side}`,
+      x: door.pad.x,
+      z: door.pad.z,
+      radius: 2.4,
       prompt: () => 'E — enter the stairwell',
-      onUse: () => useDoor(interior, true),
+      onUse: () => {
+        interior.outSpawn = door.out;
+        interior.caption = caption;
+        for (const flat of world.flats ?? []) {
+          if (flat.parent === interior) flat.caption = `Flat ${flat.number} · ${caption.toLowerCase()}`;
+        }
+        useDoor(interior, true);
+      },
     });
+  }
+  for (const interior of world.interiors) {
     world.interactables.push({
       id: `${interior.id}:exit`,
       x: interior.doorIn.x,
