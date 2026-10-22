@@ -12,6 +12,7 @@ import { buildPeople } from './people.js';
 import { buildInteriors } from './interiors.js';
 import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
+import { buildVehicles } from './vehicles.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -69,7 +70,13 @@ export class World {
         },
       ],
       ['Roads, snow and paths', () => buildTerrain(this.ctx)],
-      ['District props', () => buildProps(this.ctx)],
+      [
+        'District props',
+        () => {
+          buildProps(this.ctx);
+          buildVehicles(this.ctx);
+        },
+      ],
       // routes are validated lazily on the first update, once the trees
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
@@ -88,6 +95,10 @@ export class World {
       await new Promise((resolve) => setTimeout(resolve, 24));
       stages[i][1]();
     }
+    // the parked cars' historic footprints only shaped the scatter passes:
+    // from now on each car's own (moving) collider stands for it
+    this.colliders = this.colliders.filter((c) => !c.buildOnly);
+    for (const car of this.cars ?? []) car.updateCollider();
     onProgress?.(1, 'Ready');
   }
 
@@ -291,7 +302,8 @@ export class World {
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
       const dx = x - cx;
       const dz = z - cz;
-      if (dx * dx + dz * dz < r * r) return true;
+      // a car's rect is only its bounding box: test the oriented body
+      if (dx * dx + dz * dz < r * r && (!c.car || c.car.overlapsCircle(x, z, r))) return true;
     }
     return false;
   }
