@@ -26,6 +26,10 @@ export class World {
     this.farDetails = new THREE.Group();
     this.farDetails.name = 'far-north-details';
     this.group.add(this.farDetails);
+    // same idea for the western cluster on ул. Строителей
+    this.westDetails = new THREE.Group();
+    this.westDetails.name = 'far-west-details';
+    this.group.add(this.westDetails);
     this.rng = new Rng(20260119);
     this.colliders = [];
     // the world as it stood before the northern expansion: colliders and
@@ -296,7 +300,7 @@ export class World {
   collides(x, z, r) {
     // interiors sit far outside the district: their own walls bound the
     // player there, the world edge only applies outdoors
-    if (!this.interiorAt(x, z) && (Math.abs(x) > WORLD.bounds || z < -WORLD.bounds || z > WORLD.boundsNorth)) return true;
+    if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.bounds || z > WORLD.boundsNorth)) return true;
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
@@ -357,6 +361,7 @@ export class World {
     if (this.leafLitter) this.leafLitter.count = Math.max(0, Math.floor(this.leafLitter.userData.total * (key === 'autumn' ? 1 : s.litter)));
     // the northern expansion keeps its own instanced meshes (seeded apart)
     if (this.snowMoundsNorth) this.snowMoundsNorth.count = Math.max(1, Math.floor(this.snowMoundsNorth.userData.total * s.mounds));
+    if (this.snowMoundsWest) this.snowMoundsWest.count = Math.max(1, Math.floor(this.snowMoundsWest.userData.total * s.mounds));
     if (this.leafLitterNorth) this.leafLitterNorth.count = Math.max(0, Math.floor(this.leafLitterNorth.userData.total * (key === 'autumn' ? 1 : s.litter)));
   }
 

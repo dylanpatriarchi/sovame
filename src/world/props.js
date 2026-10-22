@@ -6,6 +6,7 @@ import { Rng, TAU } from '../util.js';
 import { makeSignTexture, makeGlowTexture, makeSoftCircleTexture, makeBeamTexture } from '../textures.js';
 import { makeStarMesh } from './buildings.js';
 import { WORLD } from '../config.js';
+import { WEST_LAMPS, buildWestProps } from './west.js';
 
 export function buildProps(ctx) {
   const { world, materials: M, textures: T, rng } = ctx;
@@ -186,6 +187,7 @@ export function buildProps(ctx) {
     makeNorthLamp(-8.2, 150, 0); // avenue west sidewalk, mid-cluster
     makeNorthLamp(52, 135.9, Math.PI / 2); // Zavodskaya, north sidewalk
     makeNorthLamp(-34, 131, 2.6); // west courtyard, by the path crossing
+    for (const [x, z, facing] of WEST_LAMPS) makeNorthLamp(x, z, facing);
     for (const [mat, parts] of statics) {
       const merged = new THREE.Mesh(mergeGeometries(parts, false), mat);
       merged.castShadow = true;
@@ -416,13 +418,11 @@ export function buildProps(ctx) {
       parent.add(mesh);
     }
   };
-  const swingGroup = new THREE.Group();
-  {
-    // the classic двухместные качели: two splayed A-frames of painted pipe,
-    // a crossbar on top and two plank seats on rigid rods, swinging across
-    // the bar (the frame itself is built in the group's local space)
-    const cx = -34;
-    const cz = -20;
+  /** The classic двухместные качели: two splayed A-frames of painted pipe,
+   * a crossbar on top and two plank seats on rigid rods, swinging across
+   * the bar (the frame itself is built in the group's local space). */
+  const makeSwing = (cx, cz, parent = group, north = false) => {
+    const swingGroup = new THREE.Group();
     const swingPaint = new THREE.MeshStandardMaterial({ color: 0x3f6f86, roughness: 0.62, metalness: 0.3 });
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
     const topY = 2.45;
@@ -462,10 +462,12 @@ export function buildProps(ctx) {
     }
     bakeChildren(swingGroup);
     swingGroup.position.set(cx, 0, cz);
-    group.add(swingGroup);
-    ctx.addBoxCollider(cx, cz, 5.6, 2.6, 0.2);
-    world.points.playground = new THREE.Vector3(cx, 0, cz);
-  }
+    parent.add(swingGroup);
+    ctx.addBoxCollider(cx, cz, 5.6, 2.6, 0.2, north);
+    return swingGroup;
+  };
+  makeSwing(-34, -20);
+  world.points.playground = new THREE.Vector3(-34, 0, -20);
 
   // merry-go-round
   {
@@ -1093,6 +1095,9 @@ export function buildProps(ctx) {
       ctx.addBoxCollider(88.75, 112, 3.6, 1.4, 0.2, true);
     }
   }
+
+  /* ---------------------------------------------------------- western cluster */
+  buildWestProps(ctx, { makeSwing: (x, z, parent) => makeSwing(x, z, parent, true) });
 
   /* ---------------------------------------------------------- street zones */
   ctx.addZone('Улица Космонавтов', 'Cosmonauts Avenue', -12, 12, -110, 178);
