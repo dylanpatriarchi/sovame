@@ -7,6 +7,7 @@ import { makeSignTexture, makeGlowTexture, makeSoftCircleTexture, makeBeamTextur
 import { makeStarMesh } from './buildings.js';
 import { WORLD } from '../config.js';
 import { WEST_LAMPS, buildWestProps } from './west.js';
+import { SOUTH_LAMPS, buildSouthProps } from './south.js';
 
 export function buildProps(ctx) {
   const { world, materials: M, textures: T, rng } = ctx;
@@ -188,6 +189,7 @@ export function buildProps(ctx) {
     makeNorthLamp(52, 135.9, Math.PI / 2); // Zavodskaya, north sidewalk
     makeNorthLamp(-34, 131, 2.6); // west courtyard, by the path crossing
     for (const [x, z, facing] of WEST_LAMPS) makeNorthLamp(x, z, facing);
+    for (const [x, z, facing] of SOUTH_LAMPS) makeNorthLamp(x, z, facing);
     for (const [mat, parts] of statics) {
       const merged = new THREE.Mesh(mergeGeometries(parts, false), mat);
       merged.castShadow = true;
@@ -1098,6 +1100,7 @@ export function buildProps(ctx) {
 
   /* ---------------------------------------------------------- western cluster */
   buildWestProps(ctx, { makeSwing: (x, z, parent) => makeSwing(x, z, parent, true) });
+  buildSouthProps(ctx);
 
   /* ---------------------------------------------------------- street zones */
   ctx.addZone('Улица Космонавтов', 'Cosmonauts Avenue', -12, 12, -110, 178);
