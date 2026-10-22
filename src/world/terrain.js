@@ -355,11 +355,23 @@ export function buildTerrain(ctx) {
   edge(1.5, 94, R + 47, CROSS2 - 6.9, -Math.PI / 2);
 
   /* ------------------------------------------------ snow mounds */
-  const moundGeo = new THREE.SphereGeometry(1, 9, 6);
+  // soft, lumpy drifts: a smooth dome with a little low-frequency noise
+  // (the old faceted 9×6 sphere read as grey boulders, not snow)
+  const moundGeo = new THREE.SphereGeometry(1, 16, 5, 0, TAU, 0, Math.PI / 2);
+  {
+    const pos = moundGeo.attributes.position;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const n = 1 + 0.08 * Math.sin(v.x * 3.1 + v.z * 1.7) + 0.06 * Math.sin(v.z * 4.3 - v.x * 2.2) + 0.04 * Math.sin((v.x + v.z) * 6.1);
+      v.multiplyScalar(n);
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    moundGeo.computeVertexNormals();
+  }
   const total = 320;
   const moundMat = M.snow.clone();
-  moundMat.flatShading = true;
-  moundMat.roughness = 0.78;
+  moundMat.roughness = 0.82;
   const mounds = new THREE.InstancedMesh(moundGeo, moundMat, total);
   mounds.castShadow = true;
   mounds.receiveShadow = true;
@@ -395,6 +407,11 @@ export function buildTerrain(ctx) {
     dummy.rotation.set(0, rng.float(0, TAU), 0);
     const s = rng.float(0.7, 1.25);
     dummy.scale.set(s * rng.float(1.2, 2.0), rng.float(0.34, 0.66), s * rng.float(0.9, 1.5));
+    // spots sampled across the whole district can land on a carriageway:
+    // those instances collapse (the RNG draws above still happen, so every
+    // other placement keeps its historic value)
+    if (world.surfaceAt(x, z) === 'asphalt') dummy.scale.set(0, 0, 0);
+    else dummy.scale.y *= 0.8;
     dummy.updateMatrix();
     mounds.setMatrixAt(i, dummy.matrix);
   }

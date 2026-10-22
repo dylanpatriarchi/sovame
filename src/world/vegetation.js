@@ -316,8 +316,10 @@ function bakeSnow(rng, spec, tree) {
   }
   // a wind-blown drift ringed around the trunk base
   {
-    const drift = new THREE.IcosahedronGeometry(1, 0);
-    drift.scale(tree.baseR * rng.float(3.6, 4.8), 0.17, tree.baseR * rng.float(2.8, 3.8));
+    // a soft dome, not an icosahedron: the faceted one read as a white
+    // star-shaped plate around every trunk
+    const drift = new THREE.SphereGeometry(1, 14, 4, 0, TAU, 0, Math.PI / 2).toNonIndexed();
+    drift.scale(tree.baseR * rng.float(3.6, 4.8), 0.13, tree.baseR * rng.float(2.8, 3.8));
     drift.rotateY(rng.float(0, TAU));
     drift.translate(rng.float(-0.05, 0.05), 0.03, rng.float(-0.05, 0.05));
     parts.push(drift);
@@ -840,7 +842,9 @@ export function buildVegetation(ctx) {
   const bushGeo = bushGeometry(1);
   const bushAutumn = makeInstanced(bushGeo, new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), bushes.map((b) => ({ ...b })), [0.8, 1.4], 0.1);
   group.add(ctx.seasonable('autumn', bushAutumn));
-  const bushWinter = makeInstanced(bushGeo, new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.95, flatShading: true }), bushes.map((b) => ({ ...b })), [0.75, 1.25], 0.1);
+  // snow-laden shrubs are rounded: smooth shading and a finer mesh
+  const bushSnowGeo = bushGeometry(2);
+  const bushWinter = makeInstanced(bushSnowGeo, new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.9 }), bushes.map((b) => ({ ...b })), [0.75, 1.25], 0.1);
   group.add(ctx.seasonable('winter', bushWinter));
 
   /* ---------------------------------------------- crows */
@@ -922,8 +926,8 @@ export function buildVegetation(ctx) {
     scatterB(10, -58, -14, 108, 144);
     scatterB(8, 14, 90, 106, 160);
     const bushGeo = bushGeometry(1);
-    const mkBush = (mat, scaleRange) => {
-      const mesh = new THREE.InstancedMesh(bushGeo, mat, northBushes.length);
+    const mkBush = (mat, scaleRange, geo = bushGeo) => {
+      const mesh = new THREE.InstancedMesh(geo, mat, northBushes.length);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       northBushes.forEach((b, i) => {
@@ -939,6 +943,6 @@ export function buildVegetation(ctx) {
       return mesh;
     };
     group.add(ctx.seasonable('autumn', mkBush(new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), [0.8, 1.4])));
-    group.add(ctx.seasonable('winter', mkBush(new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.95, flatShading: true }), [0.75, 1.25])));
+    group.add(ctx.seasonable('winter', mkBush(new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.9 }), [0.75, 1.25], bushSnowGeo)));
   }
 }
