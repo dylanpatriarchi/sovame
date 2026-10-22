@@ -3,6 +3,7 @@
 // snow-laden spruces, bushes and crows.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { scatterWestTrees } from './west.js';
 import { Rng, TAU, DEG, lerp, clamp } from '../util.js';
 import { WORLD } from '../config.js';
 import { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } from './terrain.js';
@@ -579,6 +580,23 @@ export function buildVegetation(ctx) {
     belt.push({ x, z });
   }
 
+  /* ---------------- western cluster (dedicated seed) --------------------
+   * Same deal as the north: felled belt trees and spruces where the new
+   * blocks stand (kept as zero-scale stumps), fresh clusters from west.js */
+  for (const b of belt) {
+    if (b.x < -100 && b.z > -112 && b.z < 184) b.dead = true;
+  }
+  for (const s of spruces) {
+    if (s.x < -104 && s.z > -112 && s.z < 184) s.dead = true;
+  }
+  const westLists = scatterWestTrees((x, z, r) => {
+    const surface = world.surfaceAt(x, z);
+    return surface !== 'asphalt' && surface !== 'stone' && okPlace(x, z, r);
+  });
+  const westBirch = westLists.birch;
+  const westPoplar = westLists.poplar;
+  const westSpruce = westLists.spruce;
+
   /* ---------------- relocation: trunks never stand on hard surfaces,
    * inside another tree or inside a prop collider
    * The historic scatter only avoided the colliders that existed at that
@@ -620,12 +638,15 @@ export function buildVegetation(ctx) {
     for (const b of central) b.species = 'yard';
     for (const b of roadside) b.species = 'poplar';
     for (const b of roadsideNorth) b.species = 'poplar';
+    for (const b of westBirch) b.species = 'birch';
+    for (const b of westPoplar) b.species = 'poplar';
+    for (const b of westSpruce) b.species = 'spruce';
     for (const s of spruces) s.species = 'spruce';
     // the historic pool is exactly the tree set the relocations were tuned
     // against (felled belt trees included); the new clusters relocate
     // against the living trees only
     const allTreesHistoric = [...west, ...east, ...farNorth, ...central, ...roadside, ...belt, ...spruces];
-    const allTrees = [...allTreesHistoric, ...north, ...northEast, ...roadsideNorth].filter((t) => !t.dead);
+    const allTrees = [...allTreesHistoric, ...north, ...northEast, ...roadsideNorth, ...westBirch, ...westPoplar, ...westSpruce].filter((t) => !t.dead);
     const gap = (a, b) => (a.species === 'spruce' || b.species === 'spruce' ? 2.2 : 1.2);
     // trunk point inside a collider that is not its own trunk box
     const foreignHit = (item, ownW) =>
@@ -683,6 +704,8 @@ export function buildVegetation(ctx) {
     relocate(north, 1.4, 0.6);
     relocate(northEast, 1.4, 0.6);
     relocate(roadsideNorth, 1.4, 0.6);
+    relocate(westBirch, 1.4, 0.6);
+    relocate(westPoplar, 1.4, 0.6);
   }
 
   // trunk colliders follow the final (possibly relocated) positions
@@ -690,9 +713,10 @@ export function buildVegetation(ctx) {
     if (b.dead) continue;
     ctx.addBoxCollider(b.x, b.z, 0.5, 0.5, 0.05);
   }
-  for (const b of [...north, ...northEast, ...roadsideNorth]) {
+  for (const b of [...north, ...northEast, ...roadsideNorth, ...westBirch, ...westPoplar]) {
     ctx.addBoxCollider(b.x, b.z, 0.5, 0.5, 0.05, true);
   }
+  for (const s of westSpruce) ctx.addBoxCollider(s.x, s.z, 1.2, 1.2, 0.1, true);
 
   /* ------------------------------------------- materials (with wind sway) */
   const sway = {
@@ -729,6 +753,10 @@ export function buildVegetation(ctx) {
     { key: 'north-east', species: 'birch', list: northEast, scale: [0.8, 1.25], tilt: 0.05 },
     // labelled apart so the historic poplar mean (smoke framing) stays put
     { key: 'roadside-north', species: 'poplar', alias: 'poplar-north', list: roadsideNorth, scale: [0.85, 1.2], tilt: 0.03 },
+    // the western cluster comes last: the region RNG draws for every
+    // region above stay exactly as they were
+    { key: 'west-yards', species: 'birch', alias: 'birch-west', list: westBirch, scale: [0.8, 1.25], tilt: 0.05 },
+    { key: 'west-verges', species: 'poplar', alias: 'poplar-west', list: westPoplar, scale: [0.85, 1.2], tilt: 0.03 },
   ];
 
   const treeSpots = [];
@@ -828,6 +856,28 @@ export function buildVegetation(ctx) {
   snowMesh.receiveShadow = true;
   snowMesh.instanceMatrix = spruceMesh.instanceMatrix;
   group.add(ctx.seasonable('winter', snowMesh));
+  // western spruce line: own instanced pair, own seed (the shared stream
+  // above feeds the bushes and crows next)
+  if (westSpruce.length) {
+    const rngW = new Rng(818181);
+    const mesh = new THREE.InstancedMesh(spruceMesh.geometry, spruceMesh.material, westSpruce.length);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    westSpruce.forEach((item, i) => {
+      dummy.position.set(item.x, 0, item.z);
+      dummy.rotation.set(rngW.float(-0.03, 0.03), rngW.float(0, TAU), rngW.float(-0.03, 0.03));
+      const sc = rngW.float(0.75, 1.15);
+      dummy.scale.set(sc, sc * rngW.float(0.9, 1.15), sc);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      treeSpots.push({ x: item.x, z: item.z, species: 'spruce-west' });
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    world.westDetails.add(mesh);
+    const snowW = new THREE.InstancedMesh(snowMesh.geometry, M.snow, westSpruce.length);
+    snowW.instanceMatrix = mesh.instanceMatrix;
+    world.westDetails.add(ctx.seasonable('winter', snowW));
+  }
 
   /* ---------------------------------------------- bushes */
   const bushes = [];

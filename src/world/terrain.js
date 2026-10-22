@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU } from '../util.js';
+import { buildWestTerrain } from './west.js';
 import { WORLD } from '../config.js';
 
 /** Parking pad in the east courtyard (asphalt). Shared with vegetation. */
@@ -543,4 +544,7 @@ export function buildTerrain(ctx) {
     world.leafLitterNorth = litterN;
     world.farDetails.add(ctx.seasonable('autumn', litterN));
   }
+
+  // the western cluster: its own streets, sidewalks, paths and snow banks
+  buildWestTerrain(ctx);
 }
