@@ -315,11 +315,12 @@ if (doorInfo) {
     game.player.teleport((b.x0 + b.x1) / 2 - 1.4, (b.z0 + b.z1) / 2 + 0.2, Math.PI);
     game.player.pitch = 0.12;
   });
-  // let the snow fade and the exposure settle before the screenshot
+  // the landing window shows the real courtyard: snow keeps falling out
+  // there, so the indoor fade stays off while the window view is live
   try {
-    await page.waitForFunction(() => window.__game.env.indoor > 0.9, { timeout: 20000 });
+    await page.waitForFunction(() => window.__game.windowViews?.view || window.__game.env.indoor > 0.9, { timeout: 20000 });
   } catch {
-    logs.push('[stairwell] indoor fade did not settle');
+    logs.push('[stairwell] neither a live window view nor the indoor fade');
   }
   await wait(400);
   await page.screenshot({ path: `${OUT}/09-stairwell.png` });

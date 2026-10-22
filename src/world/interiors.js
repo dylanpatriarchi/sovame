@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng, TAU, makeCanvas } from '../util.js';
 import { canvasTexture, makeSignTexture, makeSoftCircleTexture } from '../textures.js';
-import { BUILDING_SPECS, entranceDoor } from './buildings.js';
+import { BUILDING_SPECS, FLOOR_H, entranceDoor } from './buildings.js';
+import { paneMaterial, portalMatrix } from '../windowview.js';
 
 /** Camera/light layer shared by all interior meshes: they are lit only by
  * their own bulb, never by the sun, sky or street lamps of the district. */
@@ -303,6 +304,12 @@ const STAIR_X1 = -0.72;
 const STAIR_Z0 = -0.9; // first step starts here
 const LAND_Z = 2.1; // landing starts where the flight ends
 export const LAND_H = STEPS * RISE;
+const UP_X0 = 0.72; // the flight going up, against the right wall
+const UP_X1 = 2.12;
+const UP_STEPS = 7; // the rest of the flight is up in the shaft
+const UP_Z0 = LAND_Z - UP_STEPS * RUN;
+/** Stairwell depth: the landing window sits on the far wall (z = +D/2). */
+export const STAIRWELL_D = D;
 
 function buildStairwell(ctx, spec, index) {
   const { world, materials: M } = ctx;
@@ -332,11 +339,19 @@ function buildStairwell(ctx, spec, index) {
   const paintTex = makePaintTexture(spec.paint, spec.seed);
   addMesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ map: paintTex, roughness: 0.92 }));
 
-  // ceiling and the vestibule soffit (plain dirty whitewash)
+  // ceiling (open above the flight going up) and the vestibule soffit
   geos.length = 0;
-  boxAt(geos, W + 2 * WT, WT, D + 2 * WT, 0, H + WT / 2, 0);
+  boxAt(geos, UP_X0 + W / 2 + WT, WT, D + 2 * WT, (UP_X0 - W / 2 - WT) / 2, H + WT / 2, 0);
+  boxAt(geos, W / 2 + WT - UP_X0, WT, UP_Z0 + D / 2 + WT, (UP_X0 + W / 2 + WT) / 2, H + WT / 2, (UP_Z0 - D / 2 - WT) / 2);
+  boxAt(geos, W / 2 + WT - UP_X0, WT, D / 2 + WT - LAND_Z, (UP_X0 + W / 2 + WT) / 2, H + WT / 2, (LAND_Z + D / 2 + WT) / 2);
   boxAt(geos, W, 0.14, 2.2, 0, 2.57, -2.1);
   addMesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x8b8578, roughness: 0.96 }));
+  // the stair shaft above the opening: the flight turns out of sight up there
+  const shaft = new THREE.Mesh(
+    new THREE.BoxGeometry(W / 2 - UP_X0, 2.4, LAND_Z - UP_Z0).translate((UP_X0 + W / 2) / 2, H + 1.2, (UP_Z0 + LAND_Z) / 2),
+    new THREE.MeshStandardMaterial({ map: paintTex, color: 0x6f6a60, roughness: 0.95, side: THREE.BackSide })
+  );
+  group.add(shaft);
 
   // floor
   addMesh(new THREE.BoxGeometry(W, 0.14, D), new THREE.MeshStandardMaterial({ color: 0x45423c, roughness: 0.9 }))
@@ -349,6 +364,12 @@ function buildStairwell(ctx, spec, index) {
     boxAt(geos, STAIR_X1 - STAIR_X0, top, RUN, (STAIR_X0 + STAIR_X1) / 2, top / 2, STAIR_Z0 + (i + 0.5) * RUN);
   }
   boxAt(geos, 4.24, LAND_H, 3.12 - LAND_Z, 0, LAND_H / 2, (LAND_Z + 3.12) / 2);
+  // the next flight up, from the landing back over the hall (solid below:
+  // the cubby under the stairs is bricked in)
+  for (let i = 0; i < UP_STEPS; i++) {
+    const top = LAND_H + (i + 1) * RISE;
+    boxAt(geos, UP_X1 - UP_X0, top, RUN, (UP_X0 + UP_X1) / 2, top / 2, LAND_Z - (i + 0.5) * RUN);
+  }
   addMesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x767165, roughness: 0.95 }));
 
   // railings: sloped rail along the flight, rail on the landing edge
@@ -365,8 +386,19 @@ function buildStairwell(ctx, spec, index) {
     const railY = 0.95 + ((z - STAIR_Z0) * LAND_H) / (STEPS * RUN);
     boxAt(geos, 0.04, railY - stepTop, 0.04, railX, (stepTop + railY) / 2, z);
   }
-  boxAt(geos, 2.84, 0.05, 0.05, 0.7, LAND_H + 0.95, LAND_Z - 0.02);
-  for (const x of [-0.4, 0.7, 1.8]) boxAt(geos, 0.04, 0.95, 0.04, x, LAND_H + 0.475, LAND_Z - 0.02);
+  boxAt(geos, 1.36, 0.05, 0.05, 0, LAND_H + 0.95, LAND_Z - 0.02);
+  for (const x of [-0.3, 0.3]) boxAt(geos, 0.04, 0.95, 0.04, x, LAND_H + 0.475, LAND_Z - 0.02);
+  // rail of the flight going up
+  const upRail = new THREE.BoxGeometry(0.05, 0.05, Math.hypot(UP_STEPS * RISE, UP_STEPS * RUN) + 0.1);
+  upRail.rotateX(slope);
+  upRail.translate(-railX, LAND_H + 0.95 + (UP_STEPS * RISE) / 2, LAND_Z - (UP_STEPS * RUN) / 2);
+  geos.push(upRail);
+  for (const i of [0, 3, 6]) {
+    const stepTop = LAND_H + (i + 1) * RISE;
+    const z = LAND_Z - (i + 0.5) * RUN;
+    const railY = LAND_H + 0.95 + ((LAND_Z - z) * LAND_H) / (STEPS * RUN);
+    boxAt(geos, 0.04, railY - stepTop, 0.04, -railX, (stepTop + railY) / 2, z);
+  }
   addMesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x374f3e, roughness: 0.58, metalness: 0.4 }));
 
   // entrance door from inside, slightly proud of the wall
@@ -388,26 +420,52 @@ function buildStairwell(ctx, spec, index) {
     .position.set(0, LAND_H + 0.29, 3.04);
   geos.length = 0;
   const riser = new THREE.CylinderGeometry(0.05, 0.05, H, 10);
-  riser.translate(1.98, H / 2, 3.0);
+  riser.translate(-1.06, H / 2, 3.0);
   geos.push(riser);
-  const branch = new THREE.CylinderGeometry(0.032, 0.032, 1.28, 8);
+  const branch = new THREE.CylinderGeometry(0.032, 0.032, 0.42, 8);
   branch.rotateZ(Math.PI / 2);
-  branch.translate(1.34, LAND_H + 0.12, 3.0);
+  branch.translate(-0.86, LAND_H + 0.12, 3.0);
   geos.push(branch);
   addMesh(mergeGeometries(geos), M.rust);
 
-  // landing window: emissive cold courtyard view
-  const windowMat = new THREE.MeshStandardMaterial({
-    color: 0x000000,
-    emissive: 0xffffff,
-    emissiveMap: makeWindowViewTexture(spec.seed + 5),
-    emissiveIntensity: 1.05,
-    roughness: 0.5,
-  });
-  const windowMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.25), windowMat);
+  // landing window: the real courtyard behind it (see windowview.js), a
+  // painted one until the stairwell knows which block it belongs to
+  const windowMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.25), paneMaterial(world, makeWindowViewTexture(spec.seed + 5), 1.05));
   windowMesh.rotation.y = Math.PI;
   windowMesh.position.set(0, 2.75, D / 2 - 0.085);
   group.add(windowMesh);
+  // its frame: two casements, the transom and the little fortochka
+  geos.length = 0;
+  const wz = D / 2 - 0.1;
+  boxAt(geos, 1.82, 0.07, 0.08, 0, 2.75 + 0.66, wz);
+  boxAt(geos, 1.82, 0.07, 0.08, 0, 2.75 - 0.66, wz);
+  boxAt(geos, 0.07, 1.36, 0.08, -0.88, 2.75, wz);
+  boxAt(geos, 0.07, 1.36, 0.08, 0.88, 2.75, wz);
+  boxAt(geos, 0.05, 1.25, 0.06, 0, 2.75, wz);
+  boxAt(geos, 1.7, 0.05, 0.06, 0, 2.75 + 0.24, wz);
+  boxAt(geos, 0.04, 0.38, 0.05, -0.42, 2.75 + 0.43, wz);
+  boxAt(geos, 1.9, 0.05, 0.2, 0, 2.75 - 0.7, wz - 0.06); // sill
+  addMesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x8e978e, roughness: 0.7 }));
+
+  // stencilled floor number on the back wall, repainted as you climb
+  const signCanvas = makeCanvas(128, 128);
+  const signTex = canvasTexture(signCanvas);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshStandardMaterial({ map: signTex, transparent: true, roughness: 0.9 }));
+  sign.rotation.y = Math.PI;
+  sign.position.set(-1.55, LAND_H + 1.75, D / 2 - 0.085);
+  group.add(sign);
+  const drawFloor = (floor) => {
+    const c = signCanvas.getContext('2d');
+    c.clearRect(0, 0, 128, 128);
+    c.fillStyle = 'rgba(40,36,30,0.82)';
+    c.font = 'bold 92px Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(String(floor), 64, 62);
+    c.fillRect(22, 112, 84, 5);
+    signTex.needsUpdate = true;
+  };
+  drawFloor(1);
 
   // cold light pooling on the landing floor under the window
   const pool = new THREE.Mesh(
@@ -470,6 +528,8 @@ function buildStairwell(ctx, spec, index) {
   // flight railing and the landing edge (also blocks the height pop-up)
   ctx.addColliderRect(cx - 0.8, cx - 0.58, cz + STAIR_Z0 - 0.05, cz + LAND_Z);
   ctx.addColliderRect(cx - 0.66, cx + 2.14, cz + LAND_Z - 0.08, cz + LAND_Z + 0.06);
+  // the flight up and the bricked cubby under it (taken with E, not on foot)
+  ctx.addColliderRect(cx + UP_X0 - 0.08, cx + 2.14, cz + UP_Z0 - 0.05, cz + LAND_Z);
 
   // steps and landing heights
   for (let i = 0; i < STEPS; i++) {
@@ -480,7 +540,7 @@ function buildStairwell(ctx, spec, index) {
   // hard floor footsteps everywhere inside
   ctx.addSurfaceRect(cx - 2.2, cx + 2.2, cz - 3.2, cz + 3.2, 'concrete');
 
-  return { cx, cz };
+  return { cx, cz, windowMesh, drawFloor };
 }
 
 export function buildInteriors(ctx) {
@@ -490,8 +550,14 @@ export function buildInteriors(ctx) {
     const door = entranceDoor(bSpec, spec.cell, spec.side);
     // flats of this entrance (4 per floor): mailbox numbers 1..10 of the range
     spec.flatBase = (spec.entrance - 1) * 4 * bSpec.floors + 1;
-    const { cx, cz } = buildStairwell(ctx, spec, index);
+    const { cx, cz, windowMesh, drawFloor } = buildStairwell(ctx, spec, index);
     world.interiors.push({
+      floor: 1,
+      address: null,
+      panes: [windowMesh],
+      drawFloor,
+      // outer face of the landing window wall: lands on the facade
+      windowRef: new THREE.Vector3(cx, 0, cz + D / 2 + WT / 2),
       id: spec.id,
       caption: `Entrance ${spec.entrance} · building ${bSpec.number}`,
       flatBase: spec.flatBase,
@@ -502,4 +568,22 @@ export function buildInteriors(ctx) {
       outSpawn: door.out,
     });
   });
+}
+
+/**
+ * Where a stairwell's landing window really is: on the facade of the block
+ * it was entered from, above its entrance door, on the current floor.
+ * `address` = { spec, x, side } of the entrance door.
+ */
+export function stairwellView(interior) {
+  const a = interior.address;
+  if (!a) return null;
+  const facadeZ = a.spec.z + a.side * (a.spec.d / 2);
+  const to = new THREE.Vector3(a.x, (interior.floor - 1) * FLOOR_H, facadeZ);
+  return {
+    toWorld: portalMatrix(interior.windowRef, to, a.side),
+    point: new THREE.Vector3(a.x, 0, facadeZ + a.side * 0.03),
+    normal: new THREE.Vector3(0, 0, a.side),
+    panes: interior.panes,
+  };
 }
