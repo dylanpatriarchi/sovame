@@ -589,10 +589,12 @@ export function buildVegetation(ctx) {
   for (const s of spruces) {
     if (s.x < -104 && s.z > -112 && s.z < 184) s.dead = true;
   }
-  const westLists = scatterWestTrees((x, z, r) => {
+  // trunks keep a step away from asphalt and paving, not just off it
+  const soft = (x, z) => {
     const surface = world.surfaceAt(x, z);
-    return surface !== 'asphalt' && surface !== 'stone' && okPlace(x, z, r);
-  });
+    return surface !== 'asphalt' && surface !== 'stone';
+  };
+  const westLists = scatterWestTrees((x, z, r) => soft(x, z) && soft(x + 0.7, z) && soft(x - 0.7, z) && soft(x, z + 0.7) && soft(x, z - 0.7) && okPlace(x, z, r));
   const westBirch = westLists.birch;
   const westPoplar = westLists.poplar;
   const westSpruce = westLists.spruce;
@@ -662,11 +664,13 @@ export function buildVegetation(ctx) {
     const relocate = (list, radius, ownW, nearDistrict = true, historic = false) => {
       const ok = historic ? okPlaceHistoric : okPlace;
       const pool = historic ? allTreesHistoric : allTrees;
+      // new clusters also keep their trunks a step back from hard edges
+      const bad = historic ? offending : (x, z) => offending(x, z) || !(soft(x + 0.7, z) && soft(x - 0.7, z) && soft(x, z + 0.7) && soft(x, z - 0.7));
       const cramped = (item) => pool.some((o) => o !== item && Math.hypot(o.x - item.x, o.z - item.z) < gap(item, o));
       const clearOfTrees = (x, z, self) => pool.every((o) => o === self || Math.hypot(o.x - x, o.z - z) >= (o.species === 'spruce' ? 2.2 : 1.6));
       for (const item of list) {
         if (item.dead) continue;
-        if (!offending(item.x, item.z) && !cramped(item) && !foreignHit(item, ownW)) continue;
+        if (!bad(item.x, item.z) && !cramped(item) && !foreignHit(item, ownW)) continue;
         let placed = null;
         for (let ring = 1; ring <= 26 && !placed; ring++) {
           const rr = ring * 0.7;
@@ -675,7 +679,7 @@ export function buildVegetation(ctx) {
             const a = i * 2.39996 + ring * 0.61;
             const x = item.x + Math.cos(a) * rr;
             const z = item.z + Math.sin(a) * rr;
-            if (offending(x, z)) continue;
+            if (bad(x, z)) continue;
             // the belt sits mostly outside the playable bounds, where
             // okPlace always fails; fences still reach it near the edge
             if (nearDistrict || (Math.abs(x) < 107 && Math.abs(z) < 107)) {
@@ -888,6 +892,16 @@ export function buildVegetation(ctx) {
   // at the foot of garages and fences
   for (const [bx, bz] of [[-64.6, -30], [-64.6, -8], [-64.6, 12], [12.4, -16], [30.6, -14], [-59, -47], [-59, -49.5]]) {
     bushes.push({ x: bx + rng.float(-0.5, 0.5), z: bz + rng.float(-0.5, 0.5) });
+  }
+  // the historic scatter only dodged colliders, so a handful of bushes grew
+  // out of the asphalt of the cross street and the avenue: they keep their
+  // RNG draws (stream intact) but collapse to nothing, like felled trees
+  const hard = (x, z) => {
+    const surface = world.surfaceAt(x, z);
+    return surface === 'asphalt' || surface === 'stone';
+  };
+  for (const b of bushes) {
+    if (hard(b.x, b.z) || hard(b.x + 0.6, b.z) || hard(b.x - 0.6, b.z) || hard(b.x, b.z + 0.6) || hard(b.x, b.z - 0.6)) b.dead = true;
   }
   const bushGeo = bushGeometry(1);
   const bushAutumn = makeInstanced(bushGeo, new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), bushes.map((b) => ({ ...b })), [0.8, 1.4], 0.1);
