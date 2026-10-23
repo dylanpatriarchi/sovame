@@ -746,14 +746,19 @@ const bus = await page.evaluate(() => {
   let hiss = 0;
   let left = false;
   const hits = [];
+  // a whole call from its start: the bus may be halfway through one already
+  let prev = bt.bus.state;
   for (let i = 0; i < 20 * 260 && !left; i++) {
     T.update(0.05, { lights: 0 });
+    const fresh = bt.bus.state === 'dwell' && prev !== 'dwell';
+    prev = bt.bus.state;
+    if (fresh && !called) hiss = 0;
     if (b.hiss) {
       hiss++;
       b.hiss = false;
     }
-    if (bt.bus.state === 'dwell') {
-      if (!called) called = { x: b.x, z: b.z, heading: b.heading };
+    if (fresh) called = { x: b.x, z: b.z, heading: b.heading };
+    if (called && bt.bus.state === 'dwell') {
       maxDoors = Math.max(maxDoors, b.doors);
     }
     if (called && bt.bus.state === 'run') left = true;
