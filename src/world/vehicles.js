@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, damp, TAU } from '../util.js';
 import { WEST_CARS } from './west.js';
 import { SOUTH_CARS } from './south.js';
+import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 
 /* ---------------------------------------------------------- dimensions */
 
@@ -278,6 +279,7 @@ export class Car {
 
     this.root = new THREE.Group();
     this.root.name = `car-${id}`;
+    this.root.userData.dynamic = true;
     this.body = new THREE.Group();
     this.root.add(this.body);
     const add = (geo, mat, cast = true) => {
@@ -550,6 +552,7 @@ export function buildVehicles(ctx) {
   // one pair of headlight beams, handed to whichever car is being driven
   const beam = new THREE.SpotLight(0xffe2b0, 0, 45, 0.5, 0.55, 1.4);
   beam.castShadow = false;
+  beam.layers.set(OUTDOOR_LIGHT_LAYER);
   const target = new THREE.Object3D();
   beam.target = target;
   world.group.add(beam, target);

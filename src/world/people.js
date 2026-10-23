@@ -244,6 +244,7 @@ class Pedestrian {
     const mat = parts.material;
     this.root = new THREE.Group();
     this.root.name = `pedestrian:${this.name}`;
+    this.root.userData.dynamic = true;
     this.torso = new THREE.Mesh(parts.torso, mat);
     this.torso.castShadow = true;
     this.root.add(this.torso);

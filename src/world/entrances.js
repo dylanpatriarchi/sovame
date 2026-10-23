@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, Rng } from '../util.js';
 import { makeSoftCircleTexture } from '../textures.js';
 import { BUILDING_SPECS, EXPANSION_SPECS, SOUTH_SPECS, WEST_SPECS, entranceDoor } from './buildings.js';
+import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 
 const CELL_W = 3.4;
 const PAD_TOP = 0.26;
@@ -141,6 +142,7 @@ export function buildEntrances(ctx) {
   // one real light that hops to the nearest lit porch
   const light = new THREE.PointLight(0xffc48a, 0, 9, 1.6);
   light.castShadow = false;
+  light.layers.set(OUTDOOR_LIGHT_LAYER);
   world.group.add(light);
 
   world.entrances = spots;

@@ -8,6 +8,7 @@ import { makeStarMesh } from './buildings.js';
 import { WORLD } from '../config.js';
 import { WEST_LAMPS, buildWestProps } from './west.js';
 import { SOUTH_LAMPS, buildSouthProps } from './south.js';
+import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 
 export function buildProps(ctx) {
   const { world, materials: M, textures: T, rng } = ctx;
@@ -46,14 +47,13 @@ export function buildProps(ctx) {
     glass.position.set(1.42, 7.23, 0);
     g.add(glass);
 
-    const light = new THREE.PointLight(0xff9d3c, 0, 30, 2);
-    light.position.set(1.42, 7.1, 0);
-    g.add(light);
+    // the PointLight itself is lent by the fixed pool in environment.js
+    const lightPos = new THREE.Vector3(1.42, 7.1, 0);
     const glow = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: glowTex, color: 0xffc681, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
     );
     glow.scale.set(2.6, 2.6, 1);
-    glow.position.copy(light.position);
+    glow.position.copy(lightPos);
     g.add(glow);
 
     // fake pool of light on the ground: keeps distant lamps readable even where
@@ -97,7 +97,8 @@ export function buildProps(ctx) {
     g.rotation.y = facing;
     group.add(g);
     ctx.addBoxCollider(x, z, 0.5, 0.5, 0.15);
-    world.lamps.push({ light, glow, pool, cone, coneMat: beamMat, group: g, height: 7.4 });
+    g.updateMatrixWorld();
+    world.lamps.push({ lightPos: g.localToWorld(lightPos), glow, pool, cone, coneMat: beamMat, group: g, height: 7.4 });
   };
 
   makeLamp(8.2, -78, Math.PI);
@@ -112,7 +113,7 @@ export function buildProps(ctx) {
   /* ------------------------------------------------ northern cluster lamps */
   // Same poles as makeLamp, but the static parts of all four bake into one
   // mesh per material; only the glow/pool/beam stay per lamp (they flicker
-  // on their own phase). The PointLight pool in environment.js culls itself.
+  // on their own phase). Their PointLights come from the pool in environment.js.
   {
     const statics = new Map(); // material -> geometry parts
     const addStatic = (geo, mat) => {
@@ -135,14 +136,12 @@ export function buildProps(ctx) {
       part(new THREE.BoxGeometry(0.7, 0.06, 0.3), lampGlassMat, 1.42, 7.23, 0);
 
       const g = new THREE.Group();
-      const light = new THREE.PointLight(0xff9d3c, 0, 30, 2);
-      light.position.set(1.42, 7.1, 0);
-      g.add(light);
+      const lightPos = new THREE.Vector3(1.42, 7.1, 0);
       const glow = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: glowTex, color: 0xffc681, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
       );
       glow.scale.set(2.6, 2.6, 1);
-      glow.position.copy(light.position);
+      glow.position.copy(lightPos);
       g.add(glow);
       const pool = new THREE.Mesh(
         new THREE.PlaneGeometry(17, 17),
@@ -182,7 +181,8 @@ export function buildProps(ctx) {
       g.rotation.y = facing;
       group.add(g);
       ctx.addBoxCollider(x, z, 0.5, 0.5, 0.15, true);
-      world.lamps.push({ light, glow, pool, cone, coneMat: beamMat, group: g, height: 7.4 });
+      g.updateMatrixWorld();
+      world.lamps.push({ lightPos: g.localToWorld(lightPos), glow, pool, cone, coneMat: beamMat, group: g, height: 7.4 });
     };
     makeNorthLamp(8.2, 124, Math.PI); // avenue, south-east corner of the junction
     makeNorthLamp(-8.2, 150, 0); // avenue west sidewalk, mid-cluster
@@ -347,6 +347,7 @@ export function buildProps(ctx) {
 
     const kLight = new THREE.PointLight(0xffc98a, 0, 10, 2);
     kLight.position.set(x, 1.9, z - d / 2 - 0.8);
+    kLight.layers.set(OUTDOOR_LIGHT_LAYER);
     group.add(kLight);
     const kGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: glowTex, color: 0xffcf94, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })
@@ -436,6 +437,7 @@ export function buildProps(ctx) {
     pipe(swingGroup, V(-halfBar - 0.12, topY, 0), V(halfBar + 0.12, topY, 0), 0.05, rustMat);
     for (const sx of [-0.8, 0.8]) {
       const pivot = new THREE.Group();
+      pivot.userData.dynamic = true;
       pivot.position.set(sx, topY, 0);
       for (const dx of [-0.24, 0.24]) {
         pipe(pivot, V(dx, 0, 0), V(dx, -1.86, 0), 0.014, M.metal);
@@ -474,6 +476,7 @@ export function buildProps(ctx) {
   // merry-go-round
   {
     const carousel = new THREE.Group();
+    carousel.userData.dynamic = true;
     const base = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.85, 0.2, 20), M.concreteDark);
     base.position.y = 0.1;
     base.receiveShadow = true;

@@ -5,6 +5,8 @@
 // window panes sample in screen space. The near plane is bent onto the
 // facade (oblique frustum), so the block's own walls never get in the way.
 import * as THREE from 'three';
+import { OUTDOOR_LIGHT_LAYER } from './world/interiors.js';
+import { QUALITY } from './config.js';
 
 const vertexShader = /* glsl */ `
   varying vec2 vUv;
@@ -59,11 +61,14 @@ export class WindowViews {
   constructor({ renderer, scene, quality = 'high' }) {
     this.renderer = renderer;
     this.scene = scene;
-    this.scale = quality === 'high' ? 0.6 : 0.45;
+    this.setQuality(quality);
+    this.frame = 0;
     this.target = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: true });
     this.target.texture.generateMipmaps = false;
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.1, 1500);
+    // the district and its lights, never an interior
     this.camera.layers.set(0);
+    this.camera.layers.enable(OUTDOOR_LIGHT_LAYER);
     this.camera.matrixAutoUpdate = false;
     this.uniforms = {
       tView: { value: this.target.texture },
@@ -96,11 +101,16 @@ export class WindowViews {
 
   setView(view) {
     this.view = view;
+    // a new view is drawn on its first frame, whatever the refresh rate
+    this.frame = 0;
     this.uniforms.uLive.value = view ? 1 : 0;
   }
 
   setQuality(quality) {
-    this.scale = quality === 'high' ? 0.6 : 0.45;
+    const preset = QUALITY[quality] ?? QUALITY.high;
+    this.scale = preset.windowScale;
+    // lower presets refresh the view every other frame
+    this.every = preset.windowEvery;
   }
 
   /** Places the portal camera for this frame. Returns it (or null when no
@@ -145,6 +155,7 @@ export class WindowViews {
 
   render() {
     if (!this.view || !this.visible) return;
+    if (this.every > 1 && this.frame++ % this.every !== 0) return;
     const r = this.renderer;
     const size = r.getDrawingBufferSize(new THREE.Vector2());
     this.uniforms.uRes.value.copy(size);

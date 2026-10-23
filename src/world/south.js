@@ -622,6 +622,7 @@ export function buildSouthProps(ctx) {
     bake(pole, M.metalLight);
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.9, 6, 1), new THREE.MeshStandardMaterial({ color: 0xa8231c, roughness: 0.8, side: THREE.DoubleSide }));
     flag.position.set(s.x + 6.5 + 0.92, 8.5, front - 5.2);
+    flag.userData.dynamic = true;
     sd.add(flag);
     const base = flag.geometry.attributes.position.array.slice();
     ctx.addUpdater((dt, t) => {
@@ -834,6 +835,7 @@ export function buildSouthProps(ctx) {
     C(o.x - 1.4, o.x + 1.4, fz - 1.4, fz + 1.4);
     const flameMat = new THREE.MeshBasicMaterial({ map: makeFlameTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const flames = new THREE.Group();
+    flames.userData.dynamic = true;
     for (let i = 0; i < 3; i++) {
       const f = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 1.1), flameMat);
       f.rotation.y = (i / 3) * Math.PI;

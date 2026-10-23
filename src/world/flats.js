@@ -651,7 +651,10 @@ export function buildFlats(ctx) {
 
   // three warm lamp lights shared by all flats, parked in the one you are in
   world.flatLights = [new THREE.PointLight(0xffb86e, 0, 7, 1.5), new THREE.PointLight(0xffc888, 0, 11, 1.2), new THREE.PointLight(0xffd29a, 0, 6, 1.5)];
-  for (const light of world.flatLights) world.group.add(light);
+  for (const light of world.flatLights) {
+    light.layers.set(INTERIOR_LAYER);
+    world.group.add(light);
+  }
   ctx.addUpdater((dt, t) => {
     for (const flat of world.flats) {
       if (!flat.tv) continue;

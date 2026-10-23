@@ -5,7 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World } from './world/index.js';
-import { INTERIOR_LAYER, LAND_H, stairwellView } from './world/interiors.js';
+import { INTERIOR_LAYER, LAND_H, OUTDOOR_LIGHT_LAYER, stairwellView } from './world/interiors.js';
 import { flatView, numberFlats, setFlatLight } from './world/flats.js';
 import { WindowViews } from './windowview.js';
 import { allEntrances } from './world/entrances.js';
@@ -15,7 +15,9 @@ import { Sound } from './audio.js';
 import { UI } from './ui.js';
 import { Smoke, smokeSpots } from './smoke.js';
 import { Driving } from './driving.js';
-import { PLAYER, SETTINGS_DEFAULTS } from './config.js';
+import { Perf } from './perf.js';
+import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
+import { DynamicResolution } from './resolution.js';
 import { clamp } from './util.js';
 
 const STORAGE_KEY = 'pervyj-sneg:settings';
@@ -51,13 +53,15 @@ async function boot() {
   const settings = loadSettings();
   let quality = resolveQuality(settings.quality);
 
+  // no MSAA on the canvas: the scene is drawn into the composer's (non
+  // multisampled) targets, so the canvas only ever receives the final quad
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: !isTouch,
+    antialias: false,
     powerPreference: 'high-performance',
     stencil: false,
   });
-  renderer.setPixelRatio(quality === 'high' ? Math.min(window.devicePixelRatio, 1.8) : Math.min(window.devicePixelRatio, 1.25));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY[quality].pixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.shadowMap.enabled = quality !== 'low';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -67,8 +71,23 @@ async function boot() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.08, 1500);
   camera.position.set(2.4, 1.9, 44);
-  // stairwell interiors live on their own layer, lit only by their own bulbs
-  camera.layers.enable(INTERIOR_LAYER);
+  // stairwell interiors live on their own layer, lit only by their own
+  // bulbs; the district lights have one too. Outdoors the camera sees the
+  // district and its lights, indoors the interiors and theirs: two fixed
+  // light sets, so the shaders compiled for each are reused, never rebuilt
+  let cameraIndoors = null;
+  function setCameraIndoors(indoors) {
+    if (indoors === cameraIndoors) return;
+    cameraIndoors = indoors;
+    if (indoors) {
+      camera.layers.enable(INTERIOR_LAYER);
+      camera.layers.disable(OUTDOOR_LIGHT_LAYER);
+    } else {
+      camera.layers.disable(INTERIOR_LAYER);
+      camera.layers.enable(OUTDOOR_LIGHT_LAYER);
+    }
+  }
+  setCameraIndoors(false);
 
   // post chain: bloom only haloes genuinely bright sources (windows, lamps, moon)
   const composer = new EffectComposer(renderer);
@@ -78,6 +97,20 @@ async function boot() {
   composer.addPass(new OutputPass());
   // accumulate renderer.info across all composer passes (smoke test reads it)
   renderer.info.autoReset = false;
+  // frames over budget lower the render resolution (?fixedres turns it off,
+  // for comparable screenshots)
+  const dynres = new DynamicResolution({ enabled: !new URLSearchParams(window.location.search).has('fixedres') });
+  // ?perf in the URL: frame-time and per-pass overlay (also __perf.toggle())
+  const perf = new Perf(renderer);
+  perf.instrument(composer, ['main', 'bloom', 'output']);
+  perf.lights = () => {
+    let n = 0;
+    scene.traverseVisible((o) => {
+      if (o.isLight && !o.isAmbientLight && !o.isHemisphereLight && o.layers.test(camera.layers)) n++;
+    });
+    return n;
+  };
+  perf.setEnabled(new URLSearchParams(window.location.search).has('perf'));
 
   const sound = new Sound({ volume: settings.volume });
   const state = { mode: 'loading', elapsed: 0, introT: 0, interior: null, transitioning: false, smoking: false };
@@ -278,10 +311,33 @@ async function boot() {
     if (!locked && state.mode === 'playing') pause();
   };
 
+  // compile now, behind the loading bar, every shader the walk will need:
+  // both light sets (outdoors, indoors), the expansion details, both seasons
+  ui.setProgress(0.97, 'Warming up');
+  await nextFrame();
+  await precompileShaders();
+
   ui.setProgress(1, 'Ready');
   ui.hideLoading();
   ui.showScreen('start');
   state.mode = 'title';
+
+  async function precompileShaders() {
+    // the scene is rendered into half-float targets, never straight to the
+    // canvas: compile for that (no tone mapping in the material shaders)
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(composer.renderTarget1);
+    const pending = [];
+    // without parallel compilation there is nothing to wait for
+    const parallel = renderer.extensions.has('KHR_parallel_shader_compile');
+    for (const indoors of [true, false]) {
+      setCameraIndoors(indoors);
+      if (parallel) pending.push(renderer.compileAsync(scene, camera));
+      else renderer.compile(scene, camera);
+    }
+    renderer.setRenderTarget(prev);
+    await Promise.all(pending);
+  }
 
   /* --------------------------------------------------- state */
 
@@ -309,16 +365,27 @@ async function boot() {
   }
 
   function applyQuality() {
-    const high = quality === 'high';
-    const pixelRatio = high ? Math.min(window.devicePixelRatio, 1.8) : Math.min(window.devicePixelRatio, 1.2);
-    renderer.setPixelRatio(pixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    const preset = QUALITY[quality];
+    const max = Math.min(window.devicePixelRatio, preset.pixelRatio);
+    dynres.setRange(max, Math.min(max, preset.minPixelRatio));
     renderer.shadowMap.enabled = quality !== 'low';
-    bloomPass.enabled = quality !== 'low';
-    composer.setPixelRatio(pixelRatio);
-    composer.setSize(window.innerWidth, window.innerHeight);
+    bloomPass.enabled = preset.bloomScale > 0;
+    applyResolution(dynres.ratio);
     env.setQuality(quality);
     windowViews.setQuality(quality);
+  }
+
+  /** Canvas, composer and bloom at a pixel ratio (preset or dynamic). */
+  function applyResolution(pixelRatio) {
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    composer.setPixelRatio(pixelRatio);
+    composer.setSize(window.innerWidth, window.innerHeight);
+    // a softer preset blurs a smaller bloom chain
+    const bloomScale = QUALITY[quality].bloomScale;
+    if (bloomScale > 0 && bloomScale < 1) {
+      bloomPass.setSize(Math.round(window.innerWidth * pixelRatio * bloomScale), Math.round(window.innerHeight * pixelRatio * bloomScale));
+    }
   }
 
   function enterWorld() {
@@ -572,8 +639,7 @@ async function boot() {
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    composer.setSize(window.innerWidth, window.innerHeight);
+    applyResolution(dynres.ratio);
     smoke.onResize();
   });
 
@@ -631,7 +697,9 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, windowViews, changeFloor, setFloor };
+  perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
+  window.__perf = perf;
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- loop */
 
@@ -640,8 +708,16 @@ async function boot() {
   function frame(now) {
     requestAnimationFrame(frame);
     renderer.info.reset();
-    const dt = Math.min(0.05, (now - last) / 1000);
+    perf.begin();
+    perf.push('update');
+    const frameMs = now - last;
+    const dt = Math.min(0.05, frameMs / 1000);
     last = now;
+    // only judge the frame rate while it is the game being drawn
+    if (state.mode === 'playing' || state.mode === 'title') {
+      const ratio = dynres.sample(frameMs);
+      if (ratio !== null) applyResolution(ratio);
+    }
     state.elapsed += dt;
 
     if (state.mode === 'title') {
@@ -697,7 +773,11 @@ async function boot() {
       }
     }
 
+    perf.pop();
+    perf.push('windows');
     windowViews.render();
+    perf.pop();
+    setCameraIndoors(!!state.interior);
     // indoors the district is only ever seen through the windows (rendered
     // just above): keep it out of the main pass, behind the sealed walls
     let hidden = null;
@@ -712,6 +792,7 @@ async function boot() {
     }
     composer.render();
     if (hidden) for (const child of hidden) child.visible = true;
+    perf.end();
   }
 
   requestAnimationFrame(frame);

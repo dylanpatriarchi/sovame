@@ -11,6 +11,10 @@ import { paneMaterial, portalMatrix } from '../windowview.js';
 /** Camera/light layer shared by all interior meshes: they are lit only by
  * their own bulb, never by the sun, sky or street lamps of the district. */
 export const INTERIOR_LAYER = 1;
+/** District lights (lamps, porch, kiosk, beacon, headlights): seen only by
+ * cameras that look at the district, so indoors they cost nothing and the
+ * light count of each pass never changes (no shader recompiles). */
+export const OUTDOOR_LIGHT_LAYER = 2;
 
 /** The enterable doors: building id, entrance cell and long side (+1/-1). */
 const INTERIOR_SPECS = [

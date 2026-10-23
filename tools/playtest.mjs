@@ -8,7 +8,8 @@ import { mkdirSync } from 'node:fs';
 
 const URL_BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = process.argv[3] ?? 'shots';
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// CHROME_PATH overrides the default (macOS) browser binary, e.g. on Linux
+const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 mkdirSync(OUT, { recursive: true });
 
@@ -543,8 +544,10 @@ check(fp.outdoorStamped > 0, `footprints still stamp outdoors (stamped ${fp.outd
 console.log('→ stairwell light containment (regression)');
 const lights = await page.evaluate(() => {
   const found = [];
+  // the interior layer also holds the three shared flat lights: only the bulbs count here
+  const flatLights = window.__game.world.flatLights ?? [];
   window.__game.scene.traverse((o) => {
-    if (o.isPointLight && (o.layers.mask & 2)) {
+    if (o.isPointLight && (o.layers.mask & 2) && !flatLights.includes(o)) {
       const p = o.getWorldPosition(new o.position.constructor());
       found.push({ x: p.x, z: p.z, distance: o.distance, decay: o.decay });
     }
@@ -639,6 +642,20 @@ const pedWatch = await page.evaluate(async () => {
   return [...new Set(bad)];
 });
 check(pedWatch.length === 0, `pedestrians stay finite and outside colliders for 20 s${pedWatch.length ? ' — ' + pedWatch.slice(0, 4).join('; ') : ''}`);
+
+/* ================================================================ static batches */
+// everything baked into the static batches must have stayed put through the
+// whole run (walks, doors, seasons, time presets): a moved, hidden or
+// re-skinned source would be an animation frozen by the batching
+console.log('→ static batches');
+const batch = await page.evaluate(async () => {
+  const { staticBatchDrift } = await import('/src/world/batch.js');
+  const g = window.__game;
+  return { report: g.world.batchReport, drift: staticBatchDrift(g.world) };
+});
+console.log(`  baked ${batch.report?.sources} meshes into ${batch.report?.batches} batches (${batch.report?.kept} kept apart)`);
+check(batch.report?.batches > 0, 'static batching ran');
+check(batch.drift.length === 0, `no baked mesh moved or changed${batch.drift.length ? ' — ' + JSON.stringify(batch.drift.slice(0, 4)) : ''}`);
 
 /* ================================================================ performance (indicative only) */
 const fps = await page.evaluate(async () => {
