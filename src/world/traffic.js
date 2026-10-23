@@ -3,10 +3,12 @@
 // and the cross street, two each way, keeping to the right-hand lane. They
 // follow a fixed lane path, slow down for the corners and stop for whatever
 // stands in their lane: the player, a passer-by, the car being driven, or
-// the car in front.
+// the vehicle in front. The bus runs on the southbound-first loop and calls
+// at the bus stop on the avenue (pulls over, opens its doors, waits).
 import { clamp, damp } from '../util.js';
 import { WORLD } from '../config.js';
 import { Car } from './vehicles.js';
+import { Bus, BUS } from './bus.js';
 
 /** Corners of the block, along the road centre lines (x, z). */
 const BLOCK = [
@@ -27,12 +29,21 @@ const CLEAR = 1.25; // half width of the watched corridor (m)
 const GAP = 2; // gap kept between the bumper and an obstacle (m)
 const HALF_LENGTH = 2.05;
 
+/** The bus at the stop: how far it pulls over, and the timings of a call (s). */
+const PULL_OVER = 1.7;
+const PULL_IN = [34, 10]; // starts / has pulled over this far before the stop (m)
+const PULL_OUT = [-1, -24]; // starts / is back in lane this far past it
+const DOORS_OPEN = [0.8, 2.0]; // folding open, from the moment it stops
+const DOORS_SHUT = [8.0, 9.2]; // folding shut
+const DWELL = 10.4; // pulls out
+
 /** The cars: loop direction (1 = avenue southbound first) and start share. */
 const FLEET = [
   { dir: 1, at: 0.08, color: 0x6f7f5a },
   { dir: 1, at: 0.58, color: 0x2d3b52 },
   { dir: -1, at: 0.3, color: 0xa79f86 },
   { dir: -1, at: 0.8, color: 0x7a2b25 },
+  { dir: 1, at: 0.33, bus: true },
 ];
 
 /** Lane path round the block: offset corners, rounded, sampled every STEP. */
@@ -116,37 +127,126 @@ export function buildTraffic(ctx) {
     const i = indexAt(path, s);
     // live-only: no collider exists until the world is built (Car parks it
     // far away), so the seeded scatter passes never see these cars
-    const car = new Car(world, kit.parts, kit.mats, { x: path.x[i], z: path.z[i], heading: path.heading[i], color: spec.color, id: `traffic-${k}` });
-    car.root.name = `traffic-${k}`;
+    const at = { x: path.x[i], z: path.z[i], heading: path.heading[i], color: spec.color, id: `traffic-${k}` };
+    const car = spec.bus ? new Bus(world, ctx.materials.snow, at) : new Car(world, kit.parts, kit.mats, at);
+    car.root.name = spec.bus ? 'bus' : `traffic-${k}`;
     world.group.add(car.root);
     ctx.seasonable('winter', car.snow);
-    return { car, path, dir: spec.dir, s, speed: 0, blocked: 0 };
+    const half = spec.bus ? BUS.length / 2 : HALF_LENGTH;
+    const clear = spec.bus ? BUS.width / 2 : CLEAR;
+    return { car, path, dir: spec.dir, s, speed: 0, half, clear, bus: spec.bus ? { state: 'run', t: 0 } : null };
   });
   world.trafficCars = cars.map((t) => t.car);
+
+  // the bus stop: the bus halts with the shelter between its two doors
+  const busT = cars.find((t) => t.bus);
+  const stopZ = (world.points.busStop?.z ?? 24) + 2;
+  let stopS = 0;
+  {
+    const p = busT.path;
+    let best = Infinity;
+    for (let i = 0; i < p.count; i++) {
+      const d = Math.abs(p.x[i] - LANE) + Math.abs(p.z[i] - stopZ);
+      if (d < best) {
+        best = d;
+        stopS = p.s[i];
+      }
+    }
+  }
+  world.bus = busT.car;
+  busT.stopS = stopS;
+
+  /** Signed path distance from s to the bus stop, in (-len/2, len/2]. */
+  const toStop = (s) => {
+    const len = busT.path.length;
+    const d = (((stopS - s) % len) + len) % len;
+    return d > len / 2 ? d - len : d;
+  };
+  const ease = (x) => x * x * (3 - 2 * x);
+  /**
+   * How far right of its lane the vehicle t runs at path distance s: the
+   * bus eases over to the curb before the stop and back after it (a fixed
+   * profile, so its axles trace it one after the other, like a real one).
+   */
+  const sideAt = (t, s) => {
+    if (!t.bus) return 0;
+    const q = toStop(s);
+    if (q > PULL_IN[0] || q < PULL_OUT[1]) return 0;
+    if (q > PULL_IN[1]) return PULL_OVER * ease((PULL_IN[0] - q) / (PULL_IN[0] - PULL_IN[1]));
+    if (q < PULL_OUT[0]) return PULL_OVER * ease((q - PULL_OUT[1]) / (PULL_OUT[0] - PULL_OUT[1]));
+    return PULL_OVER;
+  };
+  /** Point of the lane at path distance s, moved `side` m to the right. */
+  const _pt = { x: 0, z: 0, heading: 0, curve: 0 };
+  const pointAt = (path, s, side = 0) => {
+    s = ((s % path.length) + path.length) % path.length;
+    const i = indexAt(path, s);
+    const j = (i + 1) % path.count;
+    const f = clamp((s - path.s[i]) / Math.max(1e-4, path.s[i + 1] - path.s[i]), 0, 1);
+    let dh = path.heading[j] - path.heading[i];
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    const h = path.heading[i] + dh * f;
+    // the driver's right is (-cos h, sin h)
+    _pt.x = path.x[i] + (path.x[j] - path.x[i]) * f - Math.cos(h) * side;
+    _pt.z = path.z[i] + (path.z[j] - path.z[i]) * f + Math.sin(h) * side;
+    _pt.heading = h;
+    _pt.curve = path.curve[i];
+    return _pt;
+  };
 
   /** Free road ahead of a car's front bumper, keeping a gap (Infinity if clear). */
   function roomAhead(t, points) {
     const { path } = t;
     let room = Infinity;
-    // the car in front on the same loop, by path distance (centre to centre)
+    // the vehicle in front on the same loop, by path distance (centre to centre)
     for (const o of cars) {
       if (o === t || o.path !== path) continue;
       const d = (((o.s - t.s) % path.length) + path.length) % path.length;
-      if (d < LOOK + HALF_LENGTH * 2) room = Math.min(room, d - HALF_LENGTH * 2 - GAP);
+      if (d < LOOK + t.half + o.half) room = Math.min(room, d - t.half - o.half - GAP);
     }
-    // anything else standing in the corridor ahead, from the car's own centre
-    for (let d = 0; d < LOOK && d - HALF_LENGTH - GAP < room; d += 0.75) {
-      const i = indexAt(path, t.s + d);
-      const x = path.x[i];
-      const z = path.z[i];
+    // anything else standing in the corridor ahead, from the vehicle's own centre
+    for (let d = 0; d < LOOK + t.half && d - t.half - GAP < room; d += 0.75) {
+      const { x, z } = pointAt(path, t.s + d, sideAt(t, t.s + d));
       for (const p of points) {
-        if ((p.x - x) ** 2 + (p.z - z) ** 2 < (CLEAR + p.r) ** 2) {
-          room = Math.min(room, d - HALF_LENGTH - GAP);
+        if ((p.x - x) ** 2 + (p.z - z) ** 2 < (t.clear + p.r) ** 2) {
+          room = Math.min(room, d - t.half - GAP);
           break;
         }
       }
     }
     return room;
+  }
+
+  /**
+   * The bus's call at the stop: the speed it allows. Runs (pulls over as it
+   * nears the stop), dwells (doors open, then shut), leaves (pulls out).
+   */
+  function busCall(t, dt) {
+    const b = t.bus;
+    const d = toStop(t.s);
+    const bus = t.car;
+    if (b.state === 'run') {
+      if (d > -1 && d < 0.6 && t.speed < 0.4) {
+        b.state = 'dwell';
+        b.t = 0;
+        return 0;
+      }
+      return d > -1 ? Math.sqrt(2 * DECEL * 0.45 * Math.max(0, d - 0.3)) + 0.25 * clamp(d, 0, 1) : CRUISE;
+    }
+    if (b.state === 'dwell') {
+      const before = b.t;
+      b.t += dt;
+      // the hiss of the air as the doors fold open and shut again
+      if (before < DOORS_OPEN[0] && b.t >= DOORS_OPEN[0]) bus.hiss = true;
+      if (before < DOORS_SHUT[0] && b.t >= DOORS_SHUT[0]) bus.hiss = true;
+      bus.doors =
+        b.t < DOORS_SHUT[0] ? clamp((b.t - DOORS_OPEN[0]) / (DOORS_OPEN[1] - DOORS_OPEN[0]), 0, 1) : clamp(1 - (b.t - DOORS_SHUT[0]) / (DOORS_SHUT[1] - DOORS_SHUT[0]), 0, 1);
+      if (b.t >= DWELL) b.state = 'leave';
+      return 0;
+    }
+    // leaving: on to the next lap once well past the stop
+    if (d < -20) b.state = 'run';
+    return CRUISE;
   }
 
   world.traffic = {
@@ -175,26 +275,45 @@ export function buildTraffic(ctx) {
         const room = roomAhead(t, points);
         if (room < Infinity) target = Math.min(target, Math.sqrt(2 * DECEL * Math.max(0, room)));
         if (room < 0.2) target = 0;
+        if (t.bus) target = Math.min(target, busCall(t, dt));
         t.speed = target < t.speed ? Math.max(target, t.speed - DECEL * 1.6 * dt) : Math.min(target, t.speed + ACCEL * dt);
         t.s = (t.s + t.speed * dt) % path.length;
 
         const i = indexAt(path, t.s);
-        const j = (i + 1) % path.count;
-        const f = clamp((t.s - path.s[i]) / Math.max(1e-4, path.s[i + 1] - path.s[i]), 0, 1);
-        car.x = path.x[i] + (path.x[j] - path.x[i]) * f;
-        car.z = path.z[i] + (path.z[j] - path.z[i]) * f;
-        let dh = path.heading[j] - path.heading[i];
-        dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-        car.heading = path.heading[i] + dh * f;
+        if (t.bus) {
+          // the axles each trace the lane (pulled over near the stop): the
+          // body hangs between them, the front wheels point along their trace
+          const at = (s) => {
+            const p = pointAt(path, s, sideAt(t, s));
+            return [p.x, p.z];
+          };
+          const fa = at(t.s + BUS.frontAxle);
+          const ra = at(t.s + BUS.rearAxle);
+          const heading = Math.atan2(fa[0] - ra[0], fa[1] - ra[1]);
+          car.heading = heading;
+          car.x = ra[0] - Math.sin(heading) * BUS.rearAxle;
+          car.z = ra[1] - Math.cos(heading) * BUS.rearAxle;
+          const f0 = at(t.s + BUS.frontAxle - 0.5);
+          const f1 = at(t.s + BUS.frontAxle + 0.5);
+          let steer = Math.atan2(f1[0] - f0[0], f1[1] - f0[1]) - heading;
+          steer = Math.atan2(Math.sin(steer), Math.cos(steer));
+          car.steer = damp(car.steer, steer, 6, dt);
+        } else {
+          const p = pointAt(path, t.s);
+          car.x = p.x;
+          car.z = p.z;
+          car.heading = p.heading;
+          // the front wheels follow the curve
+          car.steer = damp(car.steer, Math.atan(2.42 * path.curve[i]), 6, dt);
+        }
         car.speed = t.speed;
-        // the front wheels follow the curve, the body dips when braking
-        car.steer = damp(car.steer, Math.atan(2.42 * path.curve[i]), 6, dt);
+        // the body dips when braking
         const accel = (t.speed - (t.lastSpeed ?? t.speed)) / Math.max(dt, 1e-3);
         t.lastSpeed = t.speed;
         car.pitch = damp(car.pitch, clamp(-accel * 0.006, -0.03, 0.02), 5, dt);
         car.roll = damp(car.roll, clamp(path.curve[i] * t.speed * t.speed * 0.004, -0.04, 0.04), 4, dt);
         car.y = damp(car.y, world.heightAt(car.x, car.z), 10, dt);
-        car.spin += (t.speed / 0.3) * dt;
+        car.spin += (t.speed / (t.bus ? BUS.wheelR : 0.3)) * dt;
         car.lamps.visible = lit;
         car.setLights(lit ? 1 : 0);
         car.updateCollider();

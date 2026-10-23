@@ -593,6 +593,32 @@ export class Sound {
     src.stop(t + 0.4);
   }
 
+  /** The bus's doors: a burst of compressed air, `dist` m away. */
+  hiss(dist, pan = 0) {
+    if (!this.ready) return;
+    const level = 0.08 / (1 + dist * dist * 0.006);
+    if (level < 0.002) return;
+    const t = this.ctx.currentTime + 0.01;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.9;
+    filter.frequency.setValueAtTime(4200, t);
+    filter.frequency.exponentialRampToValueAtTime(2600, t + 0.9);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(level, t + 0.03);
+    gain.gain.setValueAtTime(level, t + 0.18);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.95);
+    const panner = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+    if (panner) panner.pan.value = clamp(pan, -1, 1);
+    src.connect(filter).connect(gain);
+    (panner ? gain.connect(panner) : gain).connect(this.master);
+    src.start(t, this.rng.float(0, 1));
+    src.stop(t + 1);
+  }
+
   /** A crow's caw: two or three hoarse "kraa"s, `dist` m away. */
   caw(dist, pan = 0) {
     if (!this.ready) return;
@@ -643,7 +669,8 @@ export class Sound {
 
   /**
    * Per-frame ambience. tv: 0..1 (a stairwell's muffled TVs), car: the
-   * nearest moving car { dist, speed, pan } or null, crows: [{ dist, pan }].
+   * nearest moving car { dist, speed, pan, big } or null (big: the bus),
+   * crows: [{ dist, pan }].
    */
   ambience(dt, { tv = 0, car = null, crows = [] } = {}) {
     if (!this.ready) return;
@@ -675,10 +702,11 @@ export class Sound {
       this.tvNext = t + (this.rng.chance(0.2) ? this.rng.float(1.2, 2.6) : this.rng.float(0.2, 0.6));
     }
     // the car going by
-    const carLevel = car ? (0.07 * clamp(car.speed / 7, 0.25, 1)) / (1 + car.dist * car.dist * 0.01) : 0;
+    // (the bus: a deeper diesel that keeps idling at the stop)
+    const carLevel = car ? ((car.big ? 0.1 : 0.07) * clamp(car.speed / 7, car.big ? 0.5 : 0.25, 1)) / (1 + car.dist * car.dist * 0.01) : 0;
     this.carGain.gain.setTargetAtTime(this.indoors ? carLevel * 0.25 : carLevel, now, 0.25);
     if (car) {
-      this.carOsc.frequency.setTargetAtTime(30 + car.speed * 4.5, now, 0.3);
+      this.carOsc.frequency.setTargetAtTime(car.big ? 24 + car.speed * 3.2 : 30 + car.speed * 4.5, now, 0.3);
       this.tyreFilter.frequency.setTargetAtTime(300 + car.speed * 90, now, 0.3);
       if (this.carPanner) this.carPanner.pan.setTargetAtTime(clamp(car.pan, -1, 1), now, 0.2);
     }

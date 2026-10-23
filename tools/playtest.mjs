@@ -731,6 +731,56 @@ if (traffic) {
   check(false, 'world.traffic exists');
 }
 
+// the bus: calls at the stop (pulls over, doors open and shut, drives on)
+// and its long body never sweeps over a static collider on the way round
+console.log('→ bus');
+const bus = await page.evaluate(() => {
+  const W = window.__game.world;
+  const T = W.traffic;
+  const bt = T?.cars.find((t) => t.bus);
+  if (!bt) return null;
+  const b = bt.car;
+  const stop = W.points.busStop;
+  let called = null;
+  let maxDoors = 0;
+  let hiss = 0;
+  let left = false;
+  const hits = [];
+  for (let i = 0; i < 20 * 260 && !left; i++) {
+    T.update(0.05, { lights: 0 });
+    if (b.hiss) {
+      hiss++;
+      b.hiss = false;
+    }
+    if (bt.bus.state === 'dwell') {
+      if (!called) called = { x: b.x, z: b.z, heading: b.heading };
+      maxDoors = Math.max(maxDoors, b.doors);
+    }
+    if (called && bt.bus.state === 'run') left = true;
+    if (i % 4) continue;
+    const s = Math.sin(b.heading);
+    const c = Math.cos(b.heading);
+    for (let k = -5.2; k <= 5.2; k += 0.65) {
+      for (const sx of [-1.25, 0, 1.25]) {
+        const x = b.x + sx * c + k * s;
+        const z = b.z - sx * s + k * c;
+        if (W.colliders.some((r) => !r.car && !r.buildOnly && x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)) hits.push([Number(x.toFixed(1)), Number(z.toFixed(1))]);
+      }
+    }
+  }
+  return { called, maxDoors, hiss, left, doorsAfter: b.doors, hits, stop: stop && { x: stop.x, z: stop.z } };
+});
+if (bus) {
+  const c = bus.called;
+  console.log(`  called at ${c ? `(${c.x.toFixed(2)}, ${c.z.toFixed(2)})` : '—'} by the stop at (${bus.stop?.x}, ${bus.stop?.z}); doors ${bus.maxDoors.toFixed(2)} → ${bus.doorsAfter.toFixed(2)}, ${bus.hiss} hisses, drove on: ${bus.left}`);
+  check(!!c && Math.abs(c.z - bus.stop.z) < 4 && c.x > 4 && c.x < 5.2, 'the bus pulls over at the bus stop');
+  check(bus.maxDoors > 0.99 && bus.doorsAfter === 0 && bus.hiss === 2, 'the bus opens its doors at the stop and shuts them');
+  check(bus.left, 'the bus drives on after its call');
+  check(bus.hits.length === 0, `the bus body stays clear of static colliders${bus.hits.length ? ' — ' + JSON.stringify(bus.hits.slice(0, 6)) : ''}`);
+} else {
+  check(false, 'the bus runs with the traffic');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

@@ -722,7 +722,16 @@ async function boot() {
     if (!state.interior) {
       for (const c of world.trafficCars ?? []) {
         const h = heard(c.x, c.z);
-        if (!car || h.dist < car.dist) car = { ...h, speed: Math.abs(c.speed) };
+        if (!car || h.dist < car.dist) car = { ...h, speed: Math.abs(c.speed), big: !!c.isBus };
+      }
+    }
+    // the bus's doors folding open or shut at the stop
+    const bus = world.bus;
+    if (bus?.hiss) {
+      bus.hiss = false;
+      if (!state.interior) {
+        const h = heard(bus.x, bus.z);
+        sound.hiss(h.dist, h.pan);
       }
     }
     const crows = (world.crows ?? []).map((c) => heard(c.crow.position.x, c.crow.position.z));
