@@ -40,7 +40,7 @@ const GRIP = { asphalt: 1, stone: 0.85, snow: 0.55, ice: 0.18, wood: 0.8 };
 
 /* ---------------------------------------------------------- geometry */
 
-function colorize(geo, hex) {
+export function colorize(geo, hex) {
   const g = geo.index ? geo.toNonIndexed() : geo;
   const color = new THREE.Color(hex);
   const n = g.attributes.position.count;
@@ -50,9 +50,9 @@ function colorize(geo, hex) {
   return g;
 }
 
-const plain = (geo) => (geo.index ? geo.toNonIndexed() : geo);
+export const plain = (geo) => (geo.index ? geo.toNonIndexed() : geo);
 
-function box(w, h, d, x, y, z) {
+export function box(w, h, d, x, y, z) {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(x, y, z);
   return g;
