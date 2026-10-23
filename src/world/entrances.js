@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, Rng } from '../util.js';
 import { makeSoftCircleTexture } from '../textures.js';
-import { BUILDING_SPECS, EXPANSION_SPECS, entranceDoor } from './buildings.js';
+import { BUILDING_SPECS, EXPANSION_SPECS, SOUTH_SPECS, WEST_SPECS, entranceDoor } from './buildings.js';
 
 const CELL_W = 3.4;
 const PAD_TOP = 0.26;
@@ -18,7 +18,7 @@ const DOOR_COLORS = [0x3f4a43, 0x4a3b30, 0x34404c, 0x5a4a36, 0x463f45];
 /** Every painted entrance cell of every block, both long sides. */
 export function allEntrances() {
   const list = [];
-  for (const spec of [...BUILDING_SPECS, ...EXPANSION_SPECS]) {
+  for (const spec of [...BUILDING_SPECS, ...EXPANSION_SPECS, ...WEST_SPECS, ...SOUTH_SPECS]) {
     const cells = Math.max(4, Math.round(spec.w / CELL_W));
     let n = 0;
     for (let c = 0; c < cells; c++) {

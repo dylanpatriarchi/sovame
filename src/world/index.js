@@ -12,6 +12,7 @@ import { buildPeople } from './people.js';
 import { buildInteriors } from './interiors.js';
 import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
+import { buildVehicles } from './vehicles.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -25,6 +26,13 @@ export class World {
     this.farDetails = new THREE.Group();
     this.farDetails.name = 'far-north-details';
     this.group.add(this.farDetails);
+    // same idea for the western cluster on ул. Строителей
+    this.westDetails = new THREE.Group();
+    this.westDetails.name = 'far-west-details';
+    this.group.add(this.westDetails);
+    this.southDetails = new THREE.Group();
+    this.southDetails.name = 'far-south-details';
+    this.group.add(this.southDetails);
     this.rng = new Rng(20260119);
     this.colliders = [];
     // the world as it stood before the northern expansion: colliders and
@@ -69,7 +77,13 @@ export class World {
         },
       ],
       ['Roads, snow and paths', () => buildTerrain(this.ctx)],
-      ['District props', () => buildProps(this.ctx)],
+      [
+        'District props',
+        () => {
+          buildProps(this.ctx);
+          buildVehicles(this.ctx);
+        },
+      ],
       // routes are validated lazily on the first update, once the trees
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
@@ -88,6 +102,10 @@ export class World {
       await new Promise((resolve) => setTimeout(resolve, 24));
       stages[i][1]();
     }
+    // the parked cars' historic footprints only shaped the scatter passes:
+    // from now on each car's own (moving) collider stands for it
+    this.colliders = this.colliders.filter((c) => !c.buildOnly);
+    for (const car of this.cars ?? []) car.updateCollider();
     onProgress?.(1, 'Ready');
   }
 
@@ -285,13 +303,14 @@ export class World {
   collides(x, z, r) {
     // interiors sit far outside the district: their own walls bound the
     // player there, the world edge only applies outdoors
-    if (!this.interiorAt(x, z) && (Math.abs(x) > WORLD.bounds || z < -WORLD.bounds || z > WORLD.boundsNorth)) return true;
+    if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) return true;
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
       const dx = x - cx;
       const dz = z - cz;
-      if (dx * dx + dz * dz < r * r) return true;
+      // a car's rect is only its bounding box: test the oriented body
+      if (dx * dx + dz * dz < r * r && (!c.car || c.car.overlapsCircle(x, z, r))) return true;
     }
     return false;
   }
@@ -345,6 +364,8 @@ export class World {
     if (this.leafLitter) this.leafLitter.count = Math.max(0, Math.floor(this.leafLitter.userData.total * (key === 'autumn' ? 1 : s.litter)));
     // the northern expansion keeps its own instanced meshes (seeded apart)
     if (this.snowMoundsNorth) this.snowMoundsNorth.count = Math.max(1, Math.floor(this.snowMoundsNorth.userData.total * s.mounds));
+    if (this.snowMoundsWest) this.snowMoundsWest.count = Math.max(1, Math.floor(this.snowMoundsWest.userData.total * s.mounds));
+    if (this.snowMoundsSouth) this.snowMoundsSouth.count = Math.max(1, Math.floor(this.snowMoundsSouth.userData.total * s.mounds));
     if (this.leafLitterNorth) this.leafLitterNorth.count = Math.max(0, Math.floor(this.leafLitterNorth.userData.total * (key === 'autumn' ? 1 : s.litter)));
   }
 

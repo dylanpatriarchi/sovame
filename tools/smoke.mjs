@@ -315,11 +315,12 @@ if (doorInfo) {
     game.player.teleport((b.x0 + b.x1) / 2 - 1.4, (b.z0 + b.z1) / 2 + 0.2, Math.PI);
     game.player.pitch = 0.12;
   });
-  // let the snow fade and the exposure settle before the screenshot
+  // the landing window shows the real courtyard: snow keeps falling out
+  // there, so the indoor fade stays off while the window view is live
   try {
-    await page.waitForFunction(() => window.__game.env.indoor > 0.9, { timeout: 20000 });
+    await page.waitForFunction(() => window.__game.windowViews?.view || window.__game.env.indoor > 0.9, { timeout: 20000 });
   } catch {
-    logs.push('[stairwell] indoor fade did not settle');
+    logs.push('[stairwell] neither a live window view nor the indoor fade');
   }
   await wait(400);
   await page.screenshot({ path: `${OUT}/09-stairwell.png` });
@@ -471,7 +472,10 @@ const expansion = await page.evaluate(() => {
     northFenceBlocked: w.collides(50, 175.8, 0.36), // new boundary fence
     beyondNorthBlocked: w.collides(0, 181, 0.36), // past the new north edge
     beyondEastBlocked: w.collides(109, 0, 0.36), // east edge unchanged
-    beyondSouthBlocked: w.collides(0, -109, 0.36), // south edge unchanged
+    beyondSouthBlocked: w.collides(0, -201, 0.36), // past ул. Школьная and the south fence
+    oldSouthEdgeFree: !w.collides(0, -110, 0.36), // the avenue runs on south
+    schoolStreetFree: !w.collides(-100, -152, 0.36), // ул. Школьная
+    westStreetSouthFree: !w.collides(-170, -130, 0.36), // ул. Строителей to the junction
   };
   const zones = {
     courtyard: w.zoneAt(-30, 133)?.name ?? null,

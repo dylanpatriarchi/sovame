@@ -523,7 +523,11 @@ export class Environment {
     this.world.lampMats.glass.color.copy(lampDark).lerp(new THREE.Color(0xfff0d0), clamp(c.lamp * 1.2, 0, 1));
     // far northern micro-props appear only once the camera walks north of
     // the historic crossroad (the title dolly never does)
-    if (camera) this.world.farDetails.visible = camera.position.z > 48;
+    if (camera) {
+      this.world.farDetails.visible = camera.position.z > 48;
+      this.world.westDetails.visible = camera.position.x < -64;
+      this.world.southDetails.visible = camera.position.z < -60;
+    }
     // only lamps near the camera keep a real PointLight; the rest rely on the glow
     const camX = camera ? camera.position.x : 0;
     const camZ = camera ? camera.position.z : 0;

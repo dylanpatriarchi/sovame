@@ -7,6 +7,14 @@ export const WORLD = {
   /** North edge of the playable area: the district keeps growing past the
    * old fence line at z = 104 up to the second residential cluster. */
   boundsNorth: 180,
+  /** West edge: the third cluster on ул. Строителей reaches out to here. */
+  boundsWest: 236,
+  /** ул. Строителей, the western cluster's north–south street (x). */
+  westStreetX: -170,
+  /** South edge: the school quarter on ул. Школьная reaches down to here. */
+  boundsSouth: 196,
+  /** ул. Школьная, the east–west street of the southern quarter (z). */
+  southStreetZ: -152,
   groundSize: 700,
   roadHalfWidth: 6,
   sidewalkWidth: 3.2,
