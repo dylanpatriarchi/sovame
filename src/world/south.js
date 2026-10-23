@@ -31,14 +31,14 @@ const WALK_S = SZ - R - SW;
 const SCHOOL = { x: -50, z: -120, w: 54, d: 14, floors: 3, fh: 3.6 };
 const YARD = { x0: -96, x1: -8, z0: -140, z1: -106 };
 /** Hockey box (хоккейная коробка). */
-const RINK = { x: 36, z: -124, l: 30, w: 15, r: 3.5 };
+export const RINK = { x: 36, z: -124, l: 30, w: 15, r: 3.5 };
 /** Victory square: plaza, obelisk, eternal flame. */
 const PLAZA = { x0: 69, x1: 91, z0: -133, z1: -113 };
 const OBELISK = { x: 80, z: -118 };
 /** Garage co-op: two facing rows east of ул. Строителей. */
 const GARAGES = { x0: -158, count: 14, unit: 3.4, north: -113, south: -129, depth: 6 };
 /** Ice slide (ледяная горка) west of ул. Строителей. */
-const SLIDE = { x: -205, z: -118 };
+export const SLIDE = { x: -205, z: -118 };
 
 /** Trampled paths: block entrances to the street, the square, the alley. */
 export const SOUTH_WALK_PATHS = (() => {

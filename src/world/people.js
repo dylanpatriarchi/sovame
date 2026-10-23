@@ -1,6 +1,8 @@
 // Pedestrians: procedural low-poly figures walking deterministic routes along
-// the sidewalks and courtyard paths. Ambient only — no player collision, no
-// interaction, no AI. All body parts are vertex-colored and share a single
+// the sidewalks and courtyard paths, and a few doing something: kids skating
+// on the hockey box and sliding down the ice slide, residents going in and
+// out of their entrances, grannies on a bench, a smoker on a balcony.
+// Ambient only — no player collision, no interaction, no AI. All body parts are vertex-colored and share a single
 // material, so five figures cost ~26 draw calls plus a small pool of
 // breath-vapor sprites.
 import * as THREE from 'three';
@@ -8,6 +10,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng, TAU, clamp, damp } from '../util.js';
 import { makeSoftCircleTexture } from '../textures.js';
 import { PEOPLE } from '../config.js';
+import { BUILDING_SPECS, FLOOR_H, entranceDoor } from './buildings.js';
+import { RINK, SLIDE } from './south.js';
 
 /* ------------------------------------------------------------ geometry */
 
@@ -49,7 +53,16 @@ const VARIANTS = [
   { hat: 'ushanka', coat: 0x272b34, trim: 0x1b1e25, face: 0x6e5d50, legs: 0x191b20, boots: 0x101114 },
   { hat: 'hood', coat: 0x302d25, trim: 0x24221c, face: 0x6e5d50, legs: 0x1b1a17, boots: 0x12110f },
   { hat: 'beanie', coat: 0x25302b, trim: 0x3a2c2a, face: 0x6e5d50, legs: 0x181b1a, boots: 0x101211 },
+  // grannies: long dark coats and wool headscarves
+  { hat: 'scarf', coat: 0x2e2622, trim: 0x5b3a36, face: 0x75645a, legs: 0x1f1b19, boots: 0x141110 },
+  { hat: 'scarf', coat: 0x262a30, trim: 0x6a6150, face: 0x75645a, legs: 0x1c1d20, boots: 0x121214 },
+  // kids: the only bright coats in the district
+  { hat: 'beanie', coat: 0x7a2a26, trim: 0x2a3a5c, face: 0x7a6656, legs: 0x1d2230, boots: 0x15171c },
+  { hat: 'beanie', coat: 0x2c4a7a, trim: 0x8a6a2a, face: 0x7a6656, legs: 0x1c1f26, boots: 0x131417 },
+  { hat: 'ushanka', coat: 0x3c5a3a, trim: 0x2a2622, face: 0x7a6656, legs: 0x1c1f1c, boots: 0x121312 },
 ];
+const GRANNY = [3, 4];
+const KID = [5, 6, 7];
 
 /** Merged torso: coat chest + skirt + collar + head + hat. Faces +z. */
 function buildTorsoGeometry(v) {
@@ -86,6 +99,15 @@ function buildTorsoGeometry(v) {
     hood.scale(1, 1.08, 1.05);
     hood.translate(0, 1.6, -0.045);
     parts.push(tint(hood, v.trim));
+  } else if (v.hat === 'scarf') {
+    // платок: tied under the chin, the knot showing at the back
+    const scarf = new THREE.SphereGeometry(0.128, 8, 6);
+    scarf.scale(1, 1.06, 1.02);
+    scarf.translate(0, 1.6, -0.02);
+    parts.push(tint(scarf, v.trim));
+    const knot = new THREE.BoxGeometry(0.07, 0.09, 0.05);
+    knot.translate(0, 1.5, -0.11);
+    parts.push(tint(knot, v.trim));
   } else {
     const beanie = new THREE.SphereGeometry(0.122, 8, 5);
     beanie.scale(1.04, 0.78, 1.04);
@@ -128,6 +150,39 @@ function buildBagGeometry() {
     parts.push(tint(handle, 0x35322a));
   }
   return mergeGeometries(parts, false);
+}
+
+/** Bone positions in the figure (hips, shoulders; the bag hangs off the
+ * right mitten). */
+const LIMBS = {
+  legL: [-0.105, 0.93, 0],
+  legR: [0.105, 0.93, 0],
+  armL: [-0.235, 1.375, 0],
+  armR: [0.235, 1.375, 0],
+  bag: [0, -0.56, 0.02],
+};
+
+/**
+ * The whole figure in one geometry: each part rigidly skinned to its bone
+ * (0 torso, 1-2 legs, 3-4 arms, 5 bag), in the bind pose.
+ */
+function buildFigureGeometry(parts, bag) {
+  const pieces = [];
+  const add = (geo, boneIndex, x, y, z) => {
+    const g = geo.clone();
+    g.translate(x, y, z);
+    const n = g.attributes.position.count;
+    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Uint16Array(n * 4).map((v, i) => (i % 4 === 0 ? boneIndex : 0)), 4));
+    g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(new Float32Array(n * 4).map((v, i) => (i % 4 === 0 ? 1 : 0)), 4));
+    pieces.push(g);
+  };
+  add(parts.torso, 0, 0, 0, 0);
+  add(parts.leg, 1, ...LIMBS.legL);
+  add(parts.leg, 2, ...LIMBS.legR);
+  add(parts.arm, 3, ...LIMBS.armL);
+  add(parts.arm, 4, ...LIMBS.armR);
+  if (bag) add(parts.bag, 5, LIMBS.armR[0] + LIMBS.bag[0], LIMBS.armR[1] + LIMBS.bag[1], LIMBS.armR[2] + LIMBS.bag[2]);
+  return mergeGeometries(pieces, false);
 }
 
 /* ------------------------------------------------------------ routes */
@@ -192,6 +247,52 @@ function makeRoutes() {
         { x: -58, z: 133, wait: 2 },
       ],
     },
+    // residents: from the street to their entrance, a pause at the door,
+    // a while inside, then back out the way they came
+    residentB3: {
+      mode: 'pingpong',
+      points: [{ x: -7.4, z: 36, wait: 1 }, [-20, 32], [-33.5, 30], { ...door('B3', 7, 1), wait: 1.2, inside: 16 }],
+    },
+    residentB1: {
+      mode: 'pingpong',
+      points: [{ x: -7.4, z: -40, wait: 1 }, [-24, -44.5], [-36.6, -44.5], { ...door('B1', 7, 1), wait: 1, inside: 22 }],
+    },
+    // kids skating laps of the hockey box
+    rink: {
+      mode: 'loop',
+      points: Array.from({ length: 18 }, (_, i) => {
+        const a = (i / 18) * TAU;
+        return [RINK.x + Math.cos(a) * 9.5, RINK.z + Math.sin(a) * 4.2];
+      }),
+    },
+    // up the stairs of the ice slide, down the chute sitting, round again
+    slide: {
+      mode: 'loop',
+      trusted: true,
+      points: [
+        { x: SLIDE.x, z: SLIDE.z + 5, y: 0 },
+        { x: SLIDE.x, z: SLIDE.z + 3.9, y: 0 },
+        { x: SLIDE.x, z: SLIDE.z + 1.0, y: 2.49, pose: 'climb', speed: 0.55 },
+        { x: SLIDE.x, z: SLIDE.z - 0.5, y: 2.49, wait: 1.4, face: [0, -1] },
+        { x: SLIDE.x, z: SLIDE.z - 1.1, y: 2.49, pose: 'sit', speed: 0.4, wait: 0.6 },
+        { x: SLIDE.x, z: SLIDE.z - 10.1, y: 0.06, pose: 'sit', speed: 3.6 },
+        { x: SLIDE.x, z: SLIDE.z - 14.4, y: 0.04, pose: 'sit', speed: 1.6, wait: 1.2 },
+        { x: SLIDE.x + 2.4, z: SLIDE.z - 13, y: 0 },
+        { x: SLIDE.x + 2.4, z: SLIDE.z + 5, y: 0 },
+      ],
+    },
+    // two grannies on the bench by the avenue, talking
+    bench: {
+      mode: 'idle',
+      trusted: true,
+      points: [{ x: -19, z: 11.15, face: [0, 1], groundY: 0 }],
+    },
+    // a smoker on a balcony of No. 7, third floor, facing the avenue side
+    balcony: {
+      mode: 'idle',
+      trusted: true,
+      points: [{ ...BALCONY.stand, face: [0, 1], groundY: BALCONY.floorY }],
+    },
     // out along Zavodskaya to the parked cars and back to the avenue
     eastArm: {
       mode: 'pingpong',
@@ -202,6 +303,44 @@ function makeRoutes() {
       ],
     },
   };
+}
+
+/** The point just in front of an entrance door of a building (by spec id). */
+function door(id, cell, side) {
+  const spec = BUILDING_SPECS.find((s) => s.id === id);
+  const d = entranceDoor(spec, cell, side);
+  // a step off the wall: building colliders reach 0.25 m out
+  return { x: d.x, z: spec.z + side * (spec.d / 2 + 0.75), face: [0, -side] };
+}
+
+/** The smoker's balcony: building No. 7 (B2), north facade, third floor. */
+const BALCONY = (() => {
+  const spec = BUILDING_SPECS.find((s) => s.id === 'B2');
+  const wallZ = spec.z + spec.d / 2;
+  const floorY = 2 * FLOOR_H + 0.08;
+  return { x: spec.x, wallZ, floorY, stand: { x: spec.x + 0.45, z: wallZ + 0.72 } };
+})();
+
+/** A balcony like the painted ones: concrete slab, steel railing (static). */
+function buildBalcony(world) {
+  const M = world.materials;
+  const { x, wallZ, floorY } = BALCONY;
+  const add = (w, h, d, px, py, pz, mat) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(px, py, pz);
+    world.group.add(mesh);
+  };
+  const depth = 1.1;
+  const half = 1.3;
+  add(half * 2 + 0.1, 0.14, depth, x, floorY - 0.07, wallZ + depth / 2, M.concrete);
+  // railing: top and bottom rails round the three open sides, balusters
+  const front = wallZ + depth - 0.04;
+  for (const y of [floorY + 0.06, floorY + 0.98]) {
+    add(half * 2, 0.04, 0.04, x, y, front, M.metal);
+    for (const dx of [-half, half]) add(0.04, 0.04, depth - 0.04, x + dx, y, wallZ + depth / 2, M.metal);
+  }
+  for (let i = 0; i <= 16; i++) add(0.025, 0.92, 0.025, x - half + (i / 16) * half * 2, floorY + 0.52, front, M.metal);
+  for (const dx of [-half, half]) for (let i = 1; i < 6; i++) add(0.025, 0.92, 0.025, x + dx, floorY + 0.52, wallZ + (i / 6) * depth, M.metal);
 }
 
 /** Normalizes a raw waypoint into {x, z, wait, faceYaw, groundY}. */
@@ -229,6 +368,14 @@ class Pedestrian {
     this.idlePhase = opts.phase ?? 0;
     this.startFraction = opts.startFraction ?? 0;
     this.bag = !!opts.bag;
+    /** Default pose: 'walk', or an activity ('skate', 'bench', 'smoke'). */
+    this.pose = opts.pose ?? 'walk';
+    /** Sits, climbs or leans on things that carry colliders (by design). */
+    this.onFurniture = !!opts.onFurniture;
+    this.talkTo = opts.talkTo ?? 0;
+    this.drop = 0;
+    this.insideTimer = 0;
+    this.exhale = false;
     this.waitTimer = 0;
     this.faceYaw = null;
     this.groundY = null;
@@ -237,7 +384,7 @@ class Pedestrian {
     this.moveZ = 1;
     this.wp = 1; // waypoint index we are walking toward
     this.dir = 1;
-    this.stride = 0.66 * this.scaleF;
+    this.stride = (this.pose === 'skate' ? 1.9 : 0.66) * this.scaleF;
     this.breathTimer = 0;
     this.routeLength = 0;
 
@@ -245,44 +392,53 @@ class Pedestrian {
     this.root = new THREE.Group();
     this.root.name = `pedestrian:${this.name}`;
     this.root.userData.dynamic = true;
-    this.torso = new THREE.Mesh(parts.torso, mat);
-    this.torso.castShadow = true;
-    this.root.add(this.torso);
-    this.legL = this.#limb(parts.leg, mat, -0.105, 0.93);
-    this.legR = this.#limb(parts.leg, mat, 0.105, 0.93);
-    this.armL = this.#limb(parts.arm, mat, -0.235, 1.375);
-    this.armR = this.#limb(parts.arm, mat, 0.235, 1.375);
+    // yaw first, then a whole-body lean (skaters)
+    this.root.rotation.order = 'YXZ';
+    this.lean = 0;
+    // one skinned mesh per figure (a single draw call): torso, limbs and
+    // bag are rigid parts on bones that the poses below rotate
+    const mesh = new THREE.SkinnedMesh(parts.figure(this.bag), mat);
+    mesh.castShadow = true;
+    const bone = (parent, x, y, z) => {
+      const b = new THREE.Bone();
+      b.position.set(x, y, z);
+      parent.add(b);
+      return b;
+    };
+    const base = bone(mesh, 0, 0, 0);
+    this.torso = bone(base, 0, 0, 0);
+    this.legL = bone(base, ...LIMBS.legL);
+    this.legR = bone(base, ...LIMBS.legR);
+    this.armL = bone(base, ...LIMBS.armL);
+    this.armR = bone(base, ...LIMBS.armR);
+    this.bagPivot = bone(this.armR, ...LIMBS.bag);
+    mesh.updateMatrixWorld(true);
+    mesh.bind(new THREE.Skeleton([this.torso, this.legL, this.legR, this.armL, this.armR, this.bagPivot]));
+    mesh.computeBoundingSphere();
+    // the bind pose stands still: leave room for swinging limbs and a lean
+    mesh.boundingSphere.radius *= 1.4;
+    this.root.add(mesh);
     this.armL.rotation.z = 0.07;
     this.armR.rotation.z = -0.07;
-    if (this.bag) {
-      this.bagPivot = new THREE.Group();
-      this.bagPivot.position.set(0, -0.56, 0.02);
-      const bagMesh = new THREE.Mesh(parts.bag, mat);
-      bagMesh.castShadow = true;
-      this.bagPivot.add(bagMesh);
-      this.armR.add(this.bagPivot);
+    if (opts.ember) {
+      // the cigarette: a warm dot in the right mitten, brighter on a drag
+      this.ember = new THREE.Sprite(opts.ember);
+      this.ember.scale.setScalar(0.07);
+      this.ember.position.set(0, -0.55, 0.07);
+      this.armR.add(this.ember);
     }
     this.root.scale.setScalar(this.scaleF);
     // far-route figures join the far-detail group: hidden until the camera
     // actually walks north (world.farDetails is visibility-toggled there)
-    (opts.far ? world.farDetails : world.group).add(this.root);
+    (opts.group ?? (opts.far ? world.farDetails : world.group)).add(this.root);
     this.position = this.root.position;
-  }
-
-  #limb(geo, mat, x, y) {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, y, 0);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = true;
-    pivot.add(mesh);
-    this.root.add(pivot);
-    return pivot;
   }
 
   /** Snaps the figure onto its route (after route validation). */
   placeAtStart() {
     const pts = this.route.points;
     this.pos = { x: pts[0].x, z: pts[0].z };
+    this.from = pts[0];
     if (this.idle) {
       const p = pts[0];
       this.yaw = p.faceYaw ?? 0;
@@ -313,6 +469,12 @@ class Pedestrian {
         this.waitTimer = target.wait;
         this.faceYaw = target.faceYaw;
       }
+      // through the door: gone for a while (after the pause at the door)
+      if (honorWaits && target.inside) {
+        this.insideFor = target.inside;
+        this.insideTimer = target.inside + target.wait;
+      }
+      this.from = target;
       if (this.route.mode === 'loop') {
         this.wp = (this.wp + 1) % pts.length;
       } else {
@@ -342,16 +504,35 @@ class Pedestrian {
   #setTransform() {
     const px = this.pos.x - this.moveZ * this.lateral;
     const pz = this.pos.z + this.moveX * this.lateral;
-    this.root.position.set(px, this.groundY ?? this.world.heightAt(px, pz), pz);
+    let y = this.groundY;
+    // scripted heights (stairs, a chute): interpolated along the segment
+    const a = this.from;
+    const b = this.route.points[this.wp];
+    if (y === null && a?.y !== undefined && b?.y !== undefined) {
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const t = len > 1e-6 ? 1 - Math.hypot(b.x - this.pos.x, b.z - this.pos.z) / len : 1;
+      y = a.y + (b.y - a.y) * clamp(t, 0, 1);
+    }
+    this.root.position.set(px, (y ?? this.world.heightAt(px, pz)) - this.drop, pz);
   }
 
   update(dt, elapsed) {
+    if (this.insideTimer > 0) {
+      // the pause at the door first, then out of sight behind it
+      this.insideTimer -= dt;
+      const inside = this.insideTimer > 0 && this.insideTimer <= this.insideFor;
+      this.root.visible = !inside;
+      if (inside) return;
+    }
     if (this.idle) {
-      this.#poseIdle(elapsed);
+      this.#applyPose(this.pose, elapsed);
+      this.#setTransform();
       return;
     }
+    const target = this.route.points[this.wp];
+    const segSpeed = this.speed * (target.speed ?? 1);
     // ease the speed so pauses and resumes are soft
-    const want = this.waitTimer > 0 ? 0 : this.speed;
+    const want = this.waitTimer > 0 ? 0 : segSpeed;
     if (this.waitTimer > 0) this.waitTimer -= dt;
     this.speedEase = damp(this.speedEase, want, 4, dt);
     if (this.speedEase > 0.02) {
@@ -366,15 +547,98 @@ class Pedestrian {
     while (diff < -Math.PI) diff += TAU;
     this.yaw += diff * Math.min(1, dt * 5);
     this.root.rotation.y = this.yaw;
+    this.root.rotation.x = this.lean;
+    // a point's pose holds on the way to it and while waiting there
+    const waiting = this.waitTimer > 0 && this.speedEase < 0.1;
+    const pose = waiting ? (this.from.pose ?? (this.pose === 'walk' ? 'idle' : this.pose)) : (this.route.points[this.wp].pose ?? this.pose);
+    this.#applyPose(pose, elapsed, clamp(this.speedEase / segSpeed, 0, 1));
     this.#setTransform();
-    if (this.waitTimer > 0 && this.speedEase < 0.1) this.#poseIdle(elapsed);
-    else this.#poseWalk();
   }
 
-  #poseWalk() {
-    const frac = clamp(this.speedEase / this.speed, 0, 1);
+  #applyPose(pose, elapsed, frac = 1) {
+    this.#resetPose();
+    this.drop = 0;
+    if (pose === 'walk') this.#poseWalk(frac, 0.5);
+    else if (pose === 'climb') this.#poseWalk(frac, 0.8);
+    else if (pose === 'skate') this.#poseSkate(frac);
+    else if (pose === 'sit') this.#poseSit(-1.45, 0.1);
+    else if (pose === 'bench') this.#poseBench(elapsed);
+    else if (pose === 'smoke') this.#poseSmoke(elapsed);
+    else this.#poseIdle(elapsed);
+  }
+
+  #resetPose() {
+    this.lean = 0;
+    for (const limb of [this.legL, this.legR, this.armL, this.armR]) limb.rotation.set(0, 0, 0);
+    this.armL.rotation.z = 0.07;
+    this.armR.rotation.z = -0.07;
+    this.torso.position.set(0, 0, 0);
+    this.torso.rotation.set(0, 0, 0);
+    this.bagPivot.rotation.x = 0;
+  }
+
+  /** Sitting: legs out at `legs` (rad), hips `seat` m above the ground. */
+  #poseSit(legs, seat) {
+    this.legL.rotation.x = legs;
+    this.legR.rotation.x = legs;
+    this.armL.rotation.x = -0.35;
+    this.armR.rotation.x = -0.35;
+    this.torso.rotation.x = -0.08;
+    // the hips (0.93 m up the figure) come down onto the seat
+    this.drop = 0.93 * this.scaleF - seat;
+  }
+
+  #poseBench(elapsed) {
+    const t = elapsed + this.idlePhase;
+    this.#poseSit(-1.05, 0.48);
+    this.armL.rotation.x = -0.6;
+    this.armR.rotation.x = -0.6;
+    // a conversation: turn to the neighbour, a gesture now and then
+    const turn = this.talkTo * (0.35 + 0.25 * Math.sin(t * 0.21));
+    this.torso.rotation.y = turn;
+    this.armL.rotation.y = turn * 0.6;
+    this.armR.rotation.y = turn * 0.6;
+    const gesture = Math.max(0, Math.sin(t * 0.37)) ** 4;
+    this.armR.rotation.x = -0.6 - gesture * 0.7 + Math.sin(t * 3.1) * 0.08 * gesture;
+    this.torso.position.x = Math.sin(t * 0.5) * 0.01;
+  }
+
+  #poseSkate(frac) {
     const s = Math.sin(this.phase);
-    const swing = 0.5 * frac;
+    // push off one blade, then the other; lean into the stride
+    this.legL.rotation.z = Math.max(0, s) * 0.42 * frac;
+    this.legR.rotation.z = -Math.max(0, -s) * 0.42 * frac;
+    // the whole body leans into the glide; the legs trail a little
+    this.lean = 0.22 * frac;
+    this.legL.rotation.x = -0.1 - Math.max(0, s) * 0.25 * frac;
+    this.legR.rotation.x = -0.1 - Math.max(0, -s) * 0.25 * frac;
+    this.armL.rotation.x = -s * 0.5 * frac;
+    this.armR.rotation.x = s * 0.5 * frac;
+    this.armL.rotation.z = 0.18;
+    this.armR.rotation.z = -0.18;
+    this.torso.rotation.set(0.04, -s * 0.08, s * 0.05);
+  }
+
+  #poseSmoke(elapsed) {
+    // a drag every ~9 s: hand up to the mouth, the ember glows, then a slow
+    // exhale over the parapet; elbows on the rail in between
+    const cycle = 9;
+    const t = (elapsed + this.idlePhase) % cycle;
+    const up = clamp(Math.min((t - 0.2) / 0.5, (2.4 - t) / 0.5), 0, 1);
+    this.torso.rotation.x = 0.16;
+    this.armL.rotation.x = -0.9;
+    this.armR.rotation.x = -0.9 - up * 1.35;
+    this.armR.rotation.z = -0.07 - up * 0.35;
+    if (this.ember) this.ember.material.opacity = 0.55 + 0.45 * up;
+    const exhale = t > 2.9 && t < 3.0;
+    if (exhale && !this.exhaled) this.exhale = true;
+    this.exhaled = exhale;
+    this.torso.rotation.y = Math.sin(elapsed * 0.11 + this.idlePhase) * 0.3;
+  }
+
+  #poseWalk(frac, stride = 0.5) {
+    const s = Math.sin(this.phase);
+    const swing = stride * frac;
     this.legL.rotation.x = s * swing;
     this.legR.rotation.x = -s * swing;
     this.armL.rotation.x = -s * swing * 0.62;
@@ -443,7 +707,16 @@ class People {
 
     const routes = makeRoutes();
     this.routes = Object.values(routes);
-    const partsFor = (i) => ({ ...this.parts[i], bag: this.bagGeo, material: this.material });
+    // merged figures, built once per variant (with and without a bag)
+    const figures = new Map();
+    const partsFor = (i) => ({
+      material: this.material,
+      figure: (bag) => {
+        const key = `${i}:${bag}`;
+        if (!figures.has(key)) figures.set(key, buildFigureGeometry({ ...this.parts[i], bag: this.bagGeo }, bag));
+        return figures.get(key);
+      },
+    });
     this.list = [
       new Pedestrian(this.world, partsFor(0), routes.avenue, {
         name: 'avenue ring',
@@ -498,7 +771,73 @@ class People {
         bag: true,
         far: true,
       }),
+      // residents of No. 3 and No. 12, in and out of their entrances
+      new Pedestrian(this.world, partsFor(0), routes.residentB3, {
+        name: 'resident No. 3',
+        speed: 1.15,
+        scale: 1.0,
+        phase: 1.3,
+        startFraction: 0.2,
+        bag: true,
+      }),
+      new Pedestrian(this.world, partsFor(GRANNY[1]), routes.residentB1, {
+        name: 'resident No. 12',
+        speed: 0.95,
+        scale: 0.94,
+        phase: 2.2,
+        startFraction: 0.7,
+      }),
+      // kids on the hockey box (the far-south group: shown once you get there)
+      ...KID.map(
+        (v, i) =>
+          new Pedestrian(this.world, partsFor(v), routes.rink, {
+            name: `skater ${i + 1}`,
+            pose: 'skate',
+            speed: 2.3 + i * 0.25,
+            scale: 0.6 + i * 0.04,
+            lateral: [0, 0.8, -0.8][i],
+            phase: i * 1.7,
+            startFraction: i * 0.31,
+            group: this.world.southDetails,
+          })
+      ),
+      new Pedestrian(this.world, partsFor(KID[1]), routes.slide, {
+        name: 'slide kid',
+        speed: 1.3,
+        scale: 0.62,
+        phase: 0.4,
+        onFurniture: true,
+        group: this.world.southDetails,
+      }),
+      // the bench grannies, turned toward each other
+      ...[-1, 1].map(
+        (side, i) =>
+          new Pedestrian(this.world, partsFor(GRANNY[i]), routes.bench, {
+            name: `bench granny ${i + 1}`,
+            pose: 'bench',
+            scale: 0.93,
+            lateral: side * 0.42,
+            phase: i * 3.3,
+            talkTo: side,
+            onFurniture: true,
+          })
+      ),
+      new Pedestrian(this.world, partsFor(1), routes.balcony, {
+        name: 'balcony smoker',
+        pose: 'smoke',
+        scale: 1.0,
+        phase: 1.1,
+        onFurniture: true,
+        ember: new THREE.SpriteMaterial({
+          map: makeSoftCircleTexture(32, '255,150,60', 1.6),
+          color: 0xffa050,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      }),
     ];
+    buildBalcony(this.world);
 
     // breath vapor: pooled sprites, one shared soft-circle texture
     const tex = makeSoftCircleTexture(64, '228,238,246', 2.4);
@@ -548,6 +887,17 @@ class People {
     };
 
     for (const route of this.routes) {
+      // scripted routes (stairs, a bench, a balcony) sit on colliders by design
+      if (route.trusted) {
+        route.points = route.points.map(normPoint);
+        route.length = 0;
+        const pts = route.points;
+        for (let i = 0; i < pts.length; i++) {
+          if (route.mode !== 'loop' && i === pts.length - 1) break;
+          route.length += Math.hypot(pts[(i + 1) % pts.length].x - pts[i].x, pts[(i + 1) % pts.length].z - pts[i].z);
+        }
+        continue;
+      }
       const fixed = route.points.map(normPoint).filter((p) => fixPoint(p));
       // routes are hand-placed on free lanes, so this should never trigger;
       // if a map change ever kills every point, keep the raw one instead
@@ -611,7 +961,11 @@ class People {
     const breathing = temperature <= 0;
     for (const p of this.list) {
       p.update(dt, elapsed);
-      if (!breathing) continue;
+      if (p.exhale) {
+        p.exhale = false;
+        this.#emitPuff(p, true);
+      }
+      if (!breathing || p.pose === 'smoke' || !p.root.visible) continue;
       p.breathTimer -= dt;
       if (p.breathTimer <= 0) {
         p.breathTimer = this.rng.float(PEOPLE.breathInterval[0], PEOPLE.breathInterval[1]);
@@ -623,8 +977,13 @@ class People {
     this.#updateVapor(dt, elapsed);
   }
 
-  #emitPuff(p) {
+  #emitPuff(p, smoke = false) {
     const puff = this.puffs[this.puffCursor];
+    // cigarette smoke: greyer, slower to fade, spreading wider
+    puff.life = smoke ? PEOPLE.puffLife * 3.2 : PEOPLE.puffLife;
+    puff.grow = smoke ? 0.9 : 0.4;
+    puff.alpha = smoke ? 0.4 : 0.3;
+    puff.sprite.material.color.setHex(smoke ? 0xb8bcc0 : 0xd9e2ea);
     this.puffCursor = (this.puffCursor + 1) % this.puffs.length;
     p.headPosition(this.headTmp);
     puff.active = true;
@@ -642,7 +1001,7 @@ class People {
     for (const puff of this.puffs) {
       if (!puff.active) continue;
       puff.age += dt;
-      const life = puff.age / PEOPLE.puffLife;
+      const life = puff.age / puff.life;
       if (life >= 1) {
         puff.active = false;
         puff.sprite.visible = false;
@@ -653,9 +1012,9 @@ class People {
       s.position.x += (puff.vel.x + windX * 0.6) * dt;
       s.position.y += puff.vel.y * (1 - life * 0.6) * dt;
       s.position.z += (puff.vel.z + windZ * 0.6) * dt;
-      const size = 0.13 + life * 0.4;
+      const size = 0.13 + life * puff.grow;
       s.scale.set(size, size, 1);
-      s.material.opacity = Math.sin(life * Math.PI) * 0.3;
+      s.material.opacity = Math.sin(life * Math.PI) * puff.alpha;
     }
   }
 }

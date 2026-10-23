@@ -629,7 +629,9 @@ const pedWatch = await page.evaluate(async () => {
       const { x, y, z } = p.position;
       // 0.22 m: the figure's own body radius — collider boxes are conservative
       if (![x, y, z].every(Number.isFinite)) bad.push(`${p.name}: NaN position`);
-      else if (w.collides(x, z, 0.22)) bad.push(`${p.name}: inside a collider at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+      // the bench grannies, the slide kid and the balcony smoker sit, climb
+      // or lean on furniture that carries colliders, by design
+      else if (!p.onFurniture && w.collides(x, z, 0.22)) bad.push(`${p.name}: inside a collider at (${x.toFixed(1)}, ${z.toFixed(1)})`);
     }
     for (const puff of w.people.puffs) {
       const s = puff.sprite;
@@ -642,6 +644,39 @@ const pedWatch = await page.evaluate(async () => {
   return [...new Set(bad)];
 });
 check(pedWatch.length === 0, `pedestrians stay finite and outside colliders for 20 s${pedWatch.length ? ' — ' + pedWatch.slice(0, 4).join('; ') : ''}`);
+
+/* ================================================================ people doing things */
+console.log('→ people doing things');
+const life = await page.evaluate(() => {
+  const g = window.__game;
+  const P = g.world.people;
+  const find = (name) => P.list.find((p) => p.name === name);
+  const resident = find('resident No. 3');
+  const kid = find('slide kid');
+  const skater = find('skater 1');
+  let wentIn = false;
+  let cameOut = false;
+  let top = 0;
+  let slidDown = false;
+  let skated = 0;
+  let last = skater.position.clone();
+  let t = g.state.elapsed;
+  for (let i = 0; i < 1800 * 3; i++) {
+    t += 0.05;
+    P.update(0.05, t, g.player.position, -5);
+    if (!resident.root.visible) wentIn = true;
+    else if (wentIn) cameOut = true;
+    top = Math.max(top, kid.position.y + kid.drop);
+    if (top > 2.3 && kid.drop > 0.2 && kid.position.y + kid.drop < 0.3) slidDown = true;
+    skated += skater.position.distanceTo(last);
+    last.copy(skater.position);
+  }
+  return { wentIn, cameOut, top, slidDown, skated, names: P.list.map((p) => p.name) };
+});
+console.log(`  ${life.names.length} figures; slide top ${life.top.toFixed(2)} m, skater covered ${life.skated.toFixed(0)} m in 270 s`);
+check(life.wentIn && life.cameOut, 'a resident goes in through the entrance door and comes back out');
+check(life.top > 2.3 && life.slidDown, 'the slide kid climbs to the platform and slides down sitting');
+check(life.skated > 300, 'the kids keep skating laps on the hockey box');
 
 /* ================================================================ traffic */
 // the lanes never cross a static collider, the fleet keeps going round, and
