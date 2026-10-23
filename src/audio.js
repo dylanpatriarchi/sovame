@@ -1,5 +1,8 @@
-// Audio synthesized with WebAudio: wind, footsteps, jumps, the kiosk radio,
-// distant chimes. No external audio files.
+// Audio synthesized with WebAudio: wind, footsteps (snow, asphalt, stone, ice,
+// parquet, stairwell concrete), jumps, the kiosk radio, distant chimes, and the
+// ambience of where you are: a TV muffled behind the doors of a stairwell,
+// skates on the hockey box, crows, the cars going round the block.
+// No external audio files.
 import { clamp, Rng } from './util.js';
 
 const midiHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
@@ -17,11 +20,13 @@ export class Sound {
     this.radioTracks = this.buildRadioTracks();
   }
 
-  init() {
+  /** Starts the audio graph (an OfflineAudioContext can be passed in, to
+   * render sound previews). */
+  init(context = null) {
     if (this.ready) return;
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
+    if (!AC && !context) return;
+    const ctx = context ?? new AC();
     this.ctx = ctx;
 
     this.master = ctx.createGain();
@@ -165,6 +170,8 @@ export class Sound {
     chorusWet.connect(guitarLowpass);
     guitarLowpass.connect(this.radioFilter);
 
+    this.buildAmbience();
+
     this.radioStep = 0;
     this.radioTrackIndex = 0;
     this.radioTrackStep = 0;
@@ -173,6 +180,109 @@ export class Sound {
 
     this.ready = true;
     this.updateWind(0.4);
+  }
+
+  /** Stairwell echo, the TV behind the doors and the passing cars. */
+  buildAmbience() {
+    const ctx = this.ctx;
+    // stairwell: a bare concrete shaft, ~1.4 s of hard, bright reflections
+    const len = Math.floor(ctx.sampleRate * 1.4);
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+    }
+    this.verb = ctx.createConvolver();
+    this.verb.buffer = ir;
+    this.verbGain = ctx.createGain();
+    this.verbGain.gain.value = 0.55;
+    this.verb.connect(this.verbGain).connect(this.master);
+
+    // TV through a padded door: voice-band noise shaped into syllables by a
+    // scheduled envelope, then dulled by the door and the landing
+    this.tvGain = ctx.createGain();
+    this.tvGain.gain.value = 0;
+    this.tvPanner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const tvOut = this.tvPanner ? this.tvGain.connect(this.tvPanner) : this.tvGain;
+    tvOut.connect(this.master);
+    this.tvGain.connect(this.verb);
+    // the voice: a buzzing glottal tone with a breath of noise, through two
+    // vowel formants that move with every syllable
+    this.tvVoice = ctx.createOscillator();
+    this.tvVoice.type = 'sawtooth';
+    this.tvVoice.frequency.value = 150;
+    const breath = ctx.createBufferSource();
+    breath.buffer = this.flatNoise;
+    breath.loop = true;
+    const breathGain = ctx.createGain();
+    breathGain.gain.value = 0.25;
+    const voice = ctx.createGain();
+    this.tvVoice.connect(voice);
+    breath.connect(breathGain).connect(voice);
+    this.tvFormant = ctx.createBiquadFilter();
+    this.tvFormant.type = 'bandpass';
+    this.tvFormant.frequency.value = 650;
+    this.tvFormant.Q.value = 3;
+    this.tvFormant2 = ctx.createBiquadFilter();
+    this.tvFormant2.type = 'bandpass';
+    this.tvFormant2.frequency.value = 1400;
+    this.tvFormant2.Q.value = 4;
+    const f2Gain = ctx.createGain();
+    f2Gain.gain.value = 0.6;
+    this.tvSyllable = ctx.createGain();
+    this.tvSyllable.gain.value = 0;
+    voice.connect(this.tvFormant).connect(this.tvSyllable);
+    voice.connect(this.tvFormant2).connect(f2Gain).connect(this.tvSyllable);
+    // the padded door and the landing take the consonants away
+    const tvDoor = ctx.createBiquadFilter();
+    tvDoor.type = 'lowpass';
+    tvDoor.frequency.value = 900;
+    tvDoor.Q.value = 0.5;
+    this.tvSyllable.connect(tvDoor).connect(this.tvGain);
+    this.tvVoice.start();
+    breath.start();
+    // the program's music bed: two soft tones under the voices
+    this.tvMusic = ctx.createGain();
+    this.tvMusic.gain.value = 0;
+    for (const f of [196, 247]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = f;
+      osc.connect(this.tvMusic);
+      osc.start();
+    }
+    this.tvMusic.connect(tvDoor);
+    this.tvLevel = 0;
+    this.tvNext = 0;
+    this.tvPitch = 140;
+
+    // the traffic: one engine voice following the nearest car of the block
+    this.carGain = ctx.createGain();
+    this.carGain.gain.value = 0;
+    this.carPanner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    (this.carPanner ? this.carGain.connect(this.carPanner) : this.carGain).connect(this.master);
+    this.carOsc = ctx.createOscillator();
+    this.carOsc.type = 'sawtooth';
+    this.carOsc.frequency.value = 38;
+    const carLow = ctx.createBiquadFilter();
+    carLow.type = 'lowpass';
+    carLow.frequency.value = 260;
+    this.carOsc.connect(carLow).connect(this.carGain);
+    this.carOsc.start();
+    // tyres on packed snow: a band of noise rising with the speed
+    const tyres = ctx.createBufferSource();
+    tyres.buffer = this.noise;
+    tyres.loop = true;
+    this.tyreFilter = ctx.createBiquadFilter();
+    this.tyreFilter.type = 'bandpass';
+    this.tyreFilter.frequency.value = 500;
+    this.tyreFilter.Q.value = 0.7;
+    this.tyreGain = ctx.createGain();
+    this.tyreGain.gain.value = 0.6;
+    tyres.connect(this.tyreFilter).connect(this.tyreGain).connect(this.carGain);
+    tyres.start();
+
+    this.nextCaw = 4;
   }
 
   resume() {
@@ -205,7 +315,7 @@ export class Sound {
     this.windFilter.frequency.setTargetAtTime(on ? 150 : 320, t, 0.5);
   }
 
-  burst({ time, freq, q, duration, level, type = 'bandpass', buffer = null, rate = 1 }) {
+  burst({ time, freq, q, duration, level, type = 'bandpass', buffer = null, rate = 1, out = null }) {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = buffer || this.flatNoise;
@@ -218,7 +328,7 @@ export class Sound {
     gain.gain.setValueAtTime(0.0001, time);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, level), time + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-    src.connect(filter).connect(gain).connect(this.master);
+    src.connect(filter).connect(gain).connect(out ?? this.master);
     const offset = this.rng.float(0, 1.5);
     src.start(time, offset, duration + 0.05);
     src.stop(time + duration + 0.06);
@@ -260,8 +370,22 @@ export class Sound {
         osc.stop(t + 0.34);
       }
     } else if (surface === 'ice') {
+      // boots slipping on ice: a glassy tick and a short scuff
       this.burst({ time: t, freq: 3400, q: 2.4, duration: 0.05, level: 0.1 * amp, rate: 2.2 });
       this.burst({ time: t + 0.01, freq: 900, q: 1.2, duration: 0.08, level: 0.05 * amp });
+      if (this.rng.chance(0.35)) this.burst({ time: t + 0.03, freq: this.rng.float(1800, 2600), q: 0.8, duration: 0.16, level: 0.03 * amp, type: 'highpass' });
+    } else if (surface === 'asphalt') {
+      // gritty asphalt: a duller heel, then the grit of salt and sand
+      this.burst({ time: t, freq: this.rng.float(700, 1000), q: 1.1, duration: 0.05, level: 0.1 * amp, rate: 1.8 });
+      for (let i = 0; i < 3; i++) {
+        this.burst({ time: t + 0.015 + i * 0.012, freq: this.rng.float(3200, 5200), q: 1.6, duration: 0.025, level: 0.022 * amp });
+      }
+    } else if (surface === 'stairs') {
+      // concrete steps in the stairwell shaft: a hard heel and its echo
+      for (const [send, level] of [[false, 0.12], [true, 0.07]]) {
+        this.burst({ time: t, freq: this.rng.float(1700, 2300), q: 1.5, duration: 0.03, level: level * amp, rate: 2.4, out: send ? this.verb : null });
+        this.burst({ time: t + 0.012, freq: this.rng.float(320, 480), q: 1.2, duration: 0.06, level: level * 0.7 * amp, type: 'lowpass', out: send ? this.verb : null });
+      }
     } else {
       this.burst({ time: t, freq: this.rng.float(1500, 2400), q: 1.4, duration: 0.035, level: 0.11 * amp, rate: 2.4 });
       this.burst({ time: t + 0.018, freq: this.rng.float(600, 950), q: 1.1, duration: 0.07, level: 0.06 * amp });
@@ -439,6 +563,135 @@ export class Sound {
     if (!this.ready) return false;
     this.radioOn = force === undefined ? !this.radioOn : force;
     return this.radioOn;
+  }
+
+  /* ------------------------------------------------ ambience by zone */
+
+  /** One skate stroke on the hockey box, `dist` m away, `pan` -1..1. */
+  skate(dist, pan = 0) {
+    if (!this.ready || dist > 70) return;
+    const t = this.ctx.currentTime + 0.001;
+    const level = 0.09 / (1 + dist * dist * 0.012);
+    if (level < 0.002) return;
+    // the blade bites and carves: a hiss sweeping down, a faint scrape
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 3;
+    filter.frequency.setValueAtTime(this.rng.float(5200, 6400), t);
+    filter.frequency.exponentialRampToValueAtTime(this.rng.float(2200, 2800), t + 0.32);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(level, t + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+    const panner = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+    if (panner) panner.pan.value = clamp(pan, -1, 1);
+    src.connect(filter).connect(gain);
+    (panner ? gain.connect(panner) : gain).connect(this.master);
+    src.start(t, this.rng.float(0, 2));
+    src.stop(t + 0.4);
+  }
+
+  /** A crow's caw: two or three hoarse "kraa"s, `dist` m away. */
+  caw(dist, pan = 0) {
+    if (!this.ready) return;
+    const level = 0.05 / (1 + dist * dist * 0.004);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = clamp(pan, -1, 1);
+      panner.connect(this.master);
+    }
+    const out = panner ?? this.master;
+    let t = ctx.currentTime + 0.05;
+    const calls = this.rng.int(2, 3);
+    const base = this.rng.float(520, 700);
+    for (let i = 0; i < calls; i++) {
+      const dur = this.rng.float(0.22, 0.32);
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(base * 1.12, t);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.82, t + dur);
+      // hoarse: the voice buzzes through a nasal formant, roughened by
+      // a fast tremolo
+      const formant = ctx.createBiquadFilter();
+      formant.type = 'bandpass';
+      formant.frequency.value = 1300;
+      formant.Q.value = 2.5;
+      const rough = ctx.createGain();
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = this.rng.float(55, 75);
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.45;
+      lfo.connect(lfoGain).connect(rough.gain);
+      rough.gain.value = 0.55;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(level, t + 0.03);
+      env.gain.setValueAtTime(level, t + dur * 0.6);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(formant).connect(rough).connect(env).connect(out);
+      osc.start(t);
+      lfo.start(t);
+      osc.stop(t + dur + 0.02);
+      lfo.stop(t + dur + 0.02);
+      t += dur + this.rng.float(0.12, 0.22);
+    }
+  }
+
+  /**
+   * Per-frame ambience. tv: 0..1 (a stairwell's muffled TVs), car: the
+   * nearest moving car { dist, speed, pan } or null, crows: [{ dist, pan }].
+   */
+  ambience(dt, { tv = 0, car = null, crows = [] } = {}) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    // the TV: a new phrase of syllables every couple of seconds
+    this.tvGain.gain.setTargetAtTime(0.05 * tv, now, 0.6);
+    this.tvMusic.gain.setTargetAtTime(tv > 0 ? 0.035 : 0, now, 1.5);
+    if (tv > 0.01 && now > this.tvNext - 0.3) {
+      let t = Math.max(now, this.tvNext);
+      const words = this.rng.int(4, 11);
+      // a new line: sometimes a different speaker
+      if (this.rng.chance(0.35)) this.tvPitch = this.rng.chance(0.5) ? this.rng.float(105, 135) : this.rng.float(185, 230);
+      for (let i = 0; i < words; i++) {
+        const syllables = this.rng.int(1, 3);
+        for (let k = 0; k < syllables; k++) {
+          const d = this.rng.float(0.07, 0.16);
+          this.tvSyllable.gain.setTargetAtTime(this.rng.float(0.5, 1), t, 0.015);
+          this.tvSyllable.gain.setTargetAtTime(0.03, t + d, 0.03);
+          // a vowel, and the speaker's pitch drifting along the phrase
+          this.tvFormant.frequency.setTargetAtTime(this.rng.float(400, 850), t, 0.02);
+          this.tvFormant2.frequency.setTargetAtTime(this.rng.float(1000, 2000), t, 0.02);
+          this.tvVoice.frequency.setTargetAtTime(this.tvPitch * this.rng.float(0.88, 1.15), t, 0.04);
+          t += d + 0.03;
+        }
+        t += this.rng.float(0.08, 0.25);
+      }
+      // a pause between lines, sometimes a longer one
+      this.tvNext = t + (this.rng.chance(0.2) ? this.rng.float(1.2, 2.6) : this.rng.float(0.2, 0.6));
+    }
+    // the car going by
+    const carLevel = car ? (0.07 * clamp(car.speed / 7, 0.25, 1)) / (1 + car.dist * car.dist * 0.01) : 0;
+    this.carGain.gain.setTargetAtTime(this.indoors ? carLevel * 0.25 : carLevel, now, 0.25);
+    if (car) {
+      this.carOsc.frequency.setTargetAtTime(30 + car.speed * 4.5, now, 0.3);
+      this.tyreFilter.frequency.setTargetAtTime(300 + car.speed * 90, now, 0.3);
+      if (this.carPanner) this.carPanner.pan.setTargetAtTime(clamp(car.pan, -1, 1), now, 0.2);
+    }
+    // crows: a caw from one of them now and then, if any is near enough
+    this.nextCaw -= dt;
+    if (this.nextCaw <= 0) {
+      this.nextCaw = this.rng.float(7, 19);
+      const near = crows.filter((c) => c.dist < 110);
+      if (near.length && !this.indoors) {
+        const c = near[this.rng.int(0, near.length - 1)];
+        this.caw(c.dist, c.pan);
+      }
+    }
   }
 
   /** Distant metallic clang, once in a while. */

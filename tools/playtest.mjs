@@ -731,6 +731,43 @@ if (traffic) {
   check(false, 'world.traffic exists');
 }
 
+/* ================================================================ ambience */
+// the zone sounds follow where you are: a TV murmurs in a stairwell and
+// falls silent outside, the engine of a passing car is heard by the road
+console.log('→ ambience');
+const amb = await page.evaluate(async () => {
+  const g = window.__game;
+  const s = g.sound;
+  s.init();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const it = g.world.interiors[0];
+  const b = it.bounds;
+  g.state.mode = 'playing';
+  g.state.interior = it;
+  g.player.teleport((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2, 0);
+  s.setIndoors(true);
+  for (let i = 0; i < 30; i++) s.ambience(0.1, { tv: 1 });
+  await sleep(2500);
+  const tvIn = s.tvGain.gain.value;
+  s.setIndoors(false);
+  g.state.interior = null;
+  // stand on the curb beside a car of the traffic (the game loop hears it)
+  const car = g.world.trafficCars[0];
+  g.player.teleport(car.x + Math.cos(car.heading) * 4, car.z - Math.sin(car.heading) * 4, 0);
+  await sleep(2500);
+  const tvOut = s.tvGain.gain.value;
+  const carNear = s.carGain.gain.value;
+  // the one-shots run without throwing
+  s.step('stairs', 2.7);
+  s.step('asphalt', 2.7);
+  s.skate(8, 0.4);
+  s.caw(20, -0.5);
+  return { tvIn, tvOut, carNear, state: s.ctx.state };
+});
+console.log(`  tv in the stairwell ${amb.tvIn.toFixed(3)}, outside ${amb.tvOut.toFixed(4)}; engine beside a car of the traffic ${amb.carNear.toFixed(3)} (audio ${amb.state})`);
+check(amb.tvIn > 0.02 && amb.tvOut < 0.005, 'a muffled TV plays in the stairwell, not outside');
+check(amb.carNear > 0.01, 'a passing car is heard from the road');
+
 /* ================================================================ static batches */
 // everything baked into the static batches must have stayed put through the
 // whole run (walks, doors, seasons, time presets): a moved, hidden or
