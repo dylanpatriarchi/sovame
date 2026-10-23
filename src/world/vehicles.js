@@ -533,6 +533,8 @@ export function buildVehicles(ctx) {
     lamps: new THREE.MeshBasicMaterial({ vertexColors: true }),
     snow: M.snow,
   };
+  // shared with the moving traffic (traffic.js)
+  world.carKit = { parts, mats };
   // While the world is being built, the scatter passes (trees, routes) must
   // see the parked cars exactly as they always were: the old axis-aligned
   // 2.5 × 4.7 m footprints. They go in as temporary rects (dropped once the

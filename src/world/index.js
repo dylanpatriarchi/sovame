@@ -14,6 +14,7 @@ import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
 import { batchStatic } from './batch.js';
+import { buildTraffic } from './traffic.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -83,6 +84,7 @@ export class World {
         () => {
           buildProps(this.ctx);
           buildVehicles(this.ctx);
+          buildTraffic(this.ctx);
         },
       ],
       // routes are validated lazily on the first update, once the trees

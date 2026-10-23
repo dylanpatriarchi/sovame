@@ -643,6 +643,59 @@ const pedWatch = await page.evaluate(async () => {
 });
 check(pedWatch.length === 0, `pedestrians stay finite and outside colliders for 20 s${pedWatch.length ? ' — ' + pedWatch.slice(0, 4).join('; ') : ''}`);
 
+/* ================================================================ traffic */
+// the lanes never cross a static collider, the fleet keeps going round, and
+// a driver stops short of someone standing in the lane, then moves on
+console.log('→ traffic');
+const traffic = await page.evaluate(() => {
+  const W = window.__game.world;
+  const T = W.traffic;
+  if (!T) return null;
+  const blocked = [];
+  for (const path of Object.values(T.paths)) {
+    for (let i = 0; i < path.count; i += 2) {
+      const s = Math.sin(path.heading[i]);
+      const c = Math.cos(path.heading[i]);
+      for (const off of [-1.25, 0, 1.25]) {
+        const x = path.x[i] + off * s;
+        const z = path.z[i] + off * c;
+        const hit = W.colliders.some((r) => !r.car && (x - Math.max(r.minX, Math.min(x, r.maxX))) ** 2 + (z - Math.max(r.minZ, Math.min(z, r.maxZ))) ** 2 < 0.84 ** 2);
+        if (hit || W.cars.some((car) => car.distanceTo(x, z) < 0.84)) blocked.push([Number(x.toFixed(1)), Number(z.toFixed(1))]);
+      }
+    }
+  }
+  const step = (secs, keepClear) => {
+    for (let t = 0; t < secs; t += 0.05) T.update(0.05, { keepClear, lights: 0 });
+  };
+  const before = T.cars.map((t) => t.s);
+  step(60, []);
+  const moved = T.cars.map((t, i) => (t.s - before[i] + t.path.length) % t.path.length);
+  // stand in the lane 25 m ahead of the first car
+  const t0 = T.cars[0];
+  const p = t0.path;
+  const target = (t0.s + 25) % p.length;
+  let j = 0;
+  while (j < p.count - 1 && p.s[j + 1] <= target) j++;
+  const me = { x: p.x[j], z: p.z[j] };
+  let closest = Infinity;
+  for (let k = 0; k < 400; k++) {
+    step(0.05, [me]);
+    closest = Math.min(closest, Math.hypot(t0.car.x - me.x, t0.car.z - me.z));
+  }
+  const waiting = t0.speed;
+  const s0 = t0.s;
+  step(10, []);
+  return { blocked, moved, closest, waiting, resumed: (t0.s - s0 + p.length) % p.length };
+});
+if (traffic) {
+  console.log(`  moved in 60 s: ${traffic.moved.map((m) => m.toFixed(0)).join(', ')} m; stopped ${traffic.closest.toFixed(2)} m from the player (speed ${traffic.waiting.toFixed(2)}), then went on ${traffic.resumed.toFixed(0)} m`);
+  check(traffic.blocked.length === 0, `traffic lanes clear of static colliders and parked cars${traffic.blocked.length ? ' — ' + JSON.stringify(traffic.blocked.slice(0, 6)) : ''}`);
+  check(traffic.moved.every((m) => m > 150), 'traffic keeps going round the block');
+  check(traffic.closest > 3.5 && traffic.waiting < 0.05 && traffic.resumed > 10, 'a driver stops for the player in the lane and drives on after');
+} else {
+  check(false, 'world.traffic exists');
+}
+
 /* ================================================================ static batches */
 // everything baked into the static batches must have stayed put through the
 // whole run (walks, doors, seasons, time presets): a moved, hidden or

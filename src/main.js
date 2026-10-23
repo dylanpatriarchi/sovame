@@ -751,6 +751,9 @@ async function boot() {
     env.update(dt, state.elapsed, viewCam ?? camera);
     world.update(dt, state.elapsed);
     world.people?.update(dt, state.elapsed, viewCam?.position ?? player.position, env.temperature);
+    // drivers stop for the player on foot (on the title screen, the camera)
+    const onFoot = state.mode === 'title' ? camera.position : !state.interior && !driving.active ? player.position : null;
+    world.traffic?.update(dt, { keepClear: onFoot ? [onFoot] : [], lights: env.cur.lamp });
     sound.updateWind(env.wind.gust);
     // inside a flat the music comes from the kitchen radio
     sound.update(dt, state.elapsed, camera.position, state.interior?.radio ?? world.points.radio);
