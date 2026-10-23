@@ -13,6 +13,7 @@ import { buildInteriors } from './interiors.js';
 import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
+import { batchStatic } from './batch.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -106,6 +107,9 @@ export class World {
     // from now on each car's own (moving) collider stands for it
     this.colliders = this.colliders.filter((c) => !c.buildOnly);
     for (const car of this.cars ?? []) car.updateCollider();
+    // everything that never moves becomes a handful of meshes per cell
+    // (?nobatch in the URL keeps the meshes apart, to compare)
+    if (!new URLSearchParams(globalThis.location?.search ?? '').has('nobatch')) this.batchReport = batchStatic(this);
     onProgress?.(1, 'Ready');
   }
 

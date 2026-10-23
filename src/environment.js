@@ -1,9 +1,16 @@
 // Atmosphere: sky, lights, fog, stars, clouds, snow/leaves, smoke, wind.
 import * as THREE from 'three';
 import { clamp, damp, lerp, Rng, smoothstep, TAU } from './util.js';
-import { SEASONS, TIME_PRESETS, WORLD, sunDirection } from './config.js';
+import { QUALITY, SEASONS, TIME_PRESETS, WORLD, sunDirection } from './config.js';
 import { makeLeafTexture, makeSoftCircleTexture, makeSmokeTexture } from './textures.js';
 import { Mist } from './world/mist.js';
+import { OUTDOOR_LIGHT_LAYER } from './world/interiors.js';
+
+/** Street lamps closer than this to the camera get a real PointLight, from a
+ * fixed pool (QUALITY[q].lampLights). On "high" the pool holds 11, the most
+ * lamps ever within range of a walkable point: every lamp that should be
+ * lit is. */
+const LAMP_LIGHT_RANGE = 60;
 
 const SKY_VERT = /* glsl */ `
   varying vec3 vDir;
@@ -78,6 +85,13 @@ class Weather {
     this.points.frustumCulled = false;
     this.positions = positions;
     scene.add(this.points);
+  }
+
+  dispose() {
+    this.points.removeFromParent();
+    this.points.geometry.dispose();
+    this.points.material.map?.dispose();
+    this.points.material.dispose();
   }
 
   update(dt, t, cam, wind, fall, sizeScale = 1) {
@@ -251,7 +265,9 @@ export class Environment {
     this.scene.add(this.hemi);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 1);
-    this.sun.castShadow = true;
+    // decided by the same rule as every frame from the start, so the shaders
+    // compiled while loading match the ones the first frames need
+    this.sun.castShadow = this.sunCastsShadow();
     this.sun.shadow.mapSize.set(this.quality === 'high' ? 2048 : 1024, this.quality === 'high' ? 2048 : 1024);
     const cam = this.sun.shadow.camera;
     cam.left = -58;
@@ -269,6 +285,32 @@ export class Environment {
 
     this.ambient = new THREE.AmbientLight(0xffffff, 0.08);
     this.scene.add(this.ambient);
+
+    this.lampLights = [];
+    this.lampFlicker = new Float32Array(this.world.lamps.length);
+    this.lampOrder = [];
+    this.buildLampLights();
+  }
+
+  /** The street-lamp light pool. Its size never changes while playing (only
+   * with the quality preset): a varying light count would recompile the
+   * shader of every lit material each time a lamp came into range. */
+  buildLampLights() {
+    const count = (QUALITY[this.quality] ?? QUALITY.high).lampLights;
+    while (this.lampLights.length > count) this.lampLights.pop().removeFromParent();
+    while (this.lampLights.length < count) {
+      const light = new THREE.PointLight(0xff9d3c, 0, 30, 2);
+      light.layers.set(OUTDOOR_LIGHT_LAYER);
+      this.scene.add(light);
+      this.lampLights.push(light);
+    }
+  }
+
+  sunCastsShadow() {
+    // NB: `this.sunIntensity` is never assigned (the value lives in
+    // this.cur.sunIntensity), so this has always been false and the sun has
+    // never cast a shadow. Kept as is: turning shadows on is a visual change.
+    return this.sunIntensity > 0.16 && this.cur.elevation > 2 && this.quality !== 'low';
   }
 
   buildStars() {
@@ -333,7 +375,9 @@ export class Environment {
     this.mistColor = new THREE.Color();
   }
 
-  buildWeather() {    const q = this.quality === 'high' ? 1 : 0.55;
+  buildWeather() {
+    for (const layer of [...(this.snowLayers ?? []), ...(this.leaf ? [this.leaf] : [])]) layer.dispose();
+    const q = (QUALITY[this.quality] ?? QUALITY.high).snow;
     this.snowLayers = [
       new Weather(this.scene, 'snow', Math.round(2200 * q), 0.11, { opacity: 0.95, color: 0xf2f7ff }),
       new Weather(this.scene, 'snow', Math.round(1200 * q), 0.2, { opacity: 0.7, color: 0xe8f0ff }),
@@ -400,7 +444,10 @@ export class Environment {
   }
 
   setQuality(q) {
+    if (q === this.quality) return;
     this.quality = q;
+    this.buildLampLights();
+    this.buildWeather();
   }
 
   updateWeatherDensity(animate = true) {
@@ -473,7 +520,7 @@ export class Environment {
     this.sun.intensity = c.sunIntensity;
     // With the sun below the horizon (dusk), shadows cast by a grazing
     // light become a black veil over the whole terrain: they get disabled.
-    this.sun.castShadow = this.sunIntensity > 0.16 && c.elevation > 2 && this.quality !== 'low';
+    this.sun.castShadow = this.sunCastsShadow();
     const dist = 90;
     const px = camera ? Math.round(camera.position.x / 4) * 4 : 0;
     const pz = camera ? Math.round(camera.position.z / 4) * 4 : 0;
@@ -528,18 +575,42 @@ export class Environment {
       this.world.westDetails.visible = camera.position.x < -64;
       this.world.southDetails.visible = camera.position.z < -60;
     }
-    // only lamps near the camera keep a real PointLight; the rest rely on the glow
+    // only lamps near the camera borrow a real PointLight from the pool,
+    // nearest first; the rest rely on the glow
     const camX = camera ? camera.position.x : 0;
     const camZ = camera ? camera.position.z : 0;
+    const order = this.lampOrder;
+    order.length = 0;
     this.world.lamps.forEach((lamp, i) => {
       const flicker = 0.94 + 0.06 * Math.sin(t * 7.3 + i * 2.1) + 0.03 * Math.sin(t * 23.1 + i);
-      const near = (lamp.group.position.x - camX) ** 2 + (lamp.group.position.z - camZ) ** 2 < 60 * 60;
-      lamp.light.visible = near && this.quality !== 'low';
-      lamp.light.intensity = c.lamp * 95 * flicker;
+      this.lampFlicker[i] = flicker;
+      lamp.dist2 = (lamp.group.position.x - camX) ** 2 + (lamp.group.position.z - camZ) ** 2;
+      if (lamp.dist2 < LAMP_LIGHT_RANGE * LAMP_LIGHT_RANGE) order.push(i);
       lamp.glow.material.opacity = c.lamp * 0.5 * flicker;
       lamp.pool.material.opacity = c.lamp * 0.3 * flicker;
       lamp.coneMat.opacity = c.lamp * 0.09 * flicker;
     });
+    if (order.length > this.lampLights.length) order.sort((a, b) => this.world.lamps[a].dist2 - this.world.lamps[b].dist2);
+    this.lampLights.forEach((light, k) => {
+      const i = order[k];
+      if (i === undefined) {
+        light.intensity = 0;
+        return;
+      }
+      light.position.copy(this.world.lamps[i].lightPos);
+      light.intensity = c.lamp * 95 * this.lampFlicker[i];
+    });
+    // the factory beacon light sits on the chimney nearest to the camera
+    if (this.world.beacon) {
+      let best = Infinity;
+      for (const spot of this.world.beacon.spots) {
+        const d = (spot.x - camX) ** 2 + (spot.z - camZ) ** 2;
+        if (d < best) {
+          best = d;
+          this.world.beacon.light.position.copy(spot);
+        }
+      }
+    }
     this.world.setWindowLit(c.windowLit * 0.95);
     // entrance porches follow the street lamps; facades get a faint night lift
     this.world.porches?.update(c.lamp, camX, camZ, this.indoor > 0.5);

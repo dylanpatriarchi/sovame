@@ -147,6 +147,23 @@ export const SEASONS = {
   },
 };
 
+/**
+ * What each quality preset spends. "high" is the reference look; the lower
+ * presets trade resolution, bloom detail, lamp lights, snowflakes and the
+ * refresh of the window views for frame time.
+ *  - pixelRatio: cap on devicePixelRatio; minPixelRatio: the floor dynamic
+ *    resolution may drop to when frames run over budget
+ *  - bloomScale: resolution of the bloom chain relative to the frame (0 = off)
+ *  - lampLights: size of the street-lamp PointLight pool
+ *  - snow: share of the snow/leaf particles
+ *  - windowScale / windowEvery: window-view resolution and refresh (frames)
+ */
+export const QUALITY = {
+  high: { pixelRatio: 1.8, minPixelRatio: 1, bloomScale: 1, lampLights: 11, snow: 1, windowScale: 0.6, windowEvery: 1 },
+  medium: { pixelRatio: 1.2, minPixelRatio: 0.8, bloomScale: 0.5, lampLights: 6, snow: 0.55, windowScale: 0.45, windowEvery: 2 },
+  low: { pixelRatio: 1, minPixelRatio: 0.65, bloomScale: 0, lampLights: 0, snow: 0.4, windowScale: 0.35, windowEvery: 2 },
+};
+
 export const SETTINGS_DEFAULTS = {
   season: 'winter',
   time: 'dusk',

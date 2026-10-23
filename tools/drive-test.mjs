@@ -8,7 +8,8 @@ const URL_BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = process.argv[3] ?? 'shots/drive';
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({
-  executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  // CHROME_PATH overrides the default (macOS) browser binary, e.g. on Linux
+  executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   headless: true,
   protocolTimeout: 420000,
   args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--no-sandbox', '--window-size=1280,760'],

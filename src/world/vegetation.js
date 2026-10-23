@@ -416,6 +416,8 @@ function bushGeometry(detail = 2) {
 
 function makeCrowMesh() {
   const g = new THREE.Group();
+  // most crows fly: never baked into the static batches
+  g.userData.dynamic = true;
   const mat = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.5, metalness: 0.15 });
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), mat);
   body.scale.set(1, 0.85, 1.9);

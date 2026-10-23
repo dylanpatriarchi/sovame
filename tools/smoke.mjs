@@ -6,7 +6,8 @@ import { mkdirSync } from 'node:fs';
 
 const URL_BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = process.argv[3] ?? 'shots';
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// CHROME_PATH overrides the default (macOS) browser binary, e.g. on Linux
+const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 mkdirSync(OUT, { recursive: true });
 

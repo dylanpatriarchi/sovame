@@ -6,7 +6,8 @@ import { mkdirSync, readFileSync } from 'node:fs';
 const URL_BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = process.argv[3] ?? 'shots/tour';
 const VIEWS = process.argv[4] ? JSON.parse(readFileSync(process.argv[4], 'utf8')) : [];
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// CHROME_PATH overrides the default (macOS) browser binary, e.g. on Linux
+const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 mkdirSync(OUT, { recursive: true });
 
 const browser = await puppeteer.launch({

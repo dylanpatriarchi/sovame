@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, makeCanvas, starPath } from '../util.js';
 import { makeSignTexture, canvasTexture } from '../textures.js';
+import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 
 export const FLOOR_H = 3.0;
 const CELL_W = 3.4;
@@ -887,18 +888,24 @@ export function buildBuildings(ctx) {
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3020 }));
     beacon.position.set(x + 9, h - 1, z);
     world.group.add(beacon);
-    const light = new THREE.PointLight(0xff4020, 0, 60, 2);
-    light.position.copy(beacon.position);
-    world.group.add(light);
-    ctx.addUpdater((dt, t) => {
-      const on = Math.sin(t * 1.6) > 0;
-      beacon.material.color.setHex(on ? 0xff3020 : 0x3a0c08);
-      light.intensity = on ? 6 : 0;
-    });
+    beacons.push(beacon);
   };
+  // the chimneys blink in step; one red light sits on the beacon nearest to
+  // the camera (environment.js), the others are far in the fog anyway
+  const beacons = [];
   factory(-210, -268, 46);
   factory(168, -214, 52);
   factory(150, 190, 38);
+  const beaconLight = new THREE.PointLight(0xff4020, 0, 60, 2);
+  beaconLight.layers.set(OUTDOOR_LIGHT_LAYER);
+  beaconLight.position.copy(beacons[0].position);
+  world.group.add(beaconLight);
+  world.beacon = { light: beaconLight, spots: beacons.map((b) => b.position) };
+  ctx.addUpdater((dt, t) => {
+    const on = Math.sin(t * 1.6) > 0;
+    for (const beacon of beacons) beacon.material.color.setHex(on ? 0xff3020 : 0x3a0c08);
+    beaconLight.intensity = on ? 6 : 0;
+  });
 
   // water tower
   {
