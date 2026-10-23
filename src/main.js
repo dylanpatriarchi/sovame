@@ -302,7 +302,8 @@ async function boot() {
   await nextFrame();
 
   player.onStep = (surface, speed) => {
-    sound.step(surface, speed);
+    // concrete inside a stairwell rings like the shaft it is
+    sound.step(surface === 'concrete' && state.interior && !state.interior.kind ? 'stairs' : surface, speed);
     player.setFootprintStyle(surface, settings.season);
   };
   player.onJump = () => sound.jump();
@@ -701,6 +702,41 @@ async function boot() {
   window.__perf = perf;
   window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, windowViews, dynres, changeFloor, setFloor };
 
+  /* --------------------------------------------------- ambience */
+
+  // where each sound comes from, seen from the camera: distance and pan
+  const _right = new THREE.Vector3();
+  const heard = (x, z) => {
+    const dx = x - camera.position.x;
+    const dz = z - camera.position.z;
+    const dist = Math.hypot(dx, dz);
+    return { dist, pan: dist > 0.01 ? (dx * _right.x + dz * _right.z) / dist : 0 };
+  };
+
+  function updateAmbience(dt) {
+    if (!sound.ready) return;
+    _right.setFromMatrixColumn(camera.matrixWorld, 0);
+    // a stairwell: TVs behind the padded doors of the landing
+    const tv = state.interior && !state.interior.kind ? 1 : 0;
+    let car = null;
+    if (!state.interior) {
+      for (const c of world.trafficCars ?? []) {
+        const h = heard(c.x, c.z);
+        if (!car || h.dist < car.dist) car = { ...h, speed: Math.abs(c.speed) };
+      }
+    }
+    const crows = (world.crows ?? []).map((c) => heard(c.crow.position.x, c.crow.position.z));
+    sound.ambience(dt, { tv, car, crows });
+    // skates on the hockey box: one stroke per push of a blade
+    for (const p of world.people?.list ?? []) {
+      if (!p.stroke) continue;
+      p.stroke = false;
+      if (state.interior) continue;
+      const h = heard(p.position.x, p.position.z);
+      sound.skate(h.dist, h.pan);
+    }
+  }
+
   /* --------------------------------------------------- loop */
 
   let last = performance.now();
@@ -755,6 +791,7 @@ async function boot() {
     const onFoot = state.mode === 'title' ? camera.position : !state.interior && !driving.active ? player.position : null;
     world.traffic?.update(dt, { keepClear: onFoot ? [onFoot] : [], lights: env.cur.lamp });
     sound.updateWind(env.wind.gust);
+    updateAmbience(dt);
     // inside a flat the music comes from the kitchen radio
     sound.update(dt, state.elapsed, camera.position, state.interior?.radio ?? world.points.radio);
 

@@ -605,6 +605,9 @@ class Pedestrian {
 
   #poseSkate(frac) {
     const s = Math.sin(this.phase);
+    // a new push of a blade: audio.js scrapes the ice for it
+    if (s > 0 !== this.lastPush > 0 && frac > 0.3) this.stroke = true;
+    this.lastPush = s;
     // push off one blade, then the other; lean into the stride
     this.legL.rotation.z = Math.max(0, s) * 0.42 * frac;
     this.legR.rotation.z = -Math.max(0, -s) * 0.42 * frac;

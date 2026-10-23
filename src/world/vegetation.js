@@ -962,6 +962,8 @@ export function buildVegetation(ctx) {
 
   /* ---------------------------------------------- crows */
   const crows = [];
+  // the flying ones caw now and then (audio.js reads their positions)
+  world.crows = crows;
   for (let i = 0; i < 6; i++) {
     const { group: crow, wings } = makeCrowMesh();
     const radius = rng.float(22, 46);
