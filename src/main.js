@@ -17,6 +17,7 @@ import { Smoke, smokeSpots } from './smoke.js';
 import { Driving } from './driving.js';
 import { Snowballs } from './snowballs.js';
 import { DistrictMap } from './map.js';
+import { PhotoMode } from './photo.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -269,6 +270,7 @@ async function boot() {
   const smoke = new Smoke({ scene, camera, world, env, sound });
   const snowballs = new Snowballs({ scene, world, sound });
   const map = new DistrictMap({ world, camera });
+  const photo = new PhotoMode({ canvas, player, sound, env });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -413,6 +415,7 @@ async function boot() {
 
   function pause() {
     map.toggle(false);
+    photo.toggle(false);
     state.mode = 'paused';
     player.enabled = false;
     ui.showScreen('pause');
@@ -673,12 +676,27 @@ async function boot() {
     if (event.code === 'Enter' && state.mode === 'title') enterWorld();
     if (event.code === 'KeyG' && !event.repeat) throwSnowball();
     if (event.code === 'KeyM' && !event.repeat) toggleMap();
+    if (event.code === 'KeyP' && !event.repeat) togglePhoto();
+    if (event.code === 'Enter' && photo.active && !event.repeat) photo.shoot();
+  });
+
+  /** Photo mode: on foot, outdoors or in. */
+  function togglePhoto(force) {
+    if (state.mode !== 'playing' || driving.active || state.smoking) return photo.toggle(false);
+    const on = photo.toggle(force);
+    if (on) map.toggle(false);
+    return on;
+  }
+  window.addEventListener('wheel', (event) => {
+    if (photo.active && state.mode === 'playing') photo.zoom(event.deltaY);
   });
 
   /** The district map: open while walking or driving, shut indoors. */
   function toggleMap(force) {
     if (state.mode !== 'playing' || state.interior) return map.toggle(false);
-    return map.toggle(force);
+    const on = map.toggle(force);
+    if (on) photo.toggle(false);
+    return on;
   }
 
   /* --------------------------------------------------- snowballs */
@@ -697,7 +715,10 @@ async function boot() {
     return snowballs.throw(_hand, _aim, player.velocity);
   }
   canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0 && player.locked) throwSnowball();
+    if (event.button === 0 && player.locked) {
+      if (photo.active) photo.shoot();
+      else throwSnowball();
+    }
   });
 
   // retry pointer lock if the browser refused it (happens right after Esc)
@@ -733,7 +754,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, map, toggleMap, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -855,6 +876,7 @@ async function boot() {
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
     if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
+    if (photo.active && (state.mode !== 'playing' || driving.active || state.smoking)) photo.toggle(false);
     if (map.open) {
       if (state.mode !== 'playing' || state.interior) map.toggle(false);
       else map.update(driving.active ? driving.car : player.position);
@@ -901,6 +923,7 @@ async function boot() {
       }
     }
     composer.render();
+    photo.afterRender();
     if (hidden) for (const child of hidden) child.visible = true;
     perf.end();
   }

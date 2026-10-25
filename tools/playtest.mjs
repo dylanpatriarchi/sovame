@@ -1023,6 +1023,45 @@ if (mapR) {
   check(false, 'the district map exists');
 }
 
+/* ================================================================ photo */
+// P swaps the HUD for a viewfinder; the wheel zooms; a shot prints the frame
+// (vignette, date stamp) as a PNG; P again gives the HUD and the lens back
+console.log('→ photo');
+const photoR = await page.evaluate(async () => {
+  const g = window.__game;
+  if (!g.photo) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const fov0 = g.player.fovBase;
+  const on = g.togglePhoto(true);
+  const hudHidden = document.body.classList.contains('photo-mode') && getComputedStyle(document.getElementById('photo')).display !== 'none';
+  g.photo.zoom(-600);
+  const zoomed = g.player.fovBase;
+  g.photo.last = null;
+  g.photo.shoot();
+  for (let i = 0; i < 300 && !g.photo.last; i++) await new Promise((r) => setTimeout(r, 100));
+  const blob = g.photo.last;
+  let size = null;
+  if (blob) {
+    const img = await createImageBitmap(blob);
+    size = [img.width, img.height];
+  }
+  const off = g.togglePhoto(false);
+  const hudBack = !document.body.classList.contains('photo-mode') && getComputedStyle(document.getElementById('photo')).display === 'none';
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { on, hudHidden, fov0, zoomed, fovAfter: g.player.fovBase, bytes: blob?.size ?? 0, size, canvas: [g.renderer.domElement.width, g.renderer.domElement.height], off, hudBack };
+});
+if (photoR) {
+  console.log(`  fov ${photoR.fov0.toFixed(1)} → ${photoR.zoomed.toFixed(1)} → ${photoR.fovAfter.toFixed(1)}; print ${photoR.size?.join('×')} (${photoR.bytes} bytes, canvas ${photoR.canvas.join('×')})`);
+  check(photoR.on && photoR.hudHidden && photoR.zoomed < photoR.fov0 - 5, 'P opens the viewfinder and the wheel zooms in');
+  check(photoR.bytes > 20000 && photoR.size?.[0] === photoR.canvas[0] && photoR.size?.[1] === photoR.canvas[1], 'a shot prints the full frame as a PNG');
+  check(photoR.off === false && photoR.hudBack && Math.abs(photoR.fovAfter - photoR.fov0) < 0.01, 'P again gives the HUD and the lens back');
+} else {
+  check(false, 'photo mode exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

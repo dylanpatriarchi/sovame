@@ -639,6 +639,32 @@ export class Sound {
     src.stop(t + 0.25);
   }
 
+  /** A camera shutter: the blind's snap, then the film advancing. */
+  shutter() {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.005;
+    const click = (at, level, freq, dur) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.flatNoise;
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.frequency.value = freq;
+      band.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(level, at + 0.002);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      src.connect(band).connect(g).connect(this.master);
+      src.start(at, this.rng.float(0, 1));
+      src.stop(at + dur + 0.02);
+    };
+    click(t, 0.09, 3200, 0.03);
+    click(t + 0.045, 0.06, 2400, 0.04);
+    // the lever winding on: a short ratchet
+    for (let i = 0; i < 6; i++) click(t + 0.22 + i * 0.028, 0.025, 1800, 0.018);
+  }
+
   /** A snowball bursting `dist` m away: a soft thump and the crunch of powder. */
   splat(dist, pan = 0, kind = 'wall') {
     if (!this.ready) return;

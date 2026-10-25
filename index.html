@@ -178,6 +178,68 @@
         transition: opacity 1.2s ease;
       }
       #hints.fade { opacity: 0; }
+      /* ---------------------------------------------------------- photo mode */
+      #photo {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 5;
+        display: none;
+        font-family: var(--font-mono);
+        color: rgba(236, 227, 211, 0.85);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+      }
+      body.photo-mode #photo { display: block; }
+      body.photo-mode #hud,
+      body.photo-mode #vignette,
+      body.photo-mode #grain { display: none; }
+      #photo .corner {
+        position: absolute;
+        width: 46px;
+        height: 46px;
+        border: 0 solid rgba(236, 227, 211, 0.8);
+      }
+      #photo .tl { left: 6vw; top: 7vh; border-top-width: 2px; border-left-width: 2px; }
+      #photo .tr { right: 6vw; top: 7vh; border-top-width: 2px; border-right-width: 2px; }
+      #photo .bl { left: 6vw; bottom: 7vh; border-bottom-width: 2px; border-left-width: 2px; }
+      #photo .br { right: 6vw; bottom: 7vh; border-bottom-width: 2px; border-right-width: 2px; }
+      #photo .focus {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 70px;
+        height: 70px;
+        margin: -35px 0 0 -35px;
+        border: 1px solid rgba(236, 227, 211, 0.45);
+        border-radius: 50%;
+      }
+      #photo .info {
+        position: absolute;
+        left: 6vw;
+        top: calc(7vh + 56px);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #photo .help {
+        position: absolute;
+        left: 50%;
+        bottom: calc(7vh + 10px);
+        transform: translateX(-50%);
+        opacity: 0.7;
+      }
+      #photo .flash {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        opacity: 0;
+      }
+      #photo .flash.go { animation: photo-flash 0.45s ease-out; }
+      @keyframes photo-flash {
+        from { opacity: 0.85; }
+        to { opacity: 0; }
+      }
       #map {
         position: fixed;
         inset: 0;
@@ -551,6 +613,7 @@
         <span><kbd>F</kbd> smoke</span>
         <span><kbd>LMB</kbd> snowball</span>
         <span><kbd>M</kbd> map</span>
+        <span><kbd>P</kbd> photo</span>
         <span><kbd>Esc</kbd> pause</span>
       </div>
       <div id="prompt"></div>
@@ -579,6 +642,7 @@
             <div><kbd>F</kbd> smoke</div>
             <div><kbd>LMB</kbd><kbd>G</kbd> throw a snowball</div>
             <div><kbd>M</kbd> district map</div>
+            <div><kbd>P</kbd> photo mode</div>
             <div><kbd>Esc</kbd> pause</div>
           </div>
           <div class="footnote" id="device-note"></div>

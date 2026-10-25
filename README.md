@@ -27,6 +27,7 @@ npm run preview  # serve the production build
 | `F` | have a smoke at a quiet spot (courtyard bench, bus stop, stairwell landing); `F` again to stop |
 | Left mouse button / `G` | throw a snowball (in winter, outdoors) |
 | `M` | district map, with where you stand (outdoors, on foot or driving) |
+| `P` | photo mode: mouse wheel zooms, left button or `Enter` takes a picture (saved as a PNG download) |
 | `Esc` | pause / release the mouse |
 
 `npm run drive` (with the dev server up) gets into a car, drives, crashes and
