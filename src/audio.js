@@ -1213,6 +1213,23 @@ export class Sound {
 
   /** An icicle shattering on the ground `dist` m away: a crack, then a
    * scatter of glassy pings as the pieces skitter off. */
+  /** Water thrown up: the slap of it, then the drops pattering back down.
+   * A car's sheet of it is longer and heavier, and heard from further off. */
+  splash(strength = 1, dist = 0, pan = 0, byCar = false) {
+    if (!this.ready || dist > 50) return;
+    const t = this.ctx.currentTime + 0.005;
+    const level = (byCar ? 0.13 : 0.08) * clamp(strength, 0.2, 1.5) / (1 + dist * dist * 0.03);
+    if (level < 0.002) return;
+    const out = this.#out(pan);
+    this.burst({ time: t, freq: byCar ? 700 : 1000, q: 0.7, duration: byCar ? 0.35 : 0.14, level, type: 'lowpass', out });
+    this.burst({ time: t + 0.01, freq: 2400, q: 0.9, duration: byCar ? 0.3 : 0.1, level: level * 0.6, out });
+    const drips = Math.round(4 + strength * (byCar ? 14 : 8));
+    for (let k = 0; k < drips; k++) {
+      const at = t + 0.12 + this.rng.float(0, byCar ? 0.8 : 0.45);
+      this.burst({ time: at, freq: this.rng.float(1800, 4200), q: 2, duration: 0.025, level: level * this.rng.float(0.15, 0.4), out });
+    }
+  }
+
   /** A heap of dry leaves thrown up: a long crackling rustle, thinning out. */
   rustle(strength = 1) {
     if (!this.ready) return;
