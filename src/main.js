@@ -28,6 +28,7 @@ import { Angels } from './angels.js';
 import { Puck } from './puck.js';
 import { Carpet } from './carpet.js';
 import { Target } from './target.js';
+import { Mail } from './mail.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -226,6 +227,18 @@ async function boot() {
       available: () => interior.floor > 1,
       prompt: () => `E — down to floor ${interior.floor - 1}`,
       onUse: () => changeFloor(interior, -1),
+    });
+    // the bank of post boxes on the vestibule wall, by the door
+    world.interactables.push({
+      id: `${interior.id}:mail`,
+      x: interior.bounds.x0 + 0.75,
+      z: scz - 1.9,
+      y: 0,
+      radius: 0.9,
+      facing: { x: -1, z: 0 },
+      available: () => interior.floor === 1,
+      prompt: () => mail.prompt(interior),
+      onUse: () => mail.look(interior),
     });
   }
   // one flat behind a padded door on each landing, with a kitchen radio
@@ -482,6 +495,8 @@ async function boot() {
   // a chalk target on a garage door: snowballs that land in it score
   const target = new Target({ world, sound });
   snowballs.onImpact = (kind, pos) => target.impact(kind, pos);
+  // the post boxes in the stairwells (their interactables are with the stairwell's own)
+  const mail = new Mail({ env });
   world.interactables.push({
     id: 'target',
     x: 0,
@@ -864,6 +879,8 @@ async function boot() {
       if (angels.active) text = angels.prompt;
       if (carpet.hanging) text = carpet.hangingPrompt;
       if (!text && carpet.note) text = carpet.note;
+      // what turned up in the post boxes, while it is read
+      if (mail.note && state.interior) text = mail.note;
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
@@ -988,7 +1005,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1102,6 +1119,7 @@ async function boot() {
       angels.update(dt);
       carpet.update(dt, player.keys);
       target.update(dt);
+      mail.update(dt);
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {
       // paused behind the wheel: idle the engine

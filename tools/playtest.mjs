@@ -1895,6 +1895,68 @@ if (target) {
   check(false, 'the chalk target exists');
 }
 
+/* ================================================================ mail */
+// the post boxes in a stairwell's vestibule: E looks through the slots and
+// something turns up in one of this entrance's boxes, a few times, then
+// nothing until the post comes again at seven; only on the ground floor
+console.log('→ mail');
+const mail = await page.evaluate(() => {
+  const g = window.__game;
+  const M = g.mail;
+  if (!M) return null;
+  const P = g.player;
+  const W = g.world;
+  const it = W.interiors[0];
+  const was = { mode: g.state.mode, interior: g.state.interior, address: it.address, floor: it.floor, clock: g.env.cur.clockMinutes, last: M.lastClock };
+  g.state.mode = 'playing';
+  g.state.interior = it;
+  it.floor = 1;
+  // as if come in by entrance 2 of a nine-storey block: the boxes are the ten on the wall
+  it.address = { spec: { id: 'test-block', floors: 9 }, x: 0, side: 1, entrance: 2 };
+  const scz = (it.bounds.z0 + it.bounds.z1) / 2;
+  P.teleport(it.bounds.x0 + 0.75, scz - 1.9, Math.PI / 2);
+  const box = W.interactables.find((i) => i.id === `${it.id}:mail`);
+  const f = P.forwardVector;
+  const reach = box.distanceTo ? box.distanceTo(P.position.x, P.position.z) : Math.hypot(box.x - P.position.x, box.z - P.position.z);
+  const offered = box.available() && reach < box.radius && f.x * box.facing.x + f.z * box.facing.z > 0.35 && Math.abs(P.position.y - box.y) < 0.6 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = box.prompt();
+  M.looked.clear();
+  const finds = [];
+  for (let i = 0; i < 4; i++) finds.push(box.onUse());
+  const empty = { note: M.note, prompt: box.prompt() };
+  const numbers = finds.filter(Boolean).map((t) => +/^Box (\d+):/.exec(t)?.[1]);
+  // another entrance has its own boxes
+  it.address = { ...it.address, entrance: 3 };
+  const other = M.left(it);
+  it.address = { ...it.address, entrance: 2 };
+  // the post comes at seven
+  M.lastClock = 400;
+  g.env.cur.clockMinutes = 430;
+  M.update(0);
+  const refilled = M.left(it);
+  it.floor = 2;
+  const upstairs = box.available();
+  it.floor = was.floor;
+  it.address = was.address;
+  g.env.cur.clockMinutes = was.clock;
+  M.lastClock = was.last;
+  M.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, finds, empty, numbers, lo: it.flatBase, other, refilled, upstairs };
+});
+if (mail) {
+  console.log(`  "${mail.offer}" (offered ${mail.offered}); ${mail.finds.map((t) => `"${t}"`).join(', ')}; then "${mail.empty.note}"; other entrance ${mail.other} left; after seven ${mail.refilled}`);
+  check(mail.offered && mail.offer === 'E — look through the post boxes' && !mail.upstairs, 'the post boxes are offered in the vestibule, on the ground floor only');
+  check(
+    mail.finds.slice(0, 3).every((t) => /^Box \d+: ./.test(t ?? '')) && mail.numbers.every((n) => n >= mail.lo && n <= mail.lo + 9) && mail.finds[3] === null && mail.empty.note?.startsWith('Nothing sticking out') && mail.empty.prompt.includes('the post comes at seven'),
+    "three finds in this entrance's boxes, then nothing"
+  );
+  check(mail.other === 3 && mail.refilled === 3, 'each entrance has its own post, and it comes again at seven');
+} else {
+  check(false, 'the post boxes exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
