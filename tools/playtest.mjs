@@ -2200,6 +2200,74 @@ if (slide) {
   check(false, 'the ice slide ride exists');
 }
 
+/* ================================================================ icicles */
+// icicles hanging from the garage roofs' front edges in winter: a snowball
+// thrown through one knocks it down, it shatters on the ground, and it
+// grows back after a while; out of winter there are none
+console.log('→ icicles');
+const icicles = await page.evaluate(() => {
+  const g = window.__game;
+  const I = g.icicles;
+  if (!I) return null;
+  const S = g.snowballs;
+  const W = g.world;
+  const V = g.camera.position.constructor;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  I.update(0, []);
+  const total = I.list.length;
+  const placed = I.list.every((c) => c.y - c.len > 1.9 && !W.collides(c.x, c.z, 0.02));
+  const step = () => {
+    S.update(1 / 60);
+    I.update(1 / 60, S.balls);
+  };
+  // a long one, and a throw at it from 6 m out in front of the garages
+  const c = I.list.find((q) => q.len > 0.3 && q.state === 'hanging');
+  const aim = { x: c.x, y: c.y - c.len * 0.6, z: c.z };
+  const from = new V(c.x, aim.y - 0.4, c.z + c.facing * 6);
+  const before = I.knocked;
+  let lift = null;
+  for (let k = -0.1; k <= 0.25 && lift === null; k += 0.004) {
+    S.cooldown = 0;
+    S.throw(from, new V(0, k, -c.facing).normalize());
+    for (let i = 0; i < 300 && S.balls.some((b) => b.alive); i++) step();
+    if (c.state !== 'hanging') lift = k;
+  }
+  const knocked = I.knocked - before;
+  let shards = 0;
+  for (let i = 0; i < 200 && c.state === 'falling'; i++) step();
+  for (let i = 0; i < 10; i++) {
+    step();
+    shards = Math.max(shards, I.shardMesh.visible ? I.shards.filter((s) => s.age < 0.9).length : 0);
+  }
+  const fell = { state: c.state, note: I.note };
+  // it grows back
+  I.update(121, []);
+  const regrowing = { state: c.state, grow: c.grow };
+  for (let i = 0; i < 40; i++) I.update(1, []);
+  const grown = { state: c.state, grow: c.grow };
+  // out of winter: none to see, none to knock
+  W.season = 'autumn';
+  I.update(0, []);
+  const autumn = { shown: I.mesh.visible, swept: I.sweep(new V(c.x, aim.y, c.z + 1), new V(c.x, aim.y, c.z - 1)) };
+  W.season = was.season;
+  I.update(0, []);
+  I.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { total, placed, lift, knocked, shards, fell, regrowing, grown, autumn };
+});
+if (icicles) {
+  console.log(`  ${icicles.total} icicles; knocked at lift ${icicles.lift?.toFixed(3)} (${icicles.knocked}); ${icicles.shards} shards; "${icicles.fell.note}"; regrown ${icicles.grown.grow}`);
+  check(icicles.total > 60 && icicles.placed, 'icicles hang along the garage roofs, clear of the doors and the walls');
+  check(icicles.lift !== null && icicles.knocked >= 1 && icicles.knocked <= 3 && icicles.fell.state === 'gone' && icicles.shards >= 3 && /^Icicles knocked down: \d+/.test(icicles.fell.note ?? ''), 'a snowball knocks one down and it shatters on the ground');
+  check(icicles.regrowing.state === 'hanging' && icicles.regrowing.grow < 0.1 && icicles.grown.grow === 1 && !icicles.autumn.shown && icicles.autumn.swept === 0, 'it grows back, and out of winter there are none');
+} else {
+  check(false, 'the icicles exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

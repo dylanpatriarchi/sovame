@@ -33,6 +33,7 @@ import { Hopscotch } from './hopscotch.js';
 import { Pebbles } from './pebbles.js';
 import { Kettle } from './kettle.js';
 import { IceSlide } from './iceslide.js';
+import { GarageIcicles } from './garages.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -509,7 +510,12 @@ async function boot() {
   });
   // a chalk target on a garage door: snowballs that land in it score
   const target = new Target({ world, sound });
-  snowballs.onImpact = (kind, pos) => target.impact(kind, pos);
+  // icicles on the garage roofs' edges: a snowball knocks them down
+  const icicles = new GarageIcicles({ world, sound });
+  snowballs.onImpact = (kind, pos) => {
+    target.impact(kind, pos);
+    icicles.impact(kind, pos);
+  };
   // the post boxes in the stairwells (their interactables are with the stairwell's own)
   const mail = new Mail({ env });
   // hopscotch chalked on the sidewalk by the kiosk (out of winter): Space hops square to square
@@ -930,6 +936,7 @@ async function boot() {
       if (kettle.note && state.interior) text = kettle.note;
       if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
+      if (!text && !state.interior) text = icicles.note;
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
     }
@@ -1053,7 +1060,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1064,6 +1071,12 @@ async function boot() {
     const dz = z - camera.position.z;
     const dist = Math.hypot(dx, dz);
     return { dist, pan: dist > 0.01 ? (dx * _right.x + dz * _right.z) / dist : 0 };
+  };
+  // an icicle shattering on the ground
+  icicles.onShatter = (c) => {
+    if (state.interior) return;
+    const h = heard(c.x, c.z);
+    sound.tinkle(h.dist, h.pan);
   };
 
   function updateAmbience(dt) {
@@ -1170,6 +1183,7 @@ async function boot() {
       mail.update(dt);
       pebbles.update(dt);
       iceSlide.update(dt);
+      icicles.update(dt, snowballs.balls);
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();

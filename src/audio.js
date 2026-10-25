@@ -1203,6 +1203,34 @@ export class Sound {
     n.tones[1].frequency.setTargetAtTime(1730 + 455 * w, now, 0.8);
   }
 
+  /** An icicle shattering on the ground `dist` m away: a crack, then a
+   * scatter of glassy pings as the pieces skitter off. */
+  tinkle(dist, pan = 0) {
+    if (!this.ready || dist > 60) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const level = 0.05 / (1 + dist * dist * 0.02);
+    if (level < 0.002) return;
+    const out = this.#out(pan);
+    this.burst({ time: t, freq: 4200, q: 0.8, duration: 0.05, level: level * 1.2, type: 'highpass', out });
+    const pings = this.rng.int(5, 9);
+    for (let i = 0; i < pings; i++) {
+      const at = t + 0.01 + this.rng.float(0, 0.35) * (i / pings + 0.1);
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = this.rng.float(2600, 6200);
+      const env = ctx.createGain();
+      const peak = level * this.rng.float(0.25, 0.7);
+      const len = this.rng.float(0.05, 0.16);
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.exponentialRampToValueAtTime(peak, at + 0.003);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      osc.connect(env).connect(out);
+      osc.start(at);
+      osc.stop(at + len + 0.02);
+    }
+  }
+
   /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
   meow(dist, pan = 0) {
     if (!this.ready) return;
