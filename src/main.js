@@ -329,6 +329,26 @@ async function boot() {
     prompt: () => `B — crumble bread for the pigeons (${bread.handfuls} left)`,
     onUse: () => bread.crumble(player.position, player.forwardVector),
   });
+  // the courtyard cats: walk up quietly and E strokes the nearest
+  const cats = world.cats;
+  if (cats) {
+    const catNear = () => (state.interior || driving.active ? null : cats.near(player.position.x, player.position.z, 1.5));
+    world.interactables.push({
+      id: 'cat',
+      x: 0,
+      z: 0,
+      radius: 1.5,
+      distanceTo: (x, z) => {
+        const c = catNear();
+        return c ? Math.hypot(c.x - x, c.z - z) : Infinity;
+      },
+      prompt: () => (catNear()?.purr > 0 ? 'The cat purrs' : 'E — stroke the cat'),
+      onUse: () => {
+        const c = catNear();
+        if (c) cats.stroke(c);
+      },
+    });
+  }
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -856,6 +876,18 @@ async function boot() {
       }
       pigeons.voice.length = 0;
     }
+    // the cats: a meow, purring under the hand, a hiss at the dog
+    const cats = world.cats;
+    if (cats?.voice.length) {
+      for (const v of cats.voice) {
+        const h = heard(v.x, v.z);
+        const dist = h.dist * (state.interior ? 3 : 1);
+        if (v.kind === 'meow') sound.meow(dist, h.pan);
+        else if (v.kind === 'purr') sound.purr(dist, h.pan, v.t);
+        else sound.catHiss(dist, h.pan);
+      }
+      cats.voice.length = 0;
+    }
     // the bus's doors folding open or shut at the stop
     const bus = world.bus;
     if (bus?.hiss) {
@@ -933,7 +965,9 @@ async function boot() {
     // the stray dog takes an interest in the player on foot
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
+    world.cats?.update(dt, { player: state.mode === 'playing' ? onFoot : null, speed: Math.hypot(player.velocity.x, player.velocity.z) });
     if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
+    if (!sound.ready && world.cats) world.cats.voice.length = 0;
     if (photo.active && (state.mode !== 'playing' || driving.active || state.smoking)) photo.toggle(false);
     if (map.open) {
       if (state.mode !== 'playing' || state.interior) map.toggle(false);

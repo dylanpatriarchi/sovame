@@ -882,6 +882,93 @@ export class Sound {
     }
   }
 
+  /** Out to a panner at `pan`, or straight to the master. */
+  #out(pan) {
+    const ctx = this.ctx;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (!panner) return this.master;
+    panner.pan.value = clamp(pan, -1, 1);
+    panner.connect(this.master);
+    return panner;
+  }
+
+  /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
+  meow(dist, pan = 0) {
+    if (!this.ready) return;
+    const level = 0.05 / (1 + dist * dist * 0.03);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const out = this.#out(pan);
+    const t = ctx.currentTime + 0.02;
+    const len = this.rng.float(0.5, 0.75);
+    const f0 = this.rng.float(480, 620);
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(f0 * 0.8, t);
+    osc.frequency.exponentialRampToValueAtTime(f0 * 1.25, t + len * 0.35);
+    osc.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + len);
+    // the mouth opening ("m-") and closing ("-ow")
+    const mouth = ctx.createBiquadFilter();
+    mouth.type = 'bandpass';
+    mouth.Q.value = 4;
+    mouth.frequency.setValueAtTime(700, t);
+    mouth.frequency.exponentialRampToValueAtTime(1800, t + len * 0.4);
+    mouth.frequency.exponentialRampToValueAtTime(800, t + len);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(level, t + 0.08);
+    env.gain.setValueAtTime(level, t + len * 0.6);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    osc.connect(mouth).connect(env).connect(out);
+    osc.start(t);
+    osc.stop(t + len + 0.02);
+  }
+
+  /** Purring for `secs` s: a low rumble, in on the breath and out again. */
+  purr(dist, pan = 0, secs = 3) {
+    if (!this.ready) return;
+    const level = 0.07 / (1 + dist * dist * 0.08);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const out = this.#out(pan);
+    const t = ctx.currentTime + 0.02;
+    const breaths = Math.max(1, Math.round(secs / 0.9));
+    for (let i = 0; i < breaths; i++) {
+      const at = t + i * 0.9;
+      const len = i % 2 ? 0.5 : 0.36;
+      const src = ctx.createBufferSource();
+      src.buffer = this.flatNoise;
+      const low = ctx.createBiquadFilter();
+      low.type = 'lowpass';
+      low.frequency.value = 180;
+      // the rattle: the noise chopped ~26 times a second
+      const am = ctx.createOscillator();
+      am.type = 'square';
+      am.frequency.value = i % 2 ? 24 : 27;
+      const amg = ctx.createGain();
+      amg.gain.value = 0.5;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.exponentialRampToValueAtTime(level, at + 0.08);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      am.connect(amg).connect(env.gain);
+      src.connect(low).connect(env).connect(out);
+      src.start(at, this.rng.float(0, 1));
+      am.start(at);
+      src.stop(at + len + 0.02);
+      am.stop(at + len + 0.02);
+    }
+  }
+
+  /** A cat hissing at the dog. */
+  catHiss(dist, pan = 0) {
+    if (!this.ready) return;
+    const level = 0.06 / (1 + dist * dist * 0.03);
+    if (level < 0.0015) return;
+    const t = this.ctx.currentTime + 0.02;
+    this.burst({ time: t, freq: 5200, q: 0.7, duration: 0.6, level, type: 'highpass', out: this.#out(pan) });
+  }
+
   /** A crow's caw: two or three hoarse "kraa"s, `dist` m away. */
   caw(dist, pan = 0) {
     if (!this.ready) return;

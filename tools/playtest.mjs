@@ -1261,6 +1261,72 @@ if (bread) {
   check(false, 'bread and pigeons exist');
 }
 
+/* ================================================================ cats */
+// a cat sits on a handful of porches: walk up and E strokes it (it purrs);
+// the dog, a sprint past or a snowball sends it down the basement vent, and
+// it comes back out once nobody is about
+console.log('→ cats');
+const cat = await page.evaluate(() => {
+  const g = window.__game;
+  const C = g.world.cats;
+  if (!C) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const D = g.world.dog;
+  const dogAt = D.position.clone();
+  D.position.set(-25, 0, 12);
+  const onPorch = C.list.every((c) => c.state === 'sit' && c.root.visible && !g.world.collides(c.x, c.z, 0.1) && c.root.position.y > g.world.heightAt(c.x, c.z) + 0.2);
+  const it = g.world.interactables.find((i) => i.id === 'cat');
+  const c = C.list[0];
+  const yaw = c.root.rotation.y;
+  g.player.teleport(c.x + Math.sin(yaw), c.z + Math.cos(yaw), 0);
+  const pl = g.player.position;
+  const offer = it.distanceTo(pl.x, pl.z) < it.radius ? it.prompt() : null;
+  C.voice.length = 0;
+  it.onUse();
+  C.update(0.1, { player: pl, speed: 0 });
+  const purring = it.prompt();
+  const purr = C.voice.some((v) => v.kind === 'purr');
+  // a walk past is fine; a sprint past is not
+  C.update(0.5, { player: pl, speed: 1.4 });
+  const walked = c.state;
+  for (let i = 0; i < 80; i++) C.update(0.05, { player: pl, speed: 6 });
+  const sprinted = c.state;
+  for (let i = 0; i < 1200; i++) C.update(0.05, { player: { x: 999, z: 999 }, speed: 0 });
+  const back = c.state === 'sit' && c.root.visible;
+  // the dog comes by another
+  const c2 = C.list[1];
+  C.voice.length = 0;
+  D.position.set(c2.x + 3, 0, c2.z);
+  C.update(0.05, {});
+  const dogged = c2.state;
+  const hiss = C.voice.some((v) => v.kind === 'hiss');
+  D.position.set(-25, 0, 12);
+  // a snowball near a third
+  const c3 = C.list[2];
+  const B = g.snowballs;
+  const V = g.camera.position.constructor;
+  B.cooldown = 0;
+  B.throw(new V(c3.x + Math.sin(c3.root.rotation.y) * 6, 1.4, c3.z + Math.cos(c3.root.rotation.y) * 6), new V(-Math.sin(c3.root.rotation.y), -0.35, -Math.cos(c3.root.rotation.y)).normalize());
+  for (let i = 0; i < 300 && B.balls.some((b) => b.alive); i++) B.update(1 / 60);
+  const snowed = c3.state;
+  for (let i = 0; i < 1200; i++) C.update(0.05, {});
+  D.position.copy(dogAt);
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { count: C.list.length, onPorch, offer, purring, purr, walked, sprinted, back, dogged, hiss, snowed, home: C.list.every((k) => k.state === 'sit') };
+});
+if (cat) {
+  console.log(`  ${cat.count} cats; "${cat.offer}" → "${cat.purring}"; walk past → ${cat.walked}, sprint → ${cat.sprinted}; dog → ${cat.dogged}${cat.hiss ? ' (hiss)' : ''}; snowball → ${cat.snowed}`);
+  check(cat.count === 6 && cat.onPorch, 'the cats sit on the porches');
+  check(cat.offer === 'E — stroke the cat' && cat.purring === 'The cat purrs' && cat.purr, 'E strokes a cat and it purrs');
+  check(cat.walked === 'sit' && cat.sprinted === 'hidden' && cat.back, 'a sprint past sends a cat down the vent; it comes back out');
+  check(cat.dogged === 'dash' && cat.hiss && cat.snowed === 'dash' && cat.home, 'the dog and snowballs put the cats to flight');
+} else {
+  check(false, 'the cats exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
