@@ -1,7 +1,7 @@
 // A loaf from the kiosk (батон, 13 kopecks): bought at the window while it is
 // open, then crumbled a handful at a time (B) for the pigeons, on the snow in
 // front of you. The flocks near enough flutter over and feed round your feet.
-import { FEED_REACH } from "./world/pigeons.js";
+import { FEED_REACH } from './world/pigeons.js';
 
 export const PRICE = 13; // kopecks
 export const HANDFULS = 4; // to a loaf
@@ -49,15 +49,13 @@ export class Bread {
     if (this.world.collides(x, z, 0.2)) return null;
     // never out on the carriageway, never on the rink
     const ground = this.world.surfaceAt(x, z);
-    if (ground === "asphalt" || ground === "ice") return null;
+    if (ground === 'asphalt' || ground === 'ice') return null;
     return { x, z };
   }
 
   /** Do any pigeons live near enough to come for it? */
   pigeonsNear(pos) {
-    return (this.world.pigeons?.flocks ?? []).some(
-      (f) => Math.hypot(f.home.x - pos.x, f.home.z - pos.z) < FEED_REACH,
-    );
+    return (this.world.pigeons?.flocks ?? []).some((f) => Math.hypot(f.home.x - pos.x, f.home.z - pos.z) < FEED_REACH);
   }
 
   /** A handful of crumbs on the ground ahead: true if any were thrown. */

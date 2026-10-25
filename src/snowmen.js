@@ -4,8 +4,8 @@
 // bucket for a hat. It stays where it was built (a live-only collider, so
 // the seeded world is untouched), takes snowballs, and the oldest melts
 // away once there are too many. A thaw takes them all.
-import * as THREE from "three";
-import { Rng } from "./util.js";
+import * as THREE from 'three';
+import { Rng } from './util.js';
 
 const MAX = 5;
 const AHEAD = 1.3; // m in front of the player
@@ -49,8 +49,7 @@ export class Snowmen {
       const x = pos.getX(i);
       const y = pos.getY(i);
       const z = pos.getZ(i);
-      const k =
-        1 + Math.sin(x * 7 + z * 5) * 0.025 + Math.sin(y * 9 - x * 4) * 0.02;
+      const k = 1 + Math.sin(x * 7 + z * 5) * 0.025 + Math.sin(y * 9 - x * 4) * 0.02;
       pos.setXYZ(i, x * k, y * k * 0.94, z * k);
     }
     this.ball.computeVertexNormals();
@@ -58,21 +57,16 @@ export class Snowmen {
 
   /** Where a snowman would go if built now, or null if the spot is no good. */
   spotFor(pos, forward) {
-    if (this.world.season !== "winter") return null;
+    if (this.world.season !== 'winter') return null;
     const len = Math.hypot(forward.x, forward.z) || 1;
     const x = pos.x + (forward.x / len) * AHEAD;
     const z = pos.z + (forward.z / len) * AHEAD;
-    if (this.world.surfaceAt(x, z) !== "snow") return null;
-    if (
-      Math.abs(this.world.heightAt(x, z) - this.world.heightAt(pos.x, pos.z)) >
-      0.05
-    )
-      return null;
+    if (this.world.surfaceAt(x, z) !== 'snow') return null;
+    if (Math.abs(this.world.heightAt(x, z) - this.world.heightAt(pos.x, pos.z)) > 0.05) return null;
     if (this.world.collides(x, z, CLEAR)) return null;
     if (this.world.interiorAt?.(x, z)) return null;
     // off the lanes: never on a road
-    if (this.world.trafficCars?.some((c) => Math.hypot(c.x - x, c.z - z) < 3))
-      return null;
+    if (this.world.trafficCars?.some((c) => Math.hypot(c.x - x, c.z - z) < 3)) return null;
     return { x, z, yaw: Math.atan2(pos.x - x, pos.z - z) };
   }
 
@@ -81,7 +75,7 @@ export class Snowmen {
     const rng = new Rng(5100 + this.made * 17);
     this.made++;
     const root = new THREE.Group();
-    root.name = "snowman";
+    root.name = 'snowman';
     root.position.set(spot.x, this.world.heightAt(spot.x, spot.z), spot.z);
     root.rotation.y = spot.yaw;
     const k = rng.float(0.88, 1.12);
@@ -143,34 +137,13 @@ export class Snowmen {
     for (const sx of [-0.07, 0.07]) add(coal, this.coal, sx, 1.34, 0.17);
     for (let i = 0; i < 5; i++) {
       const a = -0.5 + i * 0.25;
-      add(
-        coal,
-        this.coal,
-        Math.sin(a) * 0.1,
-        1.215 - Math.abs(a) * 0.05 - 0.02,
-        0.165 + Math.cos(a) * 0.01,
-      ).scale.setScalar(0.6);
+      add(coal, this.coal, Math.sin(a) * 0.1, 1.215 - Math.abs(a) * 0.05 - 0.02, 0.165 + Math.cos(a) * 0.01).scale.setScalar(0.6);
     }
-    for (let i = 0; i < 3; i++)
-      add(
-        coal,
-        this.coal,
-        0,
-        0.98 - i * 0.14,
-        0.29 - Math.abs(i - 0.5) * 0.02,
-      ).scale.setScalar(1.2);
+    for (let i = 0; i < 3; i++) add(coal, this.coal, 0, 0.98 - i * 0.14, 0.29 - Math.abs(i - 0.5) * 0.02).scale.setScalar(1.2);
     const nose = new THREE.ConeGeometry(0.03, rng.float(0.16, 0.26), 7);
     nose.rotateX(Math.PI / 2);
     nose.translate(0, 0, 0.1);
-    add(
-      nose,
-      this.carrot,
-      0,
-      1.29,
-      0.17,
-      rng.float(-0.15, 0.05),
-      rng.float(-0.15, 0.15),
-    );
+    add(nose, this.carrot, 0, 1.29, 0.17, rng.float(-0.15, 0.05), rng.float(-0.15, 0.15));
     // twig arms with a forked end
     for (const side of [-1, 1]) {
       const up = rng.float(0.15, 0.7);
@@ -179,17 +152,11 @@ export class Snowmen {
       arm.rotation.z = side * (Math.PI / 2 - up);
       arm.rotation.y = rng.float(-0.3, 0.3);
       g.add(arm);
-      const stick = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.012, 0.018, 0.55, 5),
-        this.twig,
-      );
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.55, 5), this.twig);
       stick.position.y = 0.27;
       arm.add(stick);
       for (const f of [-1, 1]) {
-        const finger = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.006, 0.009, 0.14, 4),
-          this.twig,
-        );
+        const finger = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.009, 0.14, 4), this.twig);
         finger.position.set(f * 0.03, 0.56, 0);
         finger.rotation.z = -f * 0.5;
         arm.add(finger);
@@ -211,16 +178,7 @@ export class Snowmen {
         metalness: 0.4,
       });
       const bucket = new THREE.CylinderGeometry(0.15, 0.12, 0.2, 12, 1, true);
-      const m = add(
-        bucket,
-        tin,
-        0.02,
-        1.53,
-        -0.01,
-        rng.float(-0.25, 0.1),
-        0,
-        rng.float(-0.2, 0.2),
-      );
+      const m = add(bucket, tin, 0.02, 1.53, -0.01, rng.float(-0.25, 0.1), 0, rng.float(-0.2, 0.2));
       m.material.side = THREE.DoubleSide;
       const bottom = new THREE.CircleGeometry(0.15, 12);
       bottom.rotateX(-Math.PI / 2);
@@ -244,7 +202,7 @@ export class Snowmen {
 
   update(dt, listener = null) {
     // a thaw: they are gone
-    if (this.world.season !== "winter" && this.list.length) {
+    if (this.world.season !== 'winter' && this.list.length) {
       for (const man of [...this.list]) this.remove(man);
       return;
     }
@@ -259,7 +217,7 @@ export class Snowmen {
         // a pat as each one is set in place
         if (before < b.at + b.dur && man.t >= b.at + b.dur && listener) {
           const { dist, pan } = listener(man.x, man.z);
-          this.sound?.splat?.(dist + 2, pan, "ground");
+          this.sound?.splat?.(dist + 2, pan, 'ground');
         }
       });
       if (man.t >= DONE) {

@@ -4,16 +4,10 @@
 // One instanced mesh per block (so the blocks out of view are culled), their
 // own seeded stream (the shared one is untouched), no colliders: they are
 // out of reach.
-import * as THREE from "three";
-import {
-  BUILDING_SPECS,
-  EXPANSION_SPECS,
-  FLOOR_H,
-  SOUTH_SPECS,
-  WEST_SPECS,
-} from "./buildings.js";
-import { allEntrances } from "./entrances.js";
-import { Rng } from "../util.js";
+import * as THREE from 'three';
+import { BUILDING_SPECS, EXPANSION_SPECS, FLOOR_H, SOUTH_SPECS, WEST_SPECS } from './buildings.js';
+import { allEntrances } from './entrances.js';
+import { Rng } from '../util.js';
 
 const LIP_OUT = 0.08; // m out from the wall face, under the roof lip
 const LIP_DROP = 0.1; // the lip's underside below the roof line
@@ -50,12 +44,7 @@ function eave(rng, out, ax, az, bx, bz, y, hot, size = 1, maxL = 2) {
       // longer near the corners and over the doors
       const heat = hot(x, z, t);
       const long = rng.next() < 0.12 + heat * 0.3;
-      const l = Math.min(
-        maxL,
-        (long ? rng.float(0.8, 1.8) : rng.float(0.2, 0.7)) *
-          (0.7 + heat * 0.6) *
-          size,
-      );
+      const l = Math.min(maxL, (long ? rng.float(0.8, 1.8) : rng.float(0.2, 0.7)) * (0.7 + heat * 0.6) * size);
       const r = Math.min(0.11, 0.03 + l * rng.float(0.035, 0.06));
       out.push({
         x: x + rng.float(-0.03, 0.03),
@@ -80,12 +69,7 @@ function eave(rng, out, ax, az, bx, bz, y, hot, size = 1, maxL = 2) {
 export function buildIcicles(ctx) {
   const rng = new Rng(1966);
   const byBlock = new Map();
-  for (const spec of [
-    ...BUILDING_SPECS,
-    ...EXPANSION_SPECS,
-    ...WEST_SPECS,
-    ...SOUTH_SPECS,
-  ]) {
+  for (const spec of [...BUILDING_SPECS, ...EXPANSION_SPECS, ...WEST_SPECS, ...SOUTH_SPECS]) {
     const list = [];
     byBlock.set(spec.id, list);
     const y = spec.floors * FLOOR_H - LIP_DROP;
@@ -104,26 +88,8 @@ export function buildIcicles(ctx) {
     eave(rng, list, spec.x - hx, spec.z + hz, spec.x + hx, spec.z + hz, y, hot);
     eave(rng, list, spec.x + hx, spec.z - hz, spec.x - hx, spec.z - hz, y, hot);
     const ends = (x, z, t) => Math.max(0, 1 - Math.min(t, 1 - t) * 6);
-    eave(
-      rng,
-      list,
-      spec.x + hx,
-      spec.z + hz,
-      spec.x + hx,
-      spec.z - hz,
-      y,
-      ends,
-    );
-    eave(
-      rng,
-      list,
-      spec.x - hx,
-      spec.z - hz,
-      spec.x - hx,
-      spec.z + hz,
-      y,
-      ends,
-    );
+    eave(rng, list, spec.x + hx, spec.z + hz, spec.x + hx, spec.z - hz, y, ends);
+    eave(rng, list, spec.x - hx, spec.z - hz, spec.x - hx, spec.z + hz, y, ends);
   }
   // the entrance canopies, along the drip edge above the door (short: they
   // hang over people's heads)
@@ -162,7 +128,7 @@ export function buildIcicles(ctx) {
     });
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-    ctx.group.add(ctx.seasonable("winter", mesh));
+    ctx.group.add(ctx.seasonable('winter', mesh));
     meshes.push(mesh);
     count += list.length;
   }

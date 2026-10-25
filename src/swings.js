@@ -1,5 +1,5 @@
-import * as THREE from "three";
-import { clamp } from "./util.js";
+import * as THREE from 'three';
+import { clamp } from './util.js';
 
 /* The playground swings, ridden: E sits you on the plank, W pumps on the
  * way forward and S on the way back (or just keep W down and lean into it),
@@ -140,24 +140,19 @@ export class Swings {
       const ridden = seat === this.active;
       for (let i = 0; i < n; i++) {
         const h = dt / n;
-        let acc =
-          -(GRAVITY / ARM) * Math.sin(seat.a) -
-          (ridden ? DAMP_RIDDEN : DAMP_EMPTY) * seat.w;
+        let acc = -(GRAVITY / ARM) * Math.sin(seat.a) - (ridden ? DAMP_RIDDEN : DAMP_EMPTY) * seat.w;
         if (ridden) {
           // lean into it: W on the way forward, S on the way back
           const forward = seat.w >= 0;
-          if ((keys.forward && forward) || (keys.back && !forward))
-            acc += PUMP * (forward ? 1 : -1) * Math.cos(seat.a);
+          if ((keys.forward && forward) || (keys.back && !forward)) acc += PUMP * (forward ? 1 : -1) * Math.cos(seat.a);
         }
         // the rods are only so long before the chains go slack: soften
-        if (Math.abs(seat.a) > MAX * 0.85)
-          acc -= Math.sign(seat.a) * (Math.abs(seat.a) - MAX * 0.85) * 40;
+        if (Math.abs(seat.a) > MAX * 0.85) acc -= Math.sign(seat.a) * (Math.abs(seat.a) - MAX * 0.85) * 40;
         const before = seat.w;
         seat.w += acc * h;
         seat.a = clamp(seat.a + seat.w * h, -MAX, MAX);
         // a turning point: the pivot squeals
-        if (before !== 0 && Math.sign(before) !== Math.sign(seat.w))
-          this.#turn(seat, ridden);
+        if (before !== 0 && Math.sign(before) !== Math.sign(seat.w)) this.#turn(seat, ridden);
       }
       seat.pivot.rotation.x = -seat.a;
       // let go and settled: back to the wind
@@ -176,9 +171,7 @@ export class Swings {
     if (ridden) this.peak = amp;
     if (amp < 0.12 || !this.sound?.ready) return;
     const p = this.seatPose(seat, _v);
-    const d = ridden
-      ? 0
-      : Math.hypot(p.x - this.player.position.x, p.z - this.player.position.z);
+    const d = ridden ? 0 : Math.hypot(p.x - this.player.position.x, p.z - this.player.position.z);
     this.sound.creak(amp / MAX, d);
   }
 

@@ -5,11 +5,11 @@
 // sends it dashing round the porch cheek and down the basement vent (продух)
 // beside it; it comes back out once the coast is clear. Their own seeded
 // stream, no colliders; three small meshes a cat.
-import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { BUILDING_SPECS, EXPANSION_SPECS } from "./buildings.js";
-import { allEntrances } from "./entrances.js";
-import { damp, Rng } from "../util.js";
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { BUILDING_SPECS, EXPANSION_SPECS } from './buildings.js';
+import { allEntrances } from './entrances.js';
+import { damp, Rng } from '../util.js';
 
 const COUNT = 6;
 const PAD_TOP = 0.26; // the porch slab
@@ -34,7 +34,7 @@ function tint(geo, hex) {
   const n = g.attributes.position.count;
   const col = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) c.toArray(col, i * 3);
-  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return g;
 }
 
@@ -73,14 +73,8 @@ function catGeometry(coat) {
     box(0.018, 0.012, 0.006, 0.024, 0.04, 0.062, 0xc9a43a),
     box(0.018, 0.012, 0.006, -0.024, 0.04, 0.062, 0xc9a43a),
     // the ears
-    tint(
-      new THREE.ConeGeometry(0.024, 0.05, 4).translate(0.034, 0.088, 0.005),
-      coat.base,
-    ),
-    tint(
-      new THREE.ConeGeometry(0.024, 0.05, 4).translate(-0.034, 0.088, 0.005),
-      coat.base,
-    ),
+    tint(new THREE.ConeGeometry(0.024, 0.05, 4).translate(0.034, 0.088, 0.005), coat.base),
+    tint(new THREE.ConeGeometry(0.024, 0.05, 4).translate(-0.034, 0.088, 0.005), coat.base),
   ]);
   // the tail: three segments curving out along the ground and up a little
   const tail = mergeGeometries([
@@ -97,7 +91,7 @@ class Cat {
     this.rng = rng;
     const { body, head, tail } = catGeometry(coat);
     this.root = new THREE.Group();
-    this.root.name = "cat";
+    this.root.name = 'cat';
     this.body = new THREE.Mesh(body, mat);
     this.head = new THREE.Mesh(head, mat);
     this.head.position.set(0, 0.27, 0.07);
@@ -108,7 +102,7 @@ class Cat {
       this.root.add(m);
     }
     this.root.scale.setScalar(rng.float(0.92, 1.1));
-    this.state = "sit";
+    this.state = 'sit';
     this.timer = 0;
     this.purr = 0;
     this.groom = 0;
@@ -142,7 +136,7 @@ class Cats {
     /** Meows, purrs and hisses to be heard (main.js plays them). */
     this.voice = [];
     this.group = new THREE.Group();
-    this.group.name = "cats";
+    this.group.name = 'cats';
     // they move: never baked into the static batches
     this.group.userData.dynamic = true;
     const mat = new THREE.MeshStandardMaterial({
@@ -154,12 +148,8 @@ class Cats {
 
     // a handful of porches on the central blocks, near where you walk,
     // never two on one block
-    const ids = new Set(
-      [...BUILDING_SPECS, ...EXPANSION_SPECS].map((s) => s.id),
-    );
-    const porches = allEntrances().filter(
-      (e) => ids.has(e.spec.id) && Math.hypot(e.x, e.z) < 80,
-    );
+    const ids = new Set([...BUILDING_SPECS, ...EXPANSION_SPECS].map((s) => s.id));
+    const porches = allEntrances().filter((e) => ids.has(e.spec.id) && Math.hypot(e.x, e.z) < 80);
     const used = new Set();
     this.list = [];
     let guard = 0;
@@ -180,11 +170,7 @@ class Cats {
       };
       // round the cheek and down the vent beside the porch
       const vent = at(lx * 2.3, 0);
-      const path = [
-        at(lx * 1.02, 0.75),
-        at(lx * 2.3, 0.75),
-        at(lx * 2.3, 0.12),
-      ];
+      const path = [at(lx * 1.02, 0.75), at(lx * 2.3, 0.75), at(lx * 2.3, 0.12)];
       home.path = path.map((p) => ({ ...p, y: ground }));
       home.vent = { ...vent, y: ground };
       const v = new THREE.Mesh(ventGeo, ventMat);
@@ -199,23 +185,22 @@ class Cats {
 
   /** Something startling at (x, z): the cats within `r` bolt. */
   scare(x, z, r = NERVE.snowball) {
-    for (const c of this.list)
-      if (c.state === "sit" && Math.hypot(c.x - x, c.z - z) < r) this.bolt(c);
+    for (const c of this.list) if (c.state === 'sit' && Math.hypot(c.x - x, c.z - z) < r) this.bolt(c);
   }
 
   bolt(c, hiss = false) {
-    c.state = "dash";
+    c.state = 'dash';
     c.path = c.home.path.slice();
     c.purr = 0;
-    if (hiss) this.voice.push({ kind: "hiss", x: c.x, z: c.z });
+    if (hiss) this.voice.push({ kind: 'hiss', x: c.x, z: c.z });
   }
 
   /** E: a stroke behind the ears. */
   stroke(c) {
-    if (c.state !== "sit") return false;
+    if (c.state !== 'sit') return false;
     c.purr = PURR;
     c.meowIn = 8;
-    this.voice.push({ kind: "purr", x: c.x, z: c.z, t: PURR });
+    this.voice.push({ kind: 'purr', x: c.x, z: c.z, t: PURR });
     return true;
   }
 
@@ -224,7 +209,7 @@ class Cats {
     let best = null;
     let bestD = r;
     for (const c of this.list) {
-      if (c.state !== "sit") continue;
+      if (c.state !== 'sit') continue;
       const d = Math.hypot(c.x - x, c.z - z);
       if (d < bestD) {
         best = c;
@@ -241,17 +226,17 @@ class Cats {
     for (const c of this.list) {
       const dp = player ? Math.hypot(player.x - c.x, player.z - c.z) : Infinity;
       const dd = dog ? Math.hypot(dog.x - c.x, dog.z - c.z) : Infinity;
-      if (c.state === "sit") {
+      if (c.state === 'sit') {
         if (dd < NERVE.dog) this.bolt(c, true);
         else if (dp < NERVE.player && speed > SPRINT) this.bolt(c);
       }
-      if (c.state === "sit") this.sit(c, dt, player, dp);
-      else if (c.state === "dash") this.dash(c, dt);
+      if (c.state === 'sit') this.sit(c, dt, player, dp);
+      else if (c.state === 'dash') this.dash(c, dt);
       else {
         // below in the basement: out again once nobody is about
         c.timer -= dt;
         if (c.timer <= 0 && dp > AWAY.player && dd > AWAY.dog) {
-          c.state = "sit";
+          c.state = 'sit';
           c.place(c.home);
         }
       }
@@ -271,16 +256,12 @@ class Cats {
     let want = 0;
     if (player && dp < 6) {
       const a = Math.atan2(player.x - c.x, player.z - c.z) - c.root.rotation.y;
-      want = Math.max(
-        -1.1,
-        Math.min(1.1, Math.atan2(Math.sin(a), Math.cos(a))),
-      );
+      want = Math.max(-1.1, Math.min(1.1, Math.atan2(Math.sin(a), Math.cos(a))));
     }
     c.look = damp(c.look, c.groom > 0 ? 0.5 : want, 5, dt);
     c.head.rotation.y = c.look;
     // purring: the head tilts up into the hand; grooming: it dips to the chest
-    const tilt =
-      c.purr > 0 ? -0.35 : c.groom > 0 ? 0.6 + Math.sin(c.groom * 9) * 0.12 : 0;
+    const tilt = c.purr > 0 ? -0.35 : c.groom > 0 ? 0.6 + Math.sin(c.groom * 9) * 0.12 : 0;
     c.head.rotation.x = damp(c.head.rotation.x, tilt, 6, dt);
     // the tail: curled and still when content, twitching at the tip otherwise
     c.swish += dt * (c.purr > 0 ? 1.2 : 2.4);
@@ -292,7 +273,7 @@ class Cats {
     if (player && dp < 3 && !c.seen && c.meowIn <= 0) {
       c.seen = true;
       c.meowIn = 20;
-      this.voice.push({ kind: "meow", x: c.x, z: c.z });
+      this.voice.push({ kind: 'meow', x: c.x, z: c.z });
     }
     if (dp > 5) c.seen = false;
   }
@@ -313,7 +294,7 @@ class Cats {
       c.root.position.set(to.x, to.y, to.z);
       c.path.shift();
       if (!c.path.length) {
-        c.state = "hidden";
+        c.state = 'hidden';
         c.root.visible = false;
         c.timer = this.rng.float(25, 45);
       }
