@@ -123,11 +123,13 @@ const LEGS = [
       [-30, -22.4],
       [-30, -17.8],
       [-35, -17.8],
+      [-41, -17.8], // round the birch at (-39.2, -16.2)
       [-41, -16],
       [-41, -4],
       [-36, -2.9],
       [-30, -2.9],
-      [-20, -2.9],
+      [-29.4, -2.1], // north of the birch at (-28.5, -3.1)
+      [-20, -2.1],
       [-15, -5.2], // bench at (-12.5, -4), power pole at (-12.6, 0)
       [-11, -5.2],
       [-8.5, -2],
@@ -141,13 +143,12 @@ const LEGS = [
       [12, 18],
       [24, 25.2],
       [34, 25.2],
-      [38, 10],
-      [38, -8],
+      [37.5, 10], // clear of the birch at (38.5, -3.5)
+      [37.5, -8],
       [36, -21],
       [34, -22.8], // B2's courtyard-face path strip
-      [27, -22.8],
-      [27, -19.5],
-      [27, -18.35], // squeeze between the kindergarten fence and a bench
+      [26.3, -22.8],
+      [26.3, -18.35], // west of the spruce at (27.5, -19.7), then along the kindergarten fence
       [10, -18.35],
       [9, -18.35], // then around the kindergarten's west side
       [9, -6],
@@ -440,6 +441,21 @@ const promptState = () =>
     visible: document.getElementById('prompt').classList.contains('visible'),
     text: document.getElementById('prompt').textContent,
   }));
+// the prompt follows the game loop, which can run at a few frames per
+// second here: wait (up to a limit) for the expected text, not a fixed time
+const promptWhen = async (text, timeout = 15000) => {
+  await page
+    .waitForFunction(
+      (t) => {
+        const el = document.getElementById('prompt');
+        return el.classList.contains('visible') && el.textContent === t;
+      },
+      { timeout },
+      text
+    )
+    .catch(() => {});
+  return promptState();
+};
 
 // radio
 await page.evaluate(() => {
@@ -448,17 +464,16 @@ await page.evaluate(() => {
   g.player.pitch = 0;
 });
 // the collision-grid sweep above can stall the page: wait for frames, not ms
-await page.waitForFunction(() => document.getElementById('prompt').classList.contains('visible'), { timeout: 10000 }).catch(() => {});
-let prompt = await promptState();
+let prompt = await promptWhen('E — turn on the radio');
 check(prompt.visible && prompt.text === 'E — turn on the radio', `radio prompt appears ("${prompt.text}")`);
 await page.keyboard.press('KeyE');
-await wait(700);
+await page.waitForFunction(() => window.__game.sound.radioOn, { timeout: 15000 }).catch(() => {});
 const radioOn = await page.evaluate(() => window.__game.sound.radioOn);
-prompt = await promptState();
+prompt = await promptWhen('E — turn off the radio');
 check(radioOn === true, 'radio: KeyE turns the station on');
 check(prompt.visible && prompt.text === 'E — turn off the radio', `radio prompt flips ("${prompt.text}")`);
 await page.keyboard.press('KeyE');
-await wait(500);
+await page.waitForFunction(() => !window.__game.sound.radioOn, { timeout: 15000 }).catch(() => {});
 check((await page.evaluate(() => window.__game.sound.radioOn)) === false, 'radio: KeyE again turns it off');
 
 // the three stairwells, in and back out
@@ -469,8 +484,7 @@ for (const interior of interiorsList) {
     g.player.teleport(d.x, d.z, 0);
     g.player.pitch = 0;
   }, interior.doorOut);
-  await wait(700);
-  prompt = await promptState();
+  prompt = await promptWhen('E — enter the stairwell');
   const enterOk = prompt.visible && prompt.text === 'E — enter the stairwell';
   await page.keyboard.press('KeyE');
   let entered = true;
@@ -488,8 +502,7 @@ for (const interior of interiorsList) {
     g.player.teleport(d.x, d.z, 0);
     g.player.pitch = 0;
   }, interior.doorIn);
-  await wait(700);
-  prompt = await promptState();
+  prompt = await promptWhen('E — step outside');
   const exitOk = prompt.visible && prompt.text === 'E — step outside';
   await page.keyboard.press('KeyE');
   let exited = true;

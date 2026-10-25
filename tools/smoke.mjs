@@ -286,7 +286,8 @@ const doorInfo = await page.evaluate(() => {
 });
 if (doorInfo) {
   console.log(`→ stairwell ${doorInfo.id}: entrance door at (${doorInfo.door.x.toFixed(2)}, ${doorInfo.door.z.toFixed(2)})`);
-  await wait(500);
+  // the prompt follows the (slow, headless) game loop: wait for it
+  await page.waitForFunction(() => document.getElementById('prompt').classList.contains('visible'), { timeout: 15000 }).catch(() => {});
   const prompt = await page.evaluate(() => ({
     visible: document.getElementById('prompt').classList.contains('visible'),
     text: document.getElementById('prompt').textContent,
@@ -331,7 +332,7 @@ if (doorInfo) {
     const d = game.state.interior.doorIn;
     game.player.teleport(d.x, d.z, 0); // at the door, facing it
   });
-  await wait(400);
+  await page.waitForFunction(() => document.getElementById('prompt').textContent.includes('outside'), { timeout: 15000 }).catch(() => {});
   const exitPrompt = await page.evaluate(() => document.getElementById('prompt').textContent);
   console.log(`→ exit prompt: "${exitPrompt}"`);
   await page.keyboard.press('KeyE');
@@ -532,7 +533,7 @@ for (const [id, at, shot] of smokeShots) {
     logs.push(`[smoke] spot ${id} not registered`);
     continue;
   }
-  await wait(500);
+  await page.waitForFunction(() => document.getElementById('prompt').textContent.startsWith('F'), { timeout: 15000 }).catch(() => {});
   const prompt = await page.evaluate(() => document.getElementById('prompt').textContent);
   if (!prompt.startsWith('F')) logs.push(`[smoke] ${id}: prompt was "${prompt}"`);
   await page.keyboard.press('KeyF');
@@ -590,7 +591,8 @@ const belowLanding = await page.evaluate(async () => {
   const it = game.world.interactables.find((i) => i.id === 'smoke:landing');
   if (!it) return null;
   game.player.teleport(it.x + 1.2, it.z - 0.8, Math.PI);
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  // a few frames of the game loop (however slow it runs), not a fixed time
+  for (let i = 0; i < 8; i++) await new Promise((resolve) => requestAnimationFrame(resolve));
   const prompt = document.getElementById('prompt');
   return { y: game.player.position.y, text: prompt.classList.contains('visible') ? prompt.textContent : null };
 });
@@ -609,7 +611,9 @@ const flatInfo = await page.evaluate(async () => {
   game.sound.setIndoors(true);
   game.env.setIndoors(true);
   game.player.teleport(flat.doorOut.x + 0.3, flat.doorOut.z, Math.PI / 2);
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  for (let t = performance.now(); performance.now() - t < 15000 && !document.getElementById('prompt').textContent.startsWith('E — go into flat'); ) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
   return { id: flat.id, prompt: document.getElementById('prompt').textContent, y: game.player.position.y };
 });
 if (flatInfo) {
@@ -638,7 +642,9 @@ if (flatInfo) {
     const game = window.__game;
     const r = game.state.interior.radio;
     game.player.teleport(r.x + 1.1, r.z - 0.75, Math.PI / 2);
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    for (let t = performance.now(); performance.now() - t < 15000 && !document.getElementById('prompt').textContent.includes('radio'); ) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
     return document.getElementById('prompt').textContent;
   });
   console.log(`→ kitchen radio prompt: "${radio}"`);
@@ -648,7 +654,7 @@ if (flatInfo) {
     const d = game.state.interior.doorIn;
     game.player.teleport(d.x, d.z + 0.3, 0);
   });
-  await wait(500);
+  await page.waitForFunction(() => document.getElementById('prompt').classList.contains('visible'), { timeout: 15000 }).catch(() => {});
   await page.keyboard.press('KeyE');
   try {
     await page.waitForFunction(() => window.__game.state.interior?.kind !== 'flat' && !window.__game.state.transitioning, { timeout: 20000 });
