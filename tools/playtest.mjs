@@ -1389,6 +1389,79 @@ if (badge) {
   check(false, 'the badges exist');
 }
 
+/* ================================================================ swings */
+// the playground swings: E sits you on a plank, W/S in time with the swing
+// pump it up to about 55°, E gets you off and the empty swing settles
+console.log('→ swings');
+const swing = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.swings;
+  if (!S) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const seat = S.seats[0];
+  const p = S.restSpot(seat);
+  const f = S.facing(seat);
+  // stand in front of the plank, looking at it
+  g.player.teleport(p.x + f.x * 1.9, p.z + f.z * 1.9, Math.atan2(f.x, f.z));
+  const pl = g.player.position;
+  const standing = !g.world.collides(pl.x, pl.z, 0.3);
+  const it = g.world.interactables.find((i) => i.id === 'swing');
+  const offer = it.distanceTo(pl.x, pl.z) < it.radius ? it.prompt() : null;
+  it.onUse();
+  const sat = S.active === seat && !g.player.enabled;
+  // pump in time: W on the way forward, S on the way back, for 25 s
+  let lo = Infinity;
+  let hi = -Infinity;
+  let peak = 0;
+  for (let i = 0; i < 1250; i++) {
+    S.update(0.02, { forward: seat.w >= 0, back: seat.w < 0 });
+    lo = Math.min(lo, g.camera.position.y);
+    hi = Math.max(hi, g.camera.position.y);
+    peak = Math.max(peak, Math.abs(seat.a));
+  }
+  const height = S.height;
+  const finite = Number.isFinite(seat.a) && Number.isFinite(g.camera.position.y);
+  const feet = Math.hypot(pl.x - S.seatPose(seat).x, pl.z - S.seatPose(seat).z);
+  return { seats: S.seats.length, standing, offer, sat, lo, hi, peak, height, finite, feet, was };
+});
+if (swing) {
+  // E, from the keyboard, gets you off
+  await page.keyboard.press('KeyE');
+  await new Promise((r) => setTimeout(r, 300));
+}
+const swingOff = swing
+  ? await page.evaluate((was) => {
+      const g = window.__game;
+      const S = g.swings;
+      const seat = S.seats[0];
+      const off = !S.active && g.player.enabled;
+      const pl = g.player.position;
+      const clear = !g.world.collides(pl.x, pl.z, 0.3);
+      const moving = seat.moving;
+      // left alone, the plank settles and the wind has it again
+      let t = 0;
+      while (seat.moving && t < 120) {
+        S.update(0.05);
+        t += 0.05;
+      }
+      g.state.mode = was.mode;
+      g.state.interior = was.interior;
+      return { off, clear, moving, settled: !seat.moving && !seat.pivot.userData.swinging, t };
+    }, swing.was)
+  : null;
+if (swing && swingOff) {
+  console.log(
+    `  ${swing.seats} planks; "${swing.offer}" → sat ${swing.sat}; pumped to ${((swing.peak * 180) / Math.PI).toFixed(0)}° (height ${swing.height.toFixed(2)}), eyes ${swing.lo.toFixed(2)}–${swing.hi.toFixed(2)} m; E → off ${swingOff.off}, clear ${swingOff.clear}; settled after ${swingOff.t.toFixed(1)} s`
+  );
+  check(swing.seats >= 4 && swing.standing && swing.offer === 'E — sit on the swing' && swing.sat, 'E sits the player on a swing');
+  check(swing.finite && swing.peak > 0.7 && swing.hi - swing.lo > 0.4 && swing.feet < 0.01, 'pumping in time swings it up high, the view riding the plank');
+  check(swingOff.off && swingOff.clear && swingOff.moving && swingOff.settled, 'E gets off, and the empty swing settles back to the wind');
+} else {
+  check(false, 'the swings exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

@@ -460,9 +460,12 @@ export function buildProps(ctx) {
       pivot.add(ctx.seasonable('winter', snow));
       bakeChildren(pivot);
       swingGroup.add(pivot);
-      // an empty swing only stirs in the wind
+      // an empty swing only stirs in the wind (a swing still moving after a
+      // ride is left to its own pendulum: see src/swings.js)
       const phase = sx * 2.3;
+      (world.swingSeats ??= []).push({ pivot, swingGroup });
       world.updaters.push((dt, t) => {
+        if (pivot.userData.swinging) return;
         pivot.rotation.x = Math.sin(t * 1.35 + phase) * 0.035 + Math.sin(t * 0.41 + phase) * 0.02;
       });
     }

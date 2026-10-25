@@ -21,6 +21,7 @@ import { PhotoMode } from './photo.js';
 import { Snowmen } from './snowmen.js';
 import { Bread, PRICE } from './bread.js';
 import { Badges } from './badges.js';
+import { Swings } from './swings.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -284,7 +285,7 @@ async function boot() {
     z: 0,
     radius: 50,
     distanceTo: () =>
-      player.pitch > -0.35 || state.interior || driving.active || state.smoking || !snowmen.spotFor(player.position, player.forwardVector) ? Infinity : 49.9,
+      player.pitch > -0.35 || state.interior || driving.active || state.smoking || swings.active || !snowmen.spotFor(player.position, player.forwardVector) ? Infinity : 49.9,
     prompt: () => 'E — build a snowman',
     onUse: () => {
       const spot = snowmen.spotFor(player.position, player.forwardVector);
@@ -323,6 +324,7 @@ async function boot() {
       state.interior ||
       driving.active ||
       state.smoking ||
+      swings.active ||
       !bread.pigeonsNear(player.position) ||
       !bread.spotFor(player.position, player.forwardVector)
         ? Infinity
@@ -368,6 +370,20 @@ async function boot() {
     onUse: () => {
       const it = badges.near(player.position.x, player.position.y, player.position.z);
       if (it) badges.take(it);
+    },
+  });
+  // the playground swings: E sits you on a plank, W/S pump, E gets off
+  const swings = new Swings({ world, player, camera, sound });
+  world.interactables.push({
+    id: 'swing',
+    x: 0,
+    z: 0,
+    radius: 2.2,
+    distanceTo: (x, z) => (state.interior || driving.active || state.smoking ? Infinity : swings.distanceTo(x, z)),
+    prompt: () => 'E — sit on the swing',
+    onUse: () => {
+      const seat = swings.near(player.position.x, player.position.z);
+      if (seat) swings.sit(seat);
     },
   });
   for (const spot of smokeSpots(world)) {
@@ -522,7 +538,7 @@ async function boot() {
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = !state.smoking;
+    player.enabled = !state.smoking && !swings.active;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
@@ -530,6 +546,7 @@ async function boot() {
 
   function toTitle() {
     if (state.smoking) endSmoke(false);
+    swings.getOff();
     leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
@@ -733,8 +750,9 @@ async function boot() {
     if (driving.active) {
       text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
     } else {
-      const it = state.smoking ? null : nearestInteractable();
+      const it = state.smoking || swings.active ? null : nearestInteractable();
       text = it && !state.transitioning ? it.prompt() : null;
+      if (swings.active && !state.transitioning) text = swings.height > 0.15 ? 'W / S — pump · E — jump off' : 'W / S — pump · E — get off';
     }
     if (text !== lastPrompt) {
       lastPrompt = text;
@@ -762,7 +780,8 @@ async function boot() {
       }
       return;
     }
-    if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
+    if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && swings.active) swings.getOff();
+    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active) {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
@@ -853,7 +872,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, badges, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -963,6 +982,7 @@ async function boot() {
     } else if (state.mode === 'playing') {
       if (driving.active) driving.update(dt, player.enabled ? player.keys : {});
       else player.update(dt);
+      swings.update(dt, player.keys);
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {
       // paused behind the wheel: idle the engine

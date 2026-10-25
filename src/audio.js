@@ -892,6 +892,38 @@ export class Sound {
     return panner;
   }
 
+  /** A rusty swing pivot at the end of a swing: a squeal gliding down,
+   * louder the higher it goes (`strength` 0..1). */
+  creak(strength = 0.5, dist = 0, pan = 0) {
+    if (!this.ready) return;
+    const level = (0.012 + 0.028 * clamp(strength, 0, 1)) / (1 + dist * dist * 0.05);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const out = this.#out(pan);
+    const t = ctx.currentTime + 0.01;
+    const base = this.rng.float(780, 1050);
+    for (const [at, len, f] of [
+      [0, 0.16, base],
+      [0.13, 0.22, base * 0.82],
+    ]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f * 1.12, t + at);
+      osc.frequency.exponentialRampToValueAtTime(f, t + at + len);
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.frequency.value = f * 1.6;
+      band.Q.value = 3.5;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t + at);
+      env.gain.exponentialRampToValueAtTime(level, t + at + 0.03);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+      osc.connect(band).connect(env).connect(out);
+      osc.start(t + at);
+      osc.stop(t + at + len + 0.02);
+    }
+  }
+
   /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
   meow(dist, pan = 0) {
     if (!this.ready) return;
