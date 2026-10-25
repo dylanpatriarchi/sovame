@@ -3,6 +3,7 @@
 // the niche fills, fizzing; then it is drunk. Built live, behind the kiosk,
 // with its own collider: nothing here draws on the world's seeded stream.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeSignTexture } from './textures.js';
 
 export const PRICE_PLAIN = 1; // kopecks
@@ -60,13 +61,11 @@ export class Soda {
       roughness: 0.35,
       metalness: 0.8,
     });
+    // the cabinet's boxes, merged by material: a handful of draw calls
+    const parts = new Map();
     const box = (w, h, d, mat, x, y, z) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      g.add(m);
-      return m;
+      if (!parts.has(mat)) parts.set(mat, []);
+      parts.get(mat).push(new THREE.BoxGeometry(w, h, d).translate(x, y, z));
     };
     // the cabinet: red below, cream above, on a plinth
     box(W, 0.08, D, dark, 0, 0.04, 0);
@@ -162,8 +161,17 @@ export class Soda {
     stream.visible = false;
     g.add(stream);
     this.stream = stream;
+    for (const [mat, geos] of parts) {
+      const m = new THREE.Mesh(mergeGeometries(geos, false), mat);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      g.add(m);
+    }
     // snow on the lid in winter
-    this.cap = box(W + 0.02, 0.05, D + 0.02, new THREE.MeshStandardMaterial({ color: 0xf2f6fa, roughness: 0.95 }), 0, H + 0.075, 0);
+    this.cap = new THREE.Mesh(new THREE.BoxGeometry(W + 0.02, 0.05, D + 0.02), new THREE.MeshStandardMaterial({ color: 0xf2f6fa, roughness: 0.95 }));
+    this.cap.position.set(0, H + 0.075, 0);
+    this.cap.receiveShadow = true;
+    g.add(this.cap);
   }
 
   /** Can a glass be bought now? */
