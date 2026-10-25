@@ -18,6 +18,7 @@ import { Driving } from './driving.js';
 import { Snowballs } from './snowballs.js';
 import { DistrictMap } from './map.js';
 import { PhotoMode } from './photo.js';
+import { Snowmen } from './snowmen.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -271,6 +272,23 @@ async function boot() {
   const snowballs = new Snowballs({ scene, world, sound });
   const map = new DistrictMap({ world, camera });
   const photo = new PhotoMode({ canvas, player, sound, env });
+  const snowmen = new Snowmen({ world, sound, snowballs });
+  // E on open snow in winter rolls a snowman: look down at the snow in front
+  // of you, with nothing else at hand (it answers from just inside its
+  // radius, so anything nearer wins)
+  world.interactables.push({
+    id: 'snowman',
+    x: 0,
+    z: 0,
+    radius: 50,
+    distanceTo: () =>
+      player.pitch > -0.35 || state.interior || driving.active || state.smoking || !snowmen.spotFor(player.position, player.forwardVector) ? Infinity : 49.9,
+    prompt: () => 'E — build a snowman',
+    onUse: () => {
+      const spot = snowmen.spotFor(player.position, player.forwardVector);
+      if (spot) snowmen.build(spot);
+    },
+  });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -754,7 +772,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -884,6 +902,7 @@ async function boot() {
     sound.updateWind(env.wind.gust);
     updateAmbience(dt);
     snowballs.update(dt, sound.ready ? heard : null);
+    snowmen.update(dt, sound.ready ? heard : null);
     // inside a flat the music comes from the kitchen radio
     sound.update(dt, state.elapsed, camera.position, state.interior?.radio ?? world.points.radio);
 

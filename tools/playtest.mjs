@@ -1096,6 +1096,78 @@ if (ice) {
   check(false, 'the icicles exist');
 }
 
+/* ================================================================ snowmen */
+// looking down at open snow in winter, E rolls a snowman; it blocks the
+// way, takes snowballs, only five stand at a time, and a thaw takes them
+console.log('→ snowmen');
+const sman = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.snowmen;
+  if (!S) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior, pitch: g.player.pitch };
+  const colliders0 = g.world.colliders.length;
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  // spots in the courtyard of building 12, facing north (+z), where one is offered
+  const it = g.world.interactables.find((i) => i.id === 'snowman');
+  const spots = [];
+  for (let x = -60; x <= -14 && spots.length < 6; x += 2.5) {
+    for (let z = -42; z <= -8 && spots.length < 6; z += 2.5) {
+      g.player.teleport(x, z, Math.PI);
+      g.player.pitch = -0.6;
+      if (it.distanceTo() < it.radius) {
+        spots.push([x, z]);
+        x += 2.5;
+      }
+    }
+  }
+  const [sx, sz] = spots[0];
+  g.player.teleport(sx, sz, Math.PI);
+  g.player.pitch = 0;
+  const levelOffer = it.distanceTo() < it.radius;
+  g.player.pitch = -0.6;
+  const offer = it.distanceTo() < it.radius ? it.prompt() : null;
+  it.onUse();
+  const man = S.list.at(-1);
+  for (let i = 0; i < 70; i++) S.update(0.05);
+  const done = man?.done;
+  const blocks = g.world.collides(man.x, man.z, 0.2);
+  // a snowball thrown at it from 4 m
+  const B = g.snowballs;
+  const V = g.camera.position.constructor;
+  B.cooldown = 0;
+  B.throw(new V(man.x, 1.0, man.z - 4), new V(0, -0.05, 1).normalize());
+  for (let i = 0; i < 300 && B.balls.some((b) => b.alive); i++) B.update(1 / 60);
+  const hit = B.hits.at(-1);
+  const hitIt = Math.hypot(hit.x - man.x, hit.z - man.z) < 0.6 && hit.y > 0.3;
+  // more than five: the oldest goes
+  for (const [x, z] of spots.slice(1)) {
+    g.player.teleport(x, z, Math.PI);
+    it.onUse();
+  }
+  const standing = S.list.length;
+  const firstGone = !S.list.includes(man) && !g.world.colliders.includes(man.rect);
+  // a thaw
+  g.env.setSeason('autumn');
+  S.update(0.05);
+  const thaw = S.list.length;
+  g.env.setSeason('winter');
+  const collidersAfter = g.world.colliders.length;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  g.player.pitch = was.pitch;
+  return { spots: spots.length, levelOffer, offer, done, blocks, hit: hit.kind, hitIt, standing, firstGone, thaw, colliders0, collidersAfter };
+});
+if (sman) {
+  console.log(`  ${sman.spots} spots; offer "${sman.offer}" (looking level: ${sman.levelOffer}); hit: ${sman.hit}; ${sman.standing} standing after six; ${sman.thaw} after a thaw; colliders ${sman.colliders0} → ${sman.collidersAfter}`);
+  check(sman.offer === 'E — build a snowman' && !sman.levelOffer, 'looking down at open snow offers to build a snowman');
+  check(sman.done && sman.blocks && sman.hitIt, 'a snowman gets built, blocks the way and takes a snowball');
+  check(sman.spots === 6 && sman.standing === 5 && sman.firstGone, 'only five snowmen stand at a time');
+  check(sman.thaw === 0 && sman.collidersAfter === sman.colliders0, 'a thaw takes the snowmen and their colliders');
+} else {
+  check(false, 'snowmen exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

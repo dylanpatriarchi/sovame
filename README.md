@@ -26,6 +26,7 @@ npm run preview  # serve the production build
 | `V` | driver's seat ↔ chase camera |
 | `F` | have a smoke at a quiet spot (courtyard bench, bus stop, stairwell landing); `F` again to stop |
 | Left mouse button / `G` | throw a snowball (in winter, outdoors) |
+| `E` (looking down at open snow) | build a snowman (in winter; five stand at a time) |
 | `M` | district map, with where you stand (outdoors, on foot or driving) |
 | `P` | photo mode: mouse wheel zooms, left button or `Enter` takes a picture (saved as a PNG download) |
 | `Esc` | pause / release the mouse |
