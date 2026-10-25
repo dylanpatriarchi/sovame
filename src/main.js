@@ -31,6 +31,7 @@ import { Target } from './target.js';
 import { Mail } from './mail.js';
 import { Hopscotch } from './hopscotch.js';
 import { Pebbles } from './pebbles.js';
+import { Kettle } from './kettle.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -243,6 +244,8 @@ async function boot() {
       onUse: () => mail.look(interior),
     });
   }
+  // the kettle on each kitchen stove: E lights the gas, and it whistles at the boil
+  const kettle = new Kettle({ world, sound });
   // one flat behind a padded door on each landing, with a kitchen radio
   const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
   for (const flat of world.flats) {
@@ -274,6 +277,15 @@ async function boot() {
         sound.toggleRadio();
         sound.ui('tick');
       },
+    });
+    world.interactables.push({
+      id: `${flat.id}:kettle`,
+      x: flat.kettle.x + 0.75,
+      z: flat.kettle.z,
+      radius: 0.9,
+      facing: { x: -1, z: 0 },
+      prompt: () => kettle.prompt(flat),
+      onUse: () => kettle.use(flat),
     });
   }
 
@@ -688,6 +700,7 @@ async function boot() {
     swings.getOff();
     angels.cancel();
     carpet.cancel();
+    kettle.cancel();
     leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
@@ -899,6 +912,7 @@ async function boot() {
       if (!text && carpet.note) text = carpet.note;
       // what turned up in the post boxes, while it is read
       if (mail.note && state.interior) text = mail.note;
+      if (kettle.note && state.interior) text = kettle.note;
       if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       // a goal is announced to anyone on the box
@@ -1024,7 +1038,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1140,6 +1154,7 @@ async function boot() {
       target.update(dt);
       mail.update(dt);
       pebbles.update(dt);
+      kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {

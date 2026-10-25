@@ -1145,6 +1145,64 @@ export class Sound {
     }, 2000);
   }
 
+  /** The kettle on the stove, all 0..1: the hiss of the gas, the rumble of
+   * the water coming to the boil, and the whistle on the spout. The nodes
+   * are built the first time, then only their levels follow. */
+  kettle({ gas = 0, boil = 0, whistle = 0 } = {}) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    if (!this.kettleNodes) {
+      if (gas + boil + whistle <= 0) return;
+      const hiss = ctx.createBufferSource();
+      hiss.buffer = this.flatNoise;
+      hiss.loop = true;
+      const hissFilter = ctx.createBiquadFilter();
+      hissFilter.type = 'bandpass';
+      hissFilter.frequency.value = 2400;
+      hissFilter.Q.value = 0.8;
+      const gasGain = ctx.createGain();
+      gasGain.gain.value = 0;
+      hiss.connect(hissFilter).connect(gasGain).connect(this.master);
+      const rumble = ctx.createBufferSource();
+      rumble.buffer = this.noise;
+      rumble.loop = true;
+      const rumbleFilter = ctx.createBiquadFilter();
+      rumbleFilter.type = 'lowpass';
+      rumbleFilter.frequency.value = 380;
+      const boilGain = ctx.createGain();
+      boilGain.gain.value = 0;
+      rumble.connect(rumbleFilter).connect(boilGain).connect(this.master);
+      // the whistle: two close tones beating, with a wobble in the pitch
+      const whistleGain = ctx.createGain();
+      whistleGain.gain.value = 0;
+      whistleGain.connect(this.master);
+      const tones = [2150, 2185].map((f) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        osc.connect(whistleGain);
+        return osc;
+      });
+      const wobble = ctx.createOscillator();
+      wobble.frequency.value = 5.5;
+      const depth = ctx.createGain();
+      depth.gain.value = 18;
+      wobble.connect(depth);
+      for (const osc of tones) depth.connect(osc.frequency);
+      for (const src of [hiss, rumble, wobble, ...tones]) src.start();
+      this.kettleNodes = { gasGain, boilGain, whistleGain, tones };
+    }
+    const n = this.kettleNodes;
+    n.gasGain.gain.setTargetAtTime(0.012 * clamp(gas, 0, 1), now, 0.15);
+    n.boilGain.gain.setTargetAtTime(0.05 * clamp(boil, 0, 1) ** 2, now, 0.5);
+    // it rises as it comes in, from a breathy note to the full shriek
+    const w = clamp(whistle, 0, 1);
+    n.whistleGain.gain.setTargetAtTime(0.022 * w, now, 0.6);
+    n.tones[0].frequency.setTargetAtTime(1700 + 450 * w, now, 0.8);
+    n.tones[1].frequency.setTargetAtTime(1730 + 455 * w, now, 0.8);
+  }
+
   /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
   meow(dist, pan = 0) {
     if (!this.ready) return;

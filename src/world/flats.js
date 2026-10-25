@@ -355,6 +355,16 @@ function buildFlat(ctx, stairwell, index, variant) {
   for (const [dx, dz] of [[-0.13, -0.12], [0.13, -0.12], [-0.13, 0.12], [0.13, 0.12]]) cyl(0.08, 0.08, 0.02, X0 + 0.3 + dx, 0.86, dz, 0x1c1c1c);
   box(0.02, 0.4, 0.42, X0 + 0.61, 0.45, 0.0, 0x2c2c2c); // oven window
   cyl(0.11, 0.12, 0.2, X0 + 0.27, 0.97, 0.12, 0xb8bcc0); // kettle
+  {
+    // its spout leaning out into the room, the handle over the lid and the knob
+    const spout = new THREE.CylinderGeometry(0.018, 0.035, 0.16, 10);
+    spout.rotateZ(-0.85);
+    spout.translate(X0 + 0.27 + 0.15, 0.99, 0.12);
+    furn.push(colored(spout, 0xb8bcc0));
+    box(0.025, 0.02, 0.17, X0 + 0.27, 1.15, 0.12, 0x1c1c1c);
+    for (const dz of [-0.075, 0.075]) box(0.02, 0.08, 0.02, X0 + 0.27, 1.1, 0.12 + dz, 0x1c1c1c);
+    cyl(0.02, 0.025, 0.03, X0 + 0.27, 1.085, 0.12, 0x1c1c1c, 8);
+  }
   box(0.6, 0.85, 1.1, X0 + 0.3, 0.425, 0.95, 0xd6cfba); // cabinet
   box(0.62, 0.04, 1.12, X0 + 0.3, 0.87, 0.95, 0x7d7f80); // counter
   box(0.4, 0.06, 0.45, X0 + 0.3, 0.87, 1.2, 0x9ea4a8); // sink
@@ -576,6 +586,8 @@ function buildFlat(ctx, stairwell, index, variant) {
     wallpaper,
     carpetMat,
     radio: new THREE.Vector3(cx + X0 + 0.15, 1.55, cz + 3.3),
+    // the kettle on the stove (its middle)
+    kettle: new THREE.Vector3(cx + X0 + 0.27, 0.97, cz + 0.12),
     // kitchen pendant, room chandelier, hall ceiling dome
     lights: [new THREE.Vector3(cx - 2.2, FH - 1.0, cz + 2.7), new THREE.Vector3(cx + 0.8, FH - 0.6, cz + 0.2), new THREE.Vector3(cx - 0.6, FH - 0.35, cz - 2.8)],
     tv: screenMat ? { screenMat, glowMat: tvGlow.material, phase: rng.float(0, 6) } : null,
@@ -633,6 +645,7 @@ export function buildFlats(ctx) {
         windowRef: new THREE.Vector3(f.cx, 0, f.cz + Z1 + WT),
         panes: f.panes,
         radio: f.radio,
+        kettle: f.kettle,
         lightPos: f.lights,
         tv: f.tv,
         group: f.group,

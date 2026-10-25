@@ -2092,6 +2092,61 @@ if (peb) {
   check(false, 'the pebbles exist');
 }
 
+/* ================================================================ kettle */
+// the kettle on a flat's stove: E lights the gas, it comes to the boil and
+// whistles, E takes it off and pours the tea; the flame, the steam and the
+// whistle stay in that flat
+console.log('→ kettle');
+const kettle = await page.evaluate(() => {
+  const g = window.__game;
+  const K = g.kettle;
+  if (!K) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats[0];
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = flat;
+  const it = W.interactables.find((i) => i.id === `${flat.id}:kettle`);
+  P.teleport(it.x, it.z, Math.PI / 2);
+  const f = P.forwardVector;
+  const offered = Math.hypot(it.x - P.position.x, it.z - P.position.z) < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  it.onUse();
+  const lit = { prompt: it.prompt(), flame: (K.update(0.1, flat), K.flame.visible), flameAt: K.flame.position.distanceTo(flat.kettle) };
+  // half a minute on the gas, a frame at a time
+  let steamed = 0;
+  for (let t = 0; t < 30; t += 0.1) {
+    K.update(0.1, flat);
+    steamed = Math.max(steamed, K.puffs.filter((p) => p.sprite.visible && p.sprite.material.opacity > 0.05).length);
+  }
+  const boiling = { ...K.status(flat), prompt: it.prompt() };
+  // to the stairwell and back: the flame and the steam stay in the flat
+  K.update(0.5, null);
+  const away = { flame: K.flame.visible, steam: K.puffs.filter((p) => p.sprite.visible).length, boiling: K.status(flat).boiling };
+  K.update(0.1, flat);
+  const teas = K.teas;
+  it.onUse();
+  const poured = { note: K.note, status: K.status(flat), prompt: it.prompt(), teas: K.teas - teas };
+  K.update(0.1, flat);
+  const off = K.flame.visible;
+  // another flat's kettle is cold
+  const other = K.status(W.flats[1]);
+  K.cancel();
+  K.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, lit, steamed, boiling, away, poured, off, other };
+});
+if (kettle) {
+  console.log(`  "${kettle.offer}" (offered ${kettle.offered}) → "${kettle.lit.prompt}"; ${kettle.steamed} puffs at most; boiling ${kettle.boiling.boiling} "${kettle.boiling.prompt}"; poured "${kettle.poured.note}"`);
+  check(kettle.offered && kettle.offer === 'E — put the kettle on' && kettle.lit.flame && kettle.lit.flameAt < 0.15 && kettle.lit.prompt === 'E — turn the gas off', 'the kettle is offered at the stove and E lights the gas under it');
+  check(kettle.boiling.boiling && kettle.steamed >= 3 && kettle.boiling.prompt.startsWith('E — take the kettle off') && !kettle.away.flame && kettle.away.steam === 0 && kettle.away.boiling, 'it comes to the boil and steams, and its flame and steam stay in the flat');
+  check(!kettle.poured.status.on && kettle.poured.teas === 1 && /tea/i.test(kettle.poured.note ?? '') && !kettle.off && kettle.poured.prompt === 'E — put the kettle on' && !kettle.other.on && kettle.other.heat === 0, 'E takes it off and pours the tea; the other kettles are cold');
+} else {
+  check(false, 'the kettle exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

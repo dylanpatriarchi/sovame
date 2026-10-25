@@ -38,6 +38,7 @@ npm run preview  # serve the production build
 | `E` (at the post boxes by a stairwell's door) | look through the slots: the morning paper and its headline, a letter, a postcard, a bill; a few finds, then nothing until the post comes at seven |
 | `Space` (on the hopscotch by the kiosk, out of winter) | jump from square to square, 1 to 10 in order, for a time; a wrong square or a hop off the drawing is back to 1 |
 | `E` (at the edge of the frozen pond, facing the ice) | toss a pebble: it skips and slides far over the ice, and the new ice sings its falling "pew" at every touch |
+| `E` (at the stove in a flat kitchen) | put the kettle on: blue gas flame, steam as it heats, a whistle at the boil; `E` again takes it off and pours a glass of tea |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |
