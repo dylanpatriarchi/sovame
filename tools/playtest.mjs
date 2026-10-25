@@ -988,6 +988,41 @@ if (pig) {
   check(false, 'the pigeons exist');
 }
 
+/* ================================================================ map */
+// M opens the district map outdoors with a red arrow where you stand, and
+// shuts it again; indoors it stays shut
+console.log('→ map');
+const mapR = await page.evaluate(() => {
+  const g = window.__game;
+  if (!g.map) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  g.player.teleport(-18, -30, 0);
+  g.camera.position.copy(g.player.position);
+  g.camera.updateMatrixWorld();
+  const opened = g.toggleMap(true);
+  g.map.update(g.player.position);
+  // the arrow: red where the player stands on the paper
+  const [sx, sy] = g.map.px(g.player.position.x, g.player.position.z);
+  const px = g.map.canvas.getContext('2d').getImageData(Math.round(sx), Math.round(sy), 1, 1).data;
+  const red = px[0] > 150 && px[1] < 90 && px[2] < 90;
+  const shown = getComputedStyle(g.map.el).opacity !== '0' || g.map.el.classList.contains('open');
+  const closed = g.toggleMap() === false;
+  g.state.interior = g.world.interiors[0];
+  const indoors = g.toggleMap(true);
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { opened, red, shown, closed, indoors, size: [g.map.w, g.map.h] };
+});
+if (mapR) {
+  console.log(`  ${mapR.size.join('×')} px paper; opened ${mapR.opened}, arrow ${mapR.red ? 'red' : 'missing'}, closed ${mapR.closed}, indoors ${mapR.indoors}`);
+  check(mapR.opened && mapR.shown && mapR.red, 'M opens the district map with the player marked');
+  check(mapR.closed && mapR.indoors === false, 'M shuts the map again, and it stays shut indoors');
+} else {
+  check(false, 'the district map exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

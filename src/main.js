@@ -16,6 +16,7 @@ import { UI } from './ui.js';
 import { Smoke, smokeSpots } from './smoke.js';
 import { Driving } from './driving.js';
 import { Snowballs } from './snowballs.js';
+import { DistrictMap } from './map.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -267,6 +268,7 @@ async function boot() {
   // smoke spots: F at the bench, the bus stop and a stairwell landing
   const smoke = new Smoke({ scene, camera, world, env, sound });
   const snowballs = new Snowballs({ scene, world, sound });
+  const map = new DistrictMap({ world, camera });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -410,6 +412,7 @@ async function boot() {
   }
 
   function pause() {
+    map.toggle(false);
     state.mode = 'paused';
     player.enabled = false;
     ui.showScreen('pause');
@@ -650,6 +653,7 @@ async function boot() {
     if (driving.active && state.mode === 'playing') {
       if (event.code === 'KeyE' && !event.repeat) leaveCar();
       if (event.code === 'KeyV' && !event.repeat) driving.toggleView();
+      if (event.code === 'KeyM' && !event.repeat) toggleMap();
       if (event.code === 'Escape') {
         pause();
         player.releaseLock();
@@ -668,7 +672,14 @@ async function boot() {
     }
     if (event.code === 'Enter' && state.mode === 'title') enterWorld();
     if (event.code === 'KeyG' && !event.repeat) throwSnowball();
+    if (event.code === 'KeyM' && !event.repeat) toggleMap();
   });
+
+  /** The district map: open while walking or driving, shut indoors. */
+  function toggleMap(force) {
+    if (state.mode !== 'playing' || state.interior) return map.toggle(false);
+    return map.toggle(force);
+  }
 
   /* --------------------------------------------------- snowballs */
 
@@ -722,7 +733,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, map, toggleMap, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -844,6 +855,10 @@ async function boot() {
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
     if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
+    if (map.open) {
+      if (state.mode !== 'playing' || state.interior) map.toggle(false);
+      else map.update(driving.active ? driving.car : player.position);
+    }
     sound.updateWind(env.wind.gust);
     updateAmbience(dt);
     snowballs.update(dt, sound.ready ? heard : null);
