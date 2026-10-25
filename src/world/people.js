@@ -387,6 +387,7 @@ class Pedestrian {
     this.stride = (this.pose === 'skate' ? 1.9 : 0.66) * this.scaleF;
     this.breathTimer = 0;
     this.routeLength = 0;
+    this.flinch = 0; // 1 just hit by a snowball, eases back to 0
 
     const mat = parts.material;
     this.root = new THREE.Group();
@@ -516,6 +517,26 @@ class Pedestrian {
     this.root.position.set(px, (y ?? this.world.heightAt(px, pz)) - this.drop, pz);
   }
 
+  /** Hit by a snowball thrown from (x, z): flinch, stop, look round. */
+  hit(x, z) {
+    this.flinch = 1;
+    if (this.idle || this.onFurniture || this.insideTimer > 0) return;
+    this.waitTimer = Math.max(this.waitTimer, 1.6);
+    this.faceYaw = Math.atan2(x - this.root.position.x, z - this.root.position.z);
+  }
+
+  /** The flinch on top of the pose: shoulders up, arms in, a step back. */
+  #applyFlinch(dt) {
+    if (this.flinch <= 0) return;
+    this.flinch = Math.max(0, this.flinch - dt * 1.4);
+    const f = Math.sin(Math.min(1, this.flinch) * Math.PI * 0.5);
+    this.root.rotation.x -= 0.16 * f;
+    this.armL.rotation.x -= 1.1 * f;
+    this.armR.rotation.x -= 1.1 * f;
+    this.armL.rotation.z += 0.35 * f;
+    this.armR.rotation.z -= 0.35 * f;
+  }
+
   update(dt, elapsed) {
     if (this.insideTimer > 0) {
       // the pause at the door first, then out of sight behind it
@@ -526,6 +547,8 @@ class Pedestrian {
     }
     if (this.idle) {
       this.#applyPose(this.pose, elapsed);
+      this.root.rotation.x = this.lean;
+      this.#applyFlinch(dt);
       this.#setTransform();
       return;
     }
@@ -552,6 +575,7 @@ class Pedestrian {
     const waiting = this.waitTimer > 0 && this.speedEase < 0.1;
     const pose = waiting ? (this.from.pose ?? (this.pose === 'walk' ? 'idle' : this.pose)) : (this.route.points[this.wp].pose ?? this.pose);
     this.#applyPose(pose, elapsed, clamp(this.speedEase / segSpeed, 0, 1));
+    this.#applyFlinch(dt);
     this.#setTransform();
   }
 

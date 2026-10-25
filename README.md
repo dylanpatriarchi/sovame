@@ -25,6 +25,7 @@ npm run preview  # serve the production build
 | `E` (by a car) | get in / out of any parked car — then `W` `S` throttle and brake/reverse, `A` `D` steer, `Space` handbrake |
 | `V` | driver's seat ↔ chase camera |
 | `F` | have a smoke at a quiet spot (courtyard bench, bus stop, stairwell landing); `F` again to stop |
+| Left mouse button / `G` | throw a snowball (in winter, outdoors) |
 | `Esc` | pause / release the mouse |
 
 `npm run drive` (with the dev server up) gets into a car, drives, crashes and

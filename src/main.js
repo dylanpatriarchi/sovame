@@ -15,6 +15,7 @@ import { Sound } from './audio.js';
 import { UI } from './ui.js';
 import { Smoke, smokeSpots } from './smoke.js';
 import { Driving } from './driving.js';
+import { Snowballs } from './snowballs.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -265,6 +266,7 @@ async function boot() {
 
   // smoke spots: F at the bench, the bus stop and a stairwell landing
   const smoke = new Smoke({ scene, camera, world, env, sound });
+  const snowballs = new Snowballs({ scene, world, sound });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -665,6 +667,26 @@ async function boot() {
       player.releaseLock();
     }
     if (event.code === 'Enter' && state.mode === 'title') enterWorld();
+    if (event.code === 'KeyG' && !event.repeat) throwSnowball();
+  });
+
+  /* --------------------------------------------------- snowballs */
+
+  const _aim = new THREE.Vector3();
+  const _hand = new THREE.Vector3();
+  /** Packs a snowball and throws it along the view (winter, outdoors, on foot). */
+  function throwSnowball() {
+    if (state.mode !== 'playing' || state.transitioning || state.smoking || state.interior || driving.active) return false;
+    if (world.season !== 'winter') return false;
+    camera.getWorldDirection(_aim);
+    // from the right hand, a little below and in front of the eyes
+    _hand.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(0.22);
+    _hand.add(camera.position).addScaledVector(_aim, 0.35);
+    _hand.y -= 0.18;
+    return snowballs.throw(_hand, _aim, player.velocity);
+  }
+  canvas.addEventListener('mousedown', (event) => {
+    if (event.button === 0 && player.locked) throwSnowball();
   });
 
   // retry pointer lock if the browser refused it (happens right after Esc)
@@ -700,7 +722,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -801,6 +823,7 @@ async function boot() {
     world.traffic?.update(dt, { keepClear: onFoot ? [onFoot] : [], lights: env.cur.lamp });
     sound.updateWind(env.wind.gust);
     updateAmbience(dt);
+    snowballs.update(dt, sound.ready ? heard : null);
     // inside a flat the music comes from the kitchen radio
     sound.update(dt, state.elapsed, camera.position, state.interior?.radio ?? world.points.radio);
 

@@ -619,6 +619,68 @@ export class Sound {
     src.stop(t + 1);
   }
 
+  /** A snowball leaving the hand: a short swish of air. */
+  whoosh() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.005;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 1.4;
+    filter.frequency.setValueAtTime(700, t);
+    filter.frequency.exponentialRampToValueAtTime(1900, t + 0.16);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.05, t + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(t, this.rng.float(0, 1));
+    src.stop(t + 0.25);
+  }
+
+  /** A snowball bursting `dist` m away: a soft thump and the crunch of powder. */
+  splat(dist, pan = 0, kind = 'wall') {
+    if (!this.ready) return;
+    const level = 0.12 / (1 + dist * dist * 0.02);
+    if (level < 0.002) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.005;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = clamp(pan, -1, 1);
+      panner.connect(this.master);
+    }
+    const out = panner ?? this.master;
+    // the thump: lower and duller on the ground, sharper on a wall or a car
+    const thump = ctx.createOscillator();
+    thump.type = 'sine';
+    const f0 = kind === 'car' ? 180 : kind === 'ground' ? 90 : 130;
+    thump.frequency.setValueAtTime(f0, t);
+    thump.frequency.exponentialRampToValueAtTime(f0 * 0.45, t + 0.09);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0.0001, t);
+    tg.gain.exponentialRampToValueAtTime(level, t + 0.006);
+    tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    thump.connect(tg).connect(out);
+    thump.start(t);
+    thump.stop(t + 0.14);
+    // the crunch
+    const src = ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.8;
+    filter.frequency.value = kind === 'ground' ? 1800 : 2600;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(level * 0.6, t + 0.01);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    src.connect(filter).connect(ng).connect(out);
+    src.start(t, this.rng.float(0, 1));
+    src.stop(t + 0.22);
+  }
+
   /** A crow's caw: two or three hoarse "kraa"s, `dist` m away. */
   caw(dist, pan = 0) {
     if (!this.ready) return;

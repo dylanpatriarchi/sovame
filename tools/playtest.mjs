@@ -799,6 +799,49 @@ if (bus) {
   check(false, 'the bus runs with the traffic');
 }
 
+/* ================================================================ snowballs */
+// a snowball thrown at a wall leaves a splat on its face, one thrown at a
+// passer-by makes them flinch, one lobbed up comes down on the ground
+console.log('→ snowballs');
+const snow = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.snowballs;
+  if (!S) return null;
+  const V = g.camera.position.constructor;
+  const fly = () => {
+    for (let i = 0; i < 600 && S.balls.some((b) => b.alive); i++) S.update(1 / 60);
+    return S.hits.at(-1);
+  };
+  const throwAt = (from, dir) => {
+    S.cooldown = 0;
+    return S.throw(new V(...from), new V(...dir).normalize()) ? fly() : null;
+  };
+  // B1's courtyard face (z = -46), from the path in front of it
+  const wall = throwAt([-30, 1.6, -36], [0, 0.12, -1]);
+  const splat = S.splats.find((sp) => sp.mesh.visible && Math.abs(sp.mesh.position.z - wall.z) < 0.05);
+  const ground = throwAt([7.2, 1.6, 19.5], [0, 0.3, 1]);
+  // a passer-by out walking, from 6 m away
+  const p = g.world.people.list.find((q) => !q.idle && q.root.visible && !q.onFurniture);
+  const pp = p.position;
+  const person = throwAt([pp.x + 6, pp.y + 1.3, pp.z], [-1, 0.02, 0]);
+  const flinch = p.flinch;
+  // a second throw straight away waits for the hand to be ready
+  S.cooldown = 0;
+  S.throw(new V(0, 2, 0), new V(0, 0, 1));
+  const again = S.throw(new V(0, 2, 0), new V(0, 0, 1));
+  fly();
+  return { wall, splat: !!splat, ground, person, flinch, again };
+});
+if (snow) {
+  console.log(`  wall: ${snow.wall?.kind} at z ${snow.wall?.z.toFixed(2)} n=(${snow.wall?.nx.toFixed(2)}, ${snow.wall?.nz.toFixed(2)}); ground: ${snow.ground?.kind}; person: ${snow.person?.kind} (flinch ${snow.flinch.toFixed(2)})`);
+  check(snow.wall?.kind === 'wall' && Math.abs(snow.wall.z + 46) < 0.3 && snow.wall.nz > 0.9 && snow.splat, 'a snowball splats on the face of a wall');
+  check(snow.ground?.kind === 'ground' && snow.ground.ny > 0.9, 'a snowball lobbed up lands on the ground');
+  check(snow.person?.kind === 'person' && snow.flinch > 0.5, 'a passer-by hit by a snowball flinches');
+  check(snow.again === false, 'throws are paced (one at a time from the hand)');
+} else {
+  check(false, 'snowballs exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
