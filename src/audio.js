@@ -679,6 +679,15 @@ export class Sound {
     src.stop(t + 1);
   }
 
+  /** A carpet beater on a hanging rug: a dull flat slap, and the dust in it. */
+  thwack(level = 1) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.01;
+    this.burst({ time: t, freq: 380, q: 0.9, duration: 0.12, level: 0.12 * level, type: 'lowpass' });
+    this.burst({ time: t, freq: 1500, q: 0.7, duration: 0.07, level: 0.05 * level });
+    this.burst({ time: t + 0.03, freq: 2800, q: 0.5, duration: 0.35, level: 0.012 * level, type: 'highpass' });
+  }
+
   /** The puck: a stick's crack on a shot, the boards' hollow bang, and the
    * net's rattle on a goal. */
   puck(kind, level = 1) {

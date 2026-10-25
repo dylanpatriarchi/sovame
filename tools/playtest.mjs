@@ -1754,6 +1754,85 @@ if (hockey) {
   check(false, 'the puck exists');
 }
 
+/* ================================================================ carpet */
+// the carpet-beating frame: E beats the rug and dust comes out, less with every
+// blow until it is clean; the bare bay is a pull-up bar, W pulls you up until
+// the arms give out, E drops you back on your feet
+console.log('→ carpet');
+const carpet = await page.evaluate(() => {
+  const g = window.__game;
+  const C = g.carpet;
+  if (!C) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const X = C.group.position.x;
+  const Z = C.group.position.z;
+  // nothing of it stands on the seeded colliders, and the ground around it is free
+  const blocked = [];
+  for (const [dx, dz] of [[-0.85, 0.9], [-0.85, -0.9], [0.85, 0.9], [0.85, -0.9], [0.85, 0]]) if (W.collides(X + dx, Z + dz, 0.3)) blocked.push([dx, dz]);
+  // in front of the rug, facing it
+  P.teleport(X - 0.85, Z + 0.9, 0);
+  const beatIt = W.interactables.find((i) => i.id === 'carpet');
+  const offer = beatIt.distanceTo(P.position.x, P.position.z) < beatIt.radius ? beatIt.prompt() : null;
+  P.teleport(X - 0.85, Z + 0.9, Math.PI);
+  const turned = beatIt.distanceTo(P.position.x, P.position.z);
+  P.teleport(X - 0.85, Z + 0.9, 0);
+  C.dust = 1;
+  let blows = 0;
+  let refused = 0;
+  const puffs = [];
+  while (C.dust > 0.1 && blows < 30) {
+    if (!C.beat()) refused++;
+    blows++;
+    puffs.push(C.puffs.filter((p) => p.sprite.visible).length);
+    C.update(0.31, {});
+  }
+  const clean = { dust: C.dust, blows, note: C.note, swung: Math.abs(C.sway.a) > 0 || Math.abs(C.sway.w) > 0 };
+  const quick = C.beat() && !C.beat(); // a second blow at once is too soon
+  // the bar: E hangs you on it, W pulls you up, until the arms give out
+  P.teleport(X + 0.85, Z + 0.8, 0);
+  const barIt = W.interactables.find((i) => i.id === 'pull-up-bar');
+  const barOffer = barIt.distanceTo(P.position.x, P.position.z) < barIt.radius ? barIt.prompt() : null;
+  C.fatigue = 0;
+  barIt.onUse();
+  const hung = { hanging: C.hanging, enabled: P.enabled, eye: P.eyeOverride };
+  let peak = 0;
+  for (let i = 0; i < 2000 && C.hanging; i++) {
+    C.update(0.02, { forward: true });
+    peak = Math.max(peak, P.eyeOverride ?? 0);
+  }
+  const gaveOut = { reps: C.reps, hanging: C.hanging, enabled: P.enabled, note: C.note, eye: P.eyeOverride, free: !W.collides(P.position.x, P.position.z, 0.3) };
+  // and E drops you, fresh
+  C.fatigue = 0;
+  barIt.onUse();
+  for (let i = 0; i < 60; i++) C.update(0.02, { forward: true });
+  const some = C.reps;
+  C.drop();
+  const dropped = { hanging: C.hanging, enabled: P.enabled, eye: P.eyeOverride };
+  C.fatigue = 0;
+  C.dust = 1;
+  C.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { blocked, offer, turned: turned === Infinity, clean, refused, firstPuffs: puffs[0], quick, barOffer, hung, peak, gaveOut, some, dropped };
+});
+if (carpet) {
+  console.log(
+    `  ${carpet.blocked.length} blocked spots; "${carpet.offer}" (turned away: none ${carpet.turned}); clean after ${carpet.clean.blows} blows ("${carpet.clean.note}"), ${carpet.firstPuffs} puffs on the first; "${carpet.barOffer}" → hung ${carpet.hung.hanging} (eye ${carpet.hung.eye?.toFixed(2)}, up to ${carpet.peak.toFixed(2)}); ${carpet.gaveOut.reps} pull-ups, "${carpet.gaveOut.note}"; ${carpet.some} then E`
+  );
+  check(carpet.blocked.length === 0 && carpet.offer === 'E — beat the carpet' && carpet.turned, 'the carpet frame stands clear, and the rug is offered to whoever faces it');
+  check(carpet.clean.dust <= 0.1 && carpet.clean.blows >= 8 && carpet.clean.blows <= 14 && carpet.refused === 0 && carpet.firstPuffs >= 4 && carpet.clean.swung && carpet.clean.note === 'Beaten clean' && carpet.quick, 'beating the rug puffs dust out of it until it is clean');
+  check(
+    carpet.barOffer === 'E — hang on the bar' && carpet.hung.hanging && !carpet.hung.enabled && carpet.peak > carpet.hung.eye + 0.5 && carpet.gaveOut.reps >= 8 && carpet.gaveOut.reps <= 14 && !carpet.gaveOut.hanging && carpet.gaveOut.enabled && carpet.gaveOut.eye === null && carpet.gaveOut.free && carpet.some >= 1 && !carpet.dropped.hanging && carpet.dropped.enabled,
+    'pull-ups on the bar until the arms give out; E drops you'
+  );
+} else {
+  check(false, 'the carpet frame exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
