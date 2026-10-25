@@ -1397,7 +1397,15 @@ const amb = await page.evaluate(async () => {
   const g = window.__game;
   const s = g.sound;
   s.init();
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // the gains follow the game loop: wait for frames as well as time, so a
+  // slow, loaded renderer still gets its 2.5 s of game time
+  const sleep = (ms, frames = 60) =>
+    new Promise((r) => {
+      const until = performance.now() + ms;
+      let n = 0;
+      const tick = () => (++n >= frames && performance.now() >= until ? r() : requestAnimationFrame(tick));
+      requestAnimationFrame(tick);
+    });
   const it = g.world.interiors[0];
   const b = it.bounds;
   g.state.mode = 'playing';
