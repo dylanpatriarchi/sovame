@@ -2147,6 +2147,59 @@ if (kettle) {
   check(false, 'the kettle exists');
 }
 
+/* ================================================================ ice slide */
+// a ride down the ice slide in winter: up the stairs, sit at the top, down
+// the chute faster and faster, out over the run-out and into the snow, then
+// back on your feet with how far it went; out of winter it is not offered
+console.log('→ ice slide');
+const slide = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.iceSlide;
+  if (!S) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season, enabled: P.enabled };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  const it = W.interactables.find((i) => i.id === 'ice-slide');
+  // at the foot of the stairs, looking up them
+  P.teleport(-205, -118 + 4.6, 0);
+  const f = P.forwardVector;
+  const reach = it.distanceTo(P.position.x, P.position.z);
+  const offered = reach < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  it.onUse();
+  const stages = [];
+  let topY = 0;
+  let topV = 0;
+  let t = 0;
+  for (; t < 40 && S.active; t += 0.05) {
+    S.update(0.05);
+    if (stages[stages.length - 1] !== S.stage) stages.push(S.stage);
+    topY = Math.max(topY, P.position.y);
+    topV = Math.max(topV, S.v);
+  }
+  const end = { x: P.position.x, z: P.position.z, enabled: P.enabled, active: S.active, note: S.note, last: S.last, clear: !W.collides(P.position.x, P.position.z, 0.3), cam: g.camera.position.y - P.position.y };
+  // out of winter: no ride
+  W.season = 'autumn';
+  const autumn = Number.isFinite(it.distanceTo(-205, -113.4));
+  W.season = was.season;
+  S.note = null;
+  P.enabled = was.enabled;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, stages, topY, topV, t, end, autumn };
+});
+if (slide) {
+  console.log(`  "${slide.offer}" (offered ${slide.offered}); ${slide.stages.join(' → ')} in ${slide.t.toFixed(1)} s; up to ${slide.topY.toFixed(2)} m, ${slide.topV.toFixed(1)} m/s; "${slide.end.note}"`);
+  check(slide.offered && slide.offer.startsWith('E — climb up and slide down') && !slide.autumn, 'the ice slide is offered at the foot of its stairs, in winter only');
+  check(slide.stages.join(' ') === 'climb sit down out stand idle' && slide.topY > 2.4 && slide.topV > 5 && slide.topV < 9, 'up the stairs, sat at the top and down the chute at a good speed');
+  check(!slide.end.active && slide.end.enabled && slide.end.clear && slide.end.last > 12 && slide.end.last < 30 && /^Slid \d+\.\d m/.test(slide.end.note ?? '') && slide.end.cam > 1.2, 'out over the run-out into the snow, and back on your feet with how far it went');
+} else {
+  check(false, 'the ice slide ride exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

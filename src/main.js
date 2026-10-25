@@ -32,6 +32,7 @@ import { Mail } from './mail.js';
 import { Hopscotch } from './hopscotch.js';
 import { Pebbles } from './pebbles.js';
 import { Kettle } from './kettle.js';
+import { IceSlide } from './iceslide.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -487,7 +488,7 @@ async function boot() {
   });
   // the carpet-beating frame by the playground: E beats the rug, or hangs you on the bare bar
   const carpet = new Carpet({ world, player, sound });
-  const outdoorsFree = () => !state.interior && !driving.active && !state.smoking && !swings.active && !angels.active;
+  const outdoorsFree = () => !state.interior && !driving.active && !state.smoking && !swings.active && !angels.active && !iceSlide.active;
   world.interactables.push({
     id: 'carpet',
     x: 0,
@@ -535,6 +536,18 @@ async function boot() {
       const f = player.forwardVector;
       pebbles.toss({ x: camera.position.x + f.x * 0.3, y: camera.position.y - 0.25, z: camera.position.z + f.z * 0.3 }, f);
     },
+  });
+  // a ride down the ice slide in winter: E at the foot of its stairs
+  const iceSlide = new IceSlide({ world, player, camera, sound });
+  world.interactables.push({
+    id: 'ice-slide',
+    x: 0,
+    z: 0,
+    radius: 1.2,
+    facing: { x: 0, z: -1 },
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? iceSlide.distanceTo(x, z) : Infinity),
+    prompt: () => iceSlide.prompt,
+    onUse: () => iceSlide.start(),
   });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
@@ -689,7 +702,7 @@ async function boot() {
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = !state.smoking && !swings.active && !angels.active && !carpet.hanging;
+    player.enabled = !state.smoking && !swings.active && !angels.active && !carpet.hanging && !iceSlide.active;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
@@ -701,6 +714,7 @@ async function boot() {
     angels.cancel();
     carpet.cancel();
     kettle.cancel();
+    iceSlide.cancel();
     leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
@@ -904,12 +918,13 @@ async function boot() {
     if (driving.active) {
       text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
     } else {
-      const it = state.smoking || swings.active || angels.active || carpet.hanging ? null : nearestInteractable();
+      const it = state.smoking || swings.active || angels.active || carpet.hanging || iceSlide.active ? null : nearestInteractable();
       text = it && !state.transitioning ? it.prompt() : null;
       if (swings.active && !state.transitioning) text = swings.height > 0.15 ? 'W / S — pump · E — jump off' : 'W / S — pump · E — get off';
       if (angels.active) text = angels.prompt;
       if (carpet.hanging) text = carpet.hangingPrompt;
       if (!text && carpet.note) text = carpet.note;
+      if (!text && iceSlide.note && !state.interior) text = iceSlide.note;
       // what turned up in the post boxes, while it is read
       if (mail.note && state.interior) text = mail.note;
       if (kettle.note && state.interior) text = kettle.note;
@@ -947,7 +962,7 @@ async function boot() {
     if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && swings.active) swings.getOff();
     else if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && angels.active) angels.getUp();
     else if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && carpet.hanging) carpet.drop();
-    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active && !angels.active && !carpet.hanging) {
+    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active && !angels.active && !carpet.hanging && !iceSlide.active) {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
@@ -1038,7 +1053,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1154,6 +1169,7 @@ async function boot() {
       target.update(dt);
       mail.update(dt);
       pebbles.update(dt);
+      iceSlide.update(dt);
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();
