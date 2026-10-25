@@ -277,12 +277,17 @@ export function buildTerrain(ctx) {
     emissive: 0x0c1522,
     emissiveIntensity: 0.5,
   });
+  // (each one noted down, for whatever splashes in it: an ellipse a by b)
+  world.puddles = [];
+  const notePuddle = (mesh, season) =>
+    world.puddles.push({ x: mesh.position.x, z: mesh.position.z, y: mesh.position.y, a: mesh.geometry.parameters.radius * mesh.scale.x, b: mesh.geometry.parameters.radius * mesh.scale.y, season });
   const dropPuddle = (x, z, y, seasonKey, parent = world.group) => {
     const mesh = new THREE.Mesh(new THREE.CircleGeometry(rng.float(0.6, 1.6), 18), puddleMat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.scale.set(rng.float(1, 1.7), rng.float(0.55, 1), 1);
     mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
+    notePuddle(mesh, seasonKey);
     parent.add(ctx.seasonable(seasonKey, mesh));
   };
   // winter: meltwater sheets and dark ice, mostly along the curb line
@@ -312,6 +317,7 @@ export function buildTerrain(ctx) {
     mesh.scale.set(rngNorth.float(1, 1.7), rngNorth.float(0.55, 1), 1);
     mesh.position.set(x, y, z);
     mesh.receiveShadow = true;
+    notePuddle(mesh, seasonKey);
     world.farDetails.add(ctx.seasonable(seasonKey, mesh));
   };
   let placedWN = 0;

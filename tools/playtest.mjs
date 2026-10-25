@@ -2621,6 +2621,94 @@ if (leaves) {
   check(false, 'the leaf piles exist');
 }
 
+/* ================================================================ puddles */
+// the autumn puddles: a jump into one throws the water up round you with
+// rings spreading over it, a run through kicks up spray at every step, and
+// a car going through one by the curb soaks whoever stands there; not in
+// winter, when they are ice
+console.log('→ puddles');
+const puddled = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.puddles;
+  if (!S) return null;
+  const W = g.world;
+  const was = { season: W.season };
+  W.season = 'autumn';
+  S.update(0);
+  const count = S.puddles.length;
+  const p = [...S.puddles].sort((a, b) => b.a * b.b - a.a * a.b)[0];
+  const found = !!S.puddleAt(p.x, p.z) && S.puddleAt(p.x + p.a + 0.3, p.z) !== p;
+  const body = (x, z, ground, vy = 0, speed = 0, vx = 0) => ({ position: { x, y: ground ? p.y : p.y + 0.5, z }, onGround: ground, speed, velocity: { x: vx, y: vy, z: 0 } });
+  const settle = () => {
+    for (let t = 0; t < 3; t += 0.1) S.update(0.1);
+  };
+  // a jump in
+  S.update(0.05, { player: body(p.x, p.z, false, -5) });
+  S.update(0.05, { player: body(p.x, p.z, true) });
+  S.update(0.05);
+  const jump = { splashes: S.splashes, drops: S.live, rings: S.rings.filter((r) => r.mesh.visible).length, note: S.note };
+  settle();
+  const after = { drops: S.live, rings: S.rings.filter((r) => r.mesh.visible).length };
+  // a run straight across it
+  const s0 = S.splashes;
+  S.update(0);
+  for (let x = p.x - p.a + 0.05; x < p.x + p.a - 0.05; x += 5 * 0.05) S.update(0.05, { player: body(x, p.z, true, 0, 5, 5) });
+  const ran = S.splashes - s0;
+  settle();
+  // a car through it at 12 m/s with you on the pavement, then one creeping by
+  const s1 = S.splashes;
+  const car = { x: p.x - 0.75, z: p.z - 6, heading: 0 };
+  const you = { position: { x: p.x + 1.2, y: p.y, z: p.z }, onGround: true, speed: 0, velocity: { x: 0, y: 0, z: 0 } };
+  S.update(0);
+  for (let t = 0; t < 1; t += 0.05) {
+    car.z += 12 * 0.05;
+    S.update(0.05, { player: you, cars: [car] });
+  }
+  const byCar = { splashes: S.splashes - s1, soaked: S.soaked, note: S.note };
+  settle();
+  const s2 = S.splashes;
+  const slow = { x: p.x - 0.75, z: p.z - 1.5, heading: 0 };
+  for (let t = 0; t < 1; t += 0.05) {
+    slow.z += 3 * 0.05;
+    S.update(0.05, { cars: [slow] });
+  }
+  const crept = S.splashes - s2;
+  settle();
+  // and the traffic itself, two minutes round the block: the puddles in the
+  // road by the curb get splashed
+  const lanes = S.puddles.filter((q) => q.lane).length;
+  const onSplash = S.onSplash;
+  let trafficSplashes = 0;
+  S.onSplash = (x, z, strength, car) => (trafficSplashes += car ? 1 : 0);
+  for (let t = 0; t < 120; t += 0.05) {
+    W.traffic.update(0.05, {});
+    S.update(0.05, { cars: W.trafficCars });
+  }
+  S.onSplash = onSplash;
+  settle();
+  // in winter the puddles are ice: nothing to splash
+  W.season = 'winter';
+  const s3 = S.splashes;
+  S.update(0.05, { player: body(p.x, p.z, false, -5) });
+  S.update(0.05, { player: body(p.x, p.z, true) });
+  const winter = { splashes: S.splashes - s3, shown: S.group.visible };
+  W.season = was.season;
+  S.update(0);
+  S.note = null;
+  return { count, found, size: [p.a, p.b], jump, after, ran, byCar, crept, lanes, trafficSplashes, winter };
+});
+if (puddled) {
+  console.log(`  ${puddled.count} autumn puddles; jump → ${puddled.jump.drops} drops, ${puddled.jump.rings} rings, "${puddled.jump.note}"; run across ${(puddled.size[0] * 2).toFixed(1)} m → ${puddled.ran} splashes; a car at 12 m/s → ${puddled.byCar.splashes}, "${puddled.byCar.note}"; at 3 m/s → ${puddled.crept}; ${puddled.lanes} in the road, splashed ${puddled.trafficSplashes}× by the traffic in 2 min`);
+  check(puddled.count >= 5 && puddled.found, 'the autumn puddles are known, each an ellipse of water on the ground');
+  check(puddled.jump.splashes === 1 && puddled.jump.drops > 40 && puddled.jump.rings >= 1 && puddled.jump.note?.startsWith('Splash') && puddled.after.drops === 0 && puddled.after.rings === 0, 'a jump into one throws the water up and rings spread over it, then all is still again');
+  check(puddled.ran >= 2, 'a run through one kicks up spray at the steps');
+  check(puddled.byCar.splashes === 1 && puddled.byCar.soaked === 1 && puddled.byCar.note === 'Soaked by a passing car!' && puddled.crept === 0, 'a car going through one fast soaks whoever stands by it; one creeping by does not');
+  check(puddled.lanes >= 3 && puddled.trafficSplashes >= 2, 'the traffic splashes through the puddles in the road by the curb');
+  check(puddled.winter.splashes === 0 && !puddled.winter.shown, 'in winter there is nothing to splash');
+} else {
+  check(false, 'the puddles exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

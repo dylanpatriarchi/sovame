@@ -46,6 +46,7 @@ npm run preview  # serve the production build
 | `E` (at a light switch in a flat's hall) | switch the kitchen, room or hall light off or on: the lamp and its light go out, and from a dark kitchen you see the yard; each flat keeps its own |
 | `E` (at the New Year tree by the playground, in winter) | send a rocket up from beside the tree: it climbs, bursts in coloured stars and bangs a moment later |
 | run or jump through a leaf pile (in autumn), or `E` at one | the dvornik's heap bursts: the leaves fly up round you and flutter down scattered; he rakes it up again a minute and a half later |
+| jump or run into a puddle (in autumn) | the water flies up round your boots and rings spread over it; and mind the curb: a car going through a puddle in the road throws it over the pavement, and you |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |

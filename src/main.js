@@ -37,6 +37,7 @@ import { GarageIcicles } from './garages.js';
 import { Television } from './tv.js';
 import { LightSwitches } from './switches.js';
 import { LeafPiles } from './leafpiles.js';
+import { PuddleSplash } from './puddles.js';
 import { WindowDoodles } from './doodles.js';
 import { NewYear } from './newyear.js';
 import { Perf } from './perf.js';
@@ -614,6 +615,8 @@ async function boot() {
       leafPiles.kick(player.position.x, player.position.z, f.x, f.z);
     },
   });
+  // the autumn puddles: jump in, run through, keep back from passing cars
+  const puddles = new PuddleSplash({ world });
   // a ride down the ice slide in winter: E at the foot of its stairs
   const iceSlide = new IceSlide({ world, player, camera, sound });
   world.interactables.push({
@@ -1012,6 +1015,7 @@ async function boot() {
       if (!text && !state.interior) text = icicles.note;
       if (!text && !state.interior) text = newYear.note;
       if (!text && !state.interior) text = leafPiles.note;
+      if (puddles.note && !state.interior) text = puddles.note;
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
     }
@@ -1135,7 +1139,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, switches, newYear, leafPiles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, switches, newYear, leafPiles, puddles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1158,6 +1162,12 @@ async function boot() {
     const h = heard(p.x, p.z);
     const dist = Math.hypot(h.dist, p.y - camera.position.y);
     sound.bang(dist, h.pan, dist / 340);
+  };
+  // water thrown up, by you or by a car going through
+  puddles.onSplash = (x, z, strength, byCar) => {
+    if (state.interior) return;
+    const h = heard(x, z);
+    sound.splash(strength, h.dist, h.pan, byCar);
   };
   // a leaf pile bursting round you
   leafPiles.onBurst = (p, strength) => sound.rustle(strength);
@@ -1280,6 +1290,7 @@ async function boot() {
       switches.update(dt);
       newYear.update(dt);
       leafPiles.update(dt, state.mode === 'playing' && !state.interior && !driving.active && player.enabled ? player : null);
+      puddles.update(dt, { player: state.mode === 'playing' && !state.interior && !driving.active && player.enabled ? player : null, cars: state.interior ? [] : driving.active ? [...(world.trafficCars ?? []), driving.car] : (world.trafficCars ?? []) });
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();
