@@ -657,6 +657,28 @@ export class Sound {
     else if (kind === 'hangup') click(t, 0.08);
   }
 
+  /** Arms and legs sweeping a snow angel: a long soft brush of snow. */
+  swish() {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.02;
+    const src = ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.setValueAtTime(700, t);
+    band.frequency.linearRampToValueAtTime(1400, t + 0.45);
+    band.frequency.linearRampToValueAtTime(800, t + 0.9);
+    band.Q.value = 0.8;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(0.05, t + 0.3);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.95);
+    src.connect(band).connect(env).connect(this.master);
+    src.start(t, this.rng.float(0, 1));
+    src.stop(t + 1);
+  }
+
   /** Three swallows from the glass. */
   gulp() {
     if (!this.ready) return;

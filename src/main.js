@@ -24,6 +24,7 @@ import { Badges } from './badges.js';
 import { Swings } from './swings.js';
 import { Soda } from './soda.js';
 import { Phone } from './phone.js';
+import { Angels } from './angels.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -287,7 +288,7 @@ async function boot() {
     z: 0,
     radius: 50,
     distanceTo: () =>
-      player.pitch > -0.35 || state.interior || driving.active || state.smoking || swings.active || !snowmen.spotFor(player.position, player.forwardVector) ? Infinity : 49.9,
+      player.pitch > -0.35 || state.interior || driving.active || state.smoking || swings.active || angels.active || !snowmen.spotFor(player.position, player.forwardVector) ? Infinity : 49.9,
     prompt: () => 'E — build a snowman',
     onUse: () => {
       const spot = snowmen.spotFor(player.position, player.forwardVector);
@@ -361,6 +362,7 @@ async function boot() {
       driving.active ||
       state.smoking ||
       swings.active ||
+      angels.active ||
       !bread.pigeonsNear(player.position) ||
       !bread.spotFor(player.position, player.forwardVector)
         ? Infinity
@@ -415,11 +417,26 @@ async function boot() {
     x: 0,
     z: 0,
     radius: 2.2,
-    distanceTo: (x, z) => (state.interior || driving.active || state.smoking ? Infinity : swings.distanceTo(x, z)),
+    distanceTo: (x, z) => (state.interior || driving.active || state.smoking || angels.active ? Infinity : swings.distanceTo(x, z)),
     prompt: () => 'E — sit on the swing',
     onUse: () => {
       const seat = swings.near(player.position.x, player.position.z);
       if (seat) swings.sit(seat);
+    },
+  });
+  // a snow angel: look up at the sky on open snow and E lies you back in it
+  const angels = new Angels({ world, player, sound });
+  world.interactables.push({
+    id: 'angel',
+    x: 0,
+    z: 0,
+    radius: 50,
+    distanceTo: () =>
+      state.interior || driving.active || state.smoking || swings.active || angels.active || !angels.spotFor(player.position, player.forwardVector, player.pitch) ? Infinity : 49.85,
+    prompt: () => 'E — lie back in the snow',
+    onUse: () => {
+      const spot = angels.spotFor(player.position, player.forwardVector, player.pitch);
+      if (spot) angels.lie(spot);
     },
   });
   for (const spot of smokeSpots(world)) {
@@ -575,7 +592,7 @@ async function boot() {
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = !state.smoking && !swings.active;
+    player.enabled = !state.smoking && !swings.active && !angels.active;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
@@ -584,6 +601,7 @@ async function boot() {
   function toTitle() {
     if (state.smoking) endSmoke(false);
     swings.getOff();
+    angels.cancel();
     leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
@@ -787,9 +805,10 @@ async function boot() {
     if (driving.active) {
       text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
     } else {
-      const it = state.smoking || swings.active ? null : nearestInteractable();
+      const it = state.smoking || swings.active || angels.active ? null : nearestInteractable();
       text = it && !state.transitioning ? it.prompt() : null;
       if (swings.active && !state.transitioning) text = swings.height > 0.15 ? 'W / S — pump · E — jump off' : 'W / S — pump · E — get off';
+      if (angels.active) text = angels.prompt;
     }
     if (text !== lastPrompt) {
       lastPrompt = text;
@@ -818,7 +837,8 @@ async function boot() {
       return;
     }
     if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && swings.active) swings.getOff();
-    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active) {
+    else if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && angels.active) angels.getUp();
+    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active && !angels.active) {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
@@ -909,7 +929,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1020,6 +1040,7 @@ async function boot() {
       if (driving.active) driving.update(dt, player.enabled ? player.keys : {});
       else player.update(dt);
       swings.update(dt, player.keys);
+      angels.update(dt);
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {
       // paused behind the wheel: idle the engine

@@ -1616,6 +1616,73 @@ if (phoneBox) {
   check(false, 'the phone box exists');
 }
 
+/* ================================================================ snow angels */
+// in winter, looking up on open snow, E lies the player back in it; E again
+// gets them up and leaves an angel pressed in the snow
+console.log('→ snow angels');
+const angel = await page.evaluate(() => {
+  const g = window.__game;
+  const A = g.angels;
+  if (!A) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season, enabled: P.enabled };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  // somewhere open in the courtyard of building 12, facing north
+  let at = null;
+  for (let x = -60; x <= -14 && !at; x += 2.5) {
+    for (let z = -42; z <= -8 && !at; z += 2.5) {
+      P.teleport(x, z, Math.PI);
+      P.pitch = 0.8;
+      if (A.spotFor(P.position, P.forwardVector, P.pitch)) at = [x, z];
+    }
+  }
+  const it = W.interactables.find((i) => i.id === 'angel');
+  const offer = at ? it.prompt() : null;
+  P.pitch = 0;
+  const level = !!A.spotFor(P.position, P.forwardVector, P.pitch);
+  P.pitch = 0.8;
+  P.enabled = true;
+  it.onUse();
+  const down = A.active && !P.enabled;
+  for (let i = 0; i < 80; i++) {
+    P.update(0.05);
+    A.update(0.05);
+  }
+  const lying = { stage: A.stage, eye: P.eye, sweeps: A.sweeps, prompt: A.prompt, head: Math.hypot(P.position.x - A.spot.hx, P.position.z - A.spot.hz) };
+  const up = A.getUp();
+  for (let i = 0; i < 40; i++) {
+    P.update(0.05);
+    A.update(0.05);
+  }
+  const m = A.list.at(-1);
+  const after = { active: A.active, enabled: P.enabled, stamped: A.list.length, at: m ? Math.hypot(m.position.x - A.spot.cx, m.position.z - A.spot.cz) : null, back: Math.hypot(P.position.x - A.spot.x, P.position.z - A.spot.z) };
+  A.update(0);
+  const winter = A.group.visible;
+  W.season = 'autumn';
+  A.update(0);
+  const autumn = A.group.visible;
+  W.season = was.season;
+  A.update(0);
+  P.enabled = was.enabled;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { at, offer, level, down, lying, up, after, winter, autumn };
+});
+if (angel) {
+  console.log(
+    `  at ${angel.at}; "${angel.offer}" (looking level: ${angel.level}); lying: ${angel.lying.stage}, eyes ${angel.lying.eye.toFixed(2)} m, ${angel.lying.sweeps} sweeps, "${angel.lying.prompt}"; up ${angel.up} → ${angel.after.stamped} angel, back ${angel.after.back.toFixed(2)} m from the start`
+  );
+  check(angel.at && angel.offer === 'E — lie back in the snow' && !angel.level, 'looking up at open snow offers to lie back in it');
+  check(angel.down && angel.lying.stage === 'lying' && angel.lying.eye < 0.4 && angel.lying.sweeps >= 2 && angel.lying.head < 0.01 && angel.lying.prompt === 'E — get up', 'E lies the player back in the snow, arms sweeping');
+  check(angel.up && !angel.after.active && angel.after.enabled && angel.after.stamped >= 1 && angel.after.at < 0.01 && angel.after.back < 0.01, 'E gets them up, leaving an angel in the snow');
+  check(angel.winter && !angel.autumn, 'the angels are only there while winter lasts');
+} else {
+  check(false, 'the snow angels exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

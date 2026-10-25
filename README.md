@@ -27,6 +27,7 @@ npm run preview  # serve the production build
 | `F` | have a smoke at a quiet spot (courtyard bench, bus stop, stairwell landing); `F` again to stop |
 | Left mouse button / `G` | throw a snowball (in winter, outdoors) |
 | `E` (looking down at open snow) | build a snowman (in winter; five stand at a time) |
+| `E` (looking up, on open snow) | lie back in the snow and watch it come down; `E` gets you up and leaves a snow angel behind (in winter) |
 | `E` (at the kiosk window) | buy a loaf of bread (8:00 — 20:00) |
 | `E` / `B` (at the soda machine behind the kiosk) | a glass of fizzy water with syrup (3 kop.) or plain (1 kop.), from the shared glass |
 | `E` (at the phone box behind the kiosk) | 2 kop. and dial 100, the speaking clock: it tells you the time over the six pips; `E` again hangs up |
