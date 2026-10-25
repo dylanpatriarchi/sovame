@@ -1327,6 +1327,68 @@ if (cat) {
   check(false, 'the cats exist');
 }
 
+/* ================================================================ badges */
+// ten badges lie about the district, each within reach of open ground; E
+// picks one up, a card names it, the pause screen and localStorage keep it
+console.log('→ badges');
+const badge = await page.evaluate(() => {
+  const g = window.__game;
+  const B = g.badges;
+  if (!B) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior, found: [...B.found] };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  // every one can be reached from somewhere free to stand
+  const standFor = (it) => {
+    for (let r = 0.7; r <= 1.4; r += 0.1) {
+      for (let k = 0; k < 24; k++) {
+        const a = (k / 24) * Math.PI * 2;
+        const x = it.x + Math.cos(a) * r;
+        const z = it.z + Math.sin(a) * r;
+        if (!g.world.collides(x, z, 0.3)) return { x, z };
+      }
+    }
+    return null;
+  };
+  const unreachable = B.items.filter((it) => !standFor(it)).map((it) => it.badge.id);
+  const resting = B.items.filter((it) => it.y >= g.world.heightAt(it.x, it.z) - 0.01).length;
+  // pick up the first one
+  const it = B.items[0];
+  const at = standFor(it);
+  g.player.teleport(at.x, at.z, 0);
+  const pick = g.world.interactables.find((i) => i.id === 'badge');
+  const offer = pick.distanceTo(at.x, at.z) < pick.radius ? pick.prompt() : null;
+  B.found.clear();
+  pick.onUse();
+  const taken = B.found.has(it.badge.id) && !it.root.visible;
+  let stored = [];
+  try {
+    stored = JSON.parse(localStorage.getItem('pervyj-sneg:badges') ?? '[]');
+  } catch {}
+  const card = document.getElementById('badge-card');
+  const shelf = document.getElementById('badge-shelf');
+  const cardText = card.classList.contains('visible') ? card.textContent : null;
+  const shelfText = shelf.querySelector('.shelf-title')?.textContent;
+  const gone = pick.distanceTo(at.x, at.z) === Infinity;
+  // put things back as they were
+  B.found = new Set(was.found);
+  for (const k of B.items) k.root.visible = !B.found.has(k.badge.id);
+  localStorage.setItem('pervyj-sneg:badges', JSON.stringify(was.found));
+  B.drawShelf();
+  card.classList.remove('visible');
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { count: B.items.length, unreachable, resting, offer, taken, stored, cardText, shelfText, gone, id: it.badge.id };
+});
+if (badge) {
+  console.log(`  ${badge.count} badges, ${badge.resting} resting on something; unreachable: ${badge.unreachable.join(', ') || 'none'}; "${badge.offer}" → card "${badge.cardText}", shelf "${badge.shelfText}"`);
+  check(badge.count === 10 && badge.resting === 10 && badge.unreachable.length === 0, 'ten badges lie within reach about the district');
+  check(badge.offer === 'E — pick up the badge' && badge.taken && badge.gone, 'E picks a badge up');
+  check(badge.stored.includes(badge.id) && badge.cardText?.includes('1 of 10') && badge.shelfText?.includes('1 / 10'), 'a found badge is shown, shelved and remembered');
+} else {
+  check(false, 'the badges exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

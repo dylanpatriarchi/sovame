@@ -30,6 +30,7 @@ npm run preview  # serve the production build
 | `E` (at the kiosk window) | buy a loaf of bread (8:00 — 20:00) |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
+| `E` (by a glint) | pick up a lost badge (значок): ten to find, the collection is on the pause screen and remembered between visits |
 | `M` | district map, with where you stand (outdoors, on foot or driving) |
 | `P` | photo mode: mouse wheel zooms, left button or `Enter` takes a picture (saved as a PNG download) |
 | `Esc` | pause / release the mouse |

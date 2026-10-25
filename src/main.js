@@ -20,6 +20,7 @@ import { DistrictMap } from './map.js';
 import { PhotoMode } from './photo.js';
 import { Snowmen } from './snowmen.js';
 import { Bread, PRICE } from './bread.js';
+import { Badges } from './badges.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -349,6 +350,26 @@ async function boot() {
       },
     });
   }
+  // ten badges lost about the district: E picks one up
+  const badges = new Badges({ world, sound, landing: smokeSpots(world).find((s) => s.id === 'smoke:landing') });
+  world.group.add(badges.group);
+  // dropped onto the benches and shelves now, behind the loading screen
+  badges.place();
+  world.interactables.push({
+    id: 'badge',
+    x: 0,
+    z: 0,
+    radius: 1.6,
+    distanceTo: (x, z) => {
+      const it = driving.active ? null : badges.near(x, player.position.y, z);
+      return it ? Math.hypot(it.x - x, it.z - z) : Infinity;
+    },
+    prompt: () => 'E — pick up the badge',
+    onUse: () => {
+      const it = badges.near(player.position.x, player.position.y, player.position.z);
+      if (it) badges.take(it);
+    },
+  });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -832,7 +853,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, badges, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -965,6 +986,7 @@ async function boot() {
     // the stray dog takes an interest in the player on foot
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
+    badges.update(dt);
     world.cats?.update(dt, { player: state.mode === 'playing' ? onFoot : null, speed: Math.hypot(player.velocity.x, player.velocity.z) });
     if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
     if (!sound.ready && world.cats) world.cats.voice.length = 0;
