@@ -568,6 +568,27 @@ export class Sound {
   /* ------------------------------------------------ ambience by zone */
 
   /** One skate stroke on the hockey box, `dist` m away, `pan` -1..1. */
+  /** Boot soles gliding on ice: a soft hiss, brighter the faster. */
+  slide(speed = 2) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const level = 0.012 + 0.006 * clamp(speed / 5, 0, 1);
+    const src = ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 2200 + speed * 260;
+    band.Q.value = 0.9;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(level, t + 0.08);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    src.connect(band).connect(env).connect(this.master);
+    src.start(t, this.rng.float(0, 1));
+    src.stop(t + 0.52);
+  }
+
   skate(dist, pan = 0) {
     if (!this.ready || dist > 70) return;
     const t = this.ctx.currentTime + 0.001;

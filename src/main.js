@@ -427,6 +427,7 @@ async function boot() {
     sound.step(surface === 'concrete' && state.interior && !state.interior.kind ? 'stairs' : surface, speed);
     player.setFootprintStyle(surface, settings.season);
   };
+  player.onSlide = (speed) => sound.slide(speed);
   player.onJump = () => sound.jump();
   player.onLand = (impact) => sound.land(impact);
   player.onLockChange = (locked) => {

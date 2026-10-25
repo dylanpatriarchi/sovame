@@ -32,6 +32,7 @@ npm run preview  # serve the production build
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |
 | `E` (by a glint) | pick up a lost badge (значок): ten to find, the collection is on the pause screen and remembered between visits |
+| `⇧` + `W` on winter ice | take a run at the pond or the hockey box and let go: you slide on for metres |
 | `M` | district map, with where you stand (outdoors, on foot or driving) |
 | `P` | photo mode: mouse wheel zooms, left button or `Enter` takes a picture (saved as a PNG download) |
 | `Esc` | pause / release the mouse |

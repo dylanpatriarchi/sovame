@@ -1462,6 +1462,63 @@ if (swing && swingOff) {
   check(false, 'the swings exist');
 }
 
+/* ================================================================ ice */
+// winter ice hardly grips: a run across the pond or the hockey box carries
+// on into a long slide; on snow the player stops dead, and in autumn so
+// does the ice
+console.log('→ ice');
+const rink = await page.evaluate(() => {
+  const g = window.__game;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, enabled: P.enabled, season: W.season, keys: { ...P.keys } };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  // the biggest sheet of ice (the hockey box), run along its long side
+  const r = W.surfaceRects.filter((q) => q.type === 'ice').sort((a, b) => (b.maxX - b.minX) * (b.maxZ - b.minZ) - (a.maxX - a.minX) * (a.maxZ - a.minZ))[0];
+  const alongX = r.maxX - r.minX > r.maxZ - r.minZ;
+  const cz = (r.minZ + r.maxZ) / 2;
+  const cx = (r.minX + r.maxX) / 2;
+  const run = (season, onSnow) => {
+    W.season = season;
+    let x = alongX ? r.minX + 5 : cx; // past the goal
+    let z = alongX ? cz : r.minZ + 5;
+    if (onSnow) {
+      // the same run on open snow beside the bus stop
+      x = 30;
+      z = 4;
+    }
+    const yaw = alongX ? -Math.PI / 2 : Math.PI;
+    P.teleport(x, z, yaw);
+    P.enabled = true;
+    P.keys = { forward: true, sprint: true };
+    for (let i = 0; i < 75; i++) P.update(0.02);
+    const top = Math.hypot(P.velocity.x, P.velocity.z);
+    P.keys = {};
+    const from = P.position.clone();
+    let slid = false;
+    for (let i = 0; i < 250; i++) {
+      P.update(0.02);
+      slid ||= P.sliding;
+    }
+    return { top, glide: Math.hypot(P.position.x - from.x, P.position.z - from.z), slid };
+  };
+  const winter = run('winter', false);
+  const snow = run('winter', true);
+  const autumn = run('autumn', false);
+  W.season = was.season;
+  P.keys = was.keys;
+  P.enabled = was.enabled;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { winter, snow, autumn, size: `${(r.maxX - r.minX).toFixed(0)}×${(r.maxZ - r.minZ).toFixed(0)}` };
+});
+console.log(
+  `  ${rink.size} m of ice; let go at ${rink.winter.top.toFixed(1)} m/s: ice ${rink.winter.glide.toFixed(1)} m, snow ${rink.snow.glide.toFixed(1)} m, autumn ${rink.autumn.glide.toFixed(1)} m`
+);
+check(rink.winter.slid && rink.winter.glide > 3 && rink.winter.glide > rink.snow.glide * 4, 'a run on the winter ice carries on into a slide');
+check(!rink.snow.slid && rink.snow.glide < 1 && !rink.autumn.slid && rink.autumn.glide < 1, 'snow, and the ice out of winter, stop you short');
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
