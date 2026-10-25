@@ -2318,6 +2318,63 @@ if (tv) {
   check(false, 'the TV exists');
 }
 
+/* ================================================================ window doodles */
+// breath on a flat's window in winter: E mists the glass round where you
+// stand and a finger draws in the mist; it clears in half a minute; out of
+// winter it is not offered
+console.log('→ window doodles');
+const doodle = await page.evaluate(() => {
+  const g = window.__game;
+  const D = g.doodles;
+  if (!D) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats[0];
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = flat;
+  W.season = 'winter';
+  const it = W.interactables.find((i) => i.id === `${flat.id}:window1`);
+  // every window has somewhere free to stand at it
+  const free = W.flats.every((q) => [1, 2].every((k) => {
+    const w = W.interactables.find((i) => i.id === `${q.id}:window${k}`);
+    return w && !W.collides(w.x, w.z, 0.3);
+  }));
+  P.teleport(it.x, it.z, Math.PI);
+  const f = P.forwardVector;
+  const offered = it.available() && Math.hypot(it.x - P.position.x, it.z - P.position.z) < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  const kinds = [it.onUse(), it.onUse()];
+  D.update(0.1);
+  const pane = flat.panes[0];
+  const s = D.panes.get(pane);
+  const px = s.ctx.getImageData(0, 0, s.canvas.width, s.canvas.height).data;
+  let mist = 0;
+  let lines = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i] > 128) mist++;
+    if (px[i + 1] > 128) lines++;
+  }
+  const u = pane.material.uniforms;
+  const misted = { fog: u?.uFog.value, bound: u?.tDraw.value === s.tex, share: mist / (px.length / 4), lines };
+  for (let t = 0; t < 32; t++) D.update(1);
+  const cleared = u?.uFog.value;
+  W.season = 'autumn';
+  const autumn = it.available();
+  W.season = was.season;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, free, offer, kinds, misted, cleared, autumn, windows: W.interactables.filter((i) => /:window\d$/.test(i.id)).length, flats: W.flats.length };
+});
+if (doodle) {
+  console.log(`  "${doodle.offer}" (offered ${doodle.offered}); drew ${doodle.kinds.join(', ')}; mist ${(doodle.misted.share * 100).toFixed(0)}% of the pane, ${doodle.misted.lines} px of lines; fog ${doodle.misted.fog?.toFixed(2)} → ${doodle.cleared}`);
+  check(doodle.offered && doodle.free && doodle.offer === 'E — breathe on the glass and draw in the mist' && doodle.windows === doodle.flats * 2 && !doodle.autumn, 'every flat window is offered for a breath in winter, and not out of it');
+  check(doodle.kinds.every(Boolean) && doodle.misted.bound && doodle.misted.fog > 0.95 && doodle.misted.share > 0.05 && doodle.misted.share < 0.8 && doodle.misted.lines > 100, 'E mists the glass round where you stand and draws in the mist');
+  check(doodle.cleared === 0, 'the mist clears again, drawing and all');
+} else {
+  check(false, 'the window doodles exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

@@ -35,6 +35,7 @@ import { Kettle } from './kettle.js';
 import { IceSlide } from './iceslide.js';
 import { GarageIcicles } from './garages.js';
 import { Television } from './tv.js';
+import { WindowDoodles } from './doodles.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -251,6 +252,8 @@ async function boot() {
   const kettle = new Kettle({ world, sound });
   // the TV in the living-room flats: E turns the knob round the channels
   const television = new Television({ world });
+  // breath on a flat's window in winter, and a finger drawing in the mist
+  const doodles = new WindowDoodles({ world });
   // one flat behind a padded door on each landing, with a kitchen radio
   const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
   for (const flat of world.flats) {
@@ -305,6 +308,18 @@ async function boot() {
           sound.ui('tick');
         },
       });
+    WindowDoodles.spots(flat, world).forEach((spot, k) =>
+      world.interactables.push({
+        id: `${flat.id}:window${k + 1}`,
+        x: spot.stand.x,
+        z: spot.stand.z,
+        radius: 0.75,
+        facing: { x: 0, z: 1 },
+        available: () => doodles.usable,
+        prompt: () => 'E — breathe on the glass and draw in the mist',
+        onUse: () => doodles.breathe(spot, player.position.x - spot.x, camera.position.y),
+      })
+    );
   }
 
   const env = new Environment({
@@ -1077,7 +1092,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1204,6 +1219,7 @@ async function boot() {
       iceSlide.update(dt);
       icicles.update(dt, snowballs.balls);
       television.update(dt, state.elapsed);
+      doodles.update(dt);
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();

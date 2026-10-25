@@ -24,6 +24,8 @@ const fragmentShader = /* glsl */ `
   uniform float uFallbackGain;
   uniform vec3 uFrost;
   uniform float uFrostAmount;
+  uniform sampler2D tDraw;
+  uniform float uFog;
   varying vec2 vUv;
 
   float hash(vec2 p) {
@@ -46,10 +48,18 @@ const fragmentShader = /* glsl */ `
     } else {
       col = texture2D(tFallback, vUv).rgb * uFallbackGain;
     }
+    // breath fogging the glass (red: where it is misted), and the lines a
+    // finger has drawn through the mist (green)
+    if (uFog > 0.001) {
+      vec2 d = texture2D(tDraw, vUv).rg;
+      col = mix(col, vec3(0.6, 0.64, 0.68), uFog * d.r * (1.0 - d.g) * 0.85);
+    }
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
+const NO_DRAWING = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+NO_DRAWING.needsUpdate = true;
 const _m = new THREE.Matrix4();
 const _plane = new THREE.Plane();
 const _clip = new THREE.Vector4();
@@ -93,6 +103,9 @@ export class WindowViews {
         uFrostAmount: this.uniforms.uFrostAmount,
         tFallback: { value: fallback },
         uFallbackGain: { value: gain },
+        // each pane's own breath and doodles (see doodles.js)
+        tDraw: { value: NO_DRAWING },
+        uFog: { value: 0 },
       },
       vertexShader,
       fragmentShader,

@@ -42,6 +42,7 @@ npm run preview  # serve the production build
 | `E` (at the foot of the ice slide's stairs, in winter) | climb up, sit at the top and ride down the icy chute, out over the run-out into the snow; how far you went from the top comes up at the end |
 | Snowballs at the icicles on the garage roofs (in winter) | knock one down: it drops and shatters on the ground with a tinkle; it grows back after a couple of minutes |
 | `E` (at the TV in a living-room flat) | turn the knob: «Время» with the announcer, figure skating to music, the test card and its tone, off |
+| `E` (at a flat's window, in winter) | breathe on the cold glass: it mists over where you stand and a finger draws in the mist (a heart, a sun, a name...); it clears in half a minute |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |
