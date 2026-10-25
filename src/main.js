@@ -25,6 +25,7 @@ import { Swings } from './swings.js';
 import { Soda } from './soda.js';
 import { Phone } from './phone.js';
 import { Angels } from './angels.js';
+import { Puck } from './puck.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -439,6 +440,21 @@ async function boot() {
       if (spot) angels.lie(spot);
     },
   });
+  // a puck on the hockey box (in winter): E shoots it, walking into it pushes it
+  const puck = new Puck({ world, sound });
+  world.interactables.push({
+    id: 'puck',
+    get x() {
+      return puck.position.x;
+    },
+    get z() {
+      return puck.position.z;
+    },
+    radius: 1.3,
+    distanceTo: (x, z) => (state.interior || driving.active || swings.active || angels.active ? Infinity : puck.distanceTo(x, z)),
+    prompt: () => puck.prompt,
+    onUse: () => puck.shoot(player.forwardVector, !!player.keys.sprint),
+  });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -809,6 +825,8 @@ async function boot() {
       text = it && !state.transitioning ? it.prompt() : null;
       if (swings.active && !state.transitioning) text = swings.height > 0.15 ? 'W / S — pump · E — jump off' : 'W / S — pump · E — get off';
       if (angels.active) text = angels.prompt;
+      // a goal is announced to anyone on the box
+      if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
     }
     if (text !== lastPrompt) {
       lastPrompt = text;
@@ -929,7 +947,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1065,6 +1083,8 @@ async function boot() {
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
     badges.update(dt);
+    const onRink = state.mode === 'playing' && !state.interior && !driving.active;
+    puck.update(dt, { player: onRink ? { x: player.position.x, y: player.position.y, z: player.position.z, vx: player.velocity.x, vz: player.velocity.z } : null });
     soda.update(dt, { night: env.cur.lamp, season: world.season });
     phone.update(dt, { player: state.mode === 'playing' ? player.position : null, night: env.cur.lamp, season: world.season });
     world.cats?.update(dt, { player: state.mode === 'playing' ? onFoot : null, speed: Math.hypot(player.velocity.x, player.velocity.z) });

@@ -1683,6 +1683,77 @@ if (angel) {
   check(false, 'the snow angels exist');
 }
 
+/* ================================================================ hockey */
+// a puck on the hockey box: E shoots it, it rings off the boards, never
+// leaves the ice, and through a goal mouth it scores and is faced off again
+console.log('→ hockey');
+const hockey = await page.evaluate(() => {
+  const g = window.__game;
+  const H = g.puck;
+  if (!H) return null;
+  const P = g.player;
+  const W = g.world;
+  const k = H.rink;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  H.faceoff();
+  // from just behind the puck, facing the east goal down the centre line
+  P.teleport(k.x - 0.8, k.z, -Math.PI / 2);
+  const it = W.interactables.find((i) => i.id === 'puck');
+  const offer = it.distanceTo(P.position.x, P.position.z) < it.radius ? it.prompt() : null;
+  it.onUse();
+  let t = 0;
+  while (!H.inNet && t < 6) {
+    H.update(0.02);
+    t += 0.02;
+  }
+  const scored = { inNet: !!H.inNet, side: H.lastGoal?.side, score: H.score, t };
+  for (let i = 0; i < 200; i++) H.update(0.02);
+  const faced = !H.inNet && Math.hypot(H.position.x - k.x, H.position.z - k.z) < 0.01;
+  // shots every which way: it stays on the ice, between the boards
+  let out = 0;
+  let maxBounces = 0;
+  for (let a = 0; a < 12; a++) {
+    H.faceoff();
+    H.bounces = 0;
+    const ang = (a / 12) * Math.PI * 2 + 0.13;
+    H.shoot({ x: Math.cos(ang), z: Math.sin(ang) }, true);
+    for (let i = 0; i < 1500 && (H.velocity.x || H.velocity.z) && !H.inNet; i++) {
+      H.update(0.02);
+      const dx = Math.abs(H.position.x - k.x) - (k.l / 2 - k.r);
+      const dz = Math.abs(H.position.z - k.z) - (k.w / 2 - k.r);
+      const outside = Math.abs(H.position.x - k.x) > k.l / 2 || Math.abs(H.position.z - k.z) > k.w / 2 || (dx > 0 && dz > 0 && Math.hypot(dx, dz) > k.r + 0.01);
+      if (outside) out++;
+    }
+    maxBounces = Math.max(maxBounces, H.bounces);
+  }
+  // walking into it pushes it along
+  H.faceoff();
+  H.update(0.02, { player: { x: k.x - 0.3, y: 0.05, z: k.z, vx: 2.7, vz: 0 } });
+  const pushed = H.velocity.x;
+  W.season = 'autumn';
+  H.update(0);
+  const autumn = { visible: H.mesh.visible, none: it.distanceTo(k.x, k.z) === Infinity };
+  W.season = was.season;
+  H.faceoff();
+  H.update(0);
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offer, scored, faced, out, maxBounces, pushed, autumn };
+});
+if (hockey) {
+  console.log(
+    `  "${hockey.offer}" → goal ${hockey.scored.inNet} (side ${hockey.scored.side}, ${hockey.scored.score}, ${hockey.scored.t.toFixed(2)} s), faced off ${hockey.faced}; 12 slapshots: ${hockey.out} steps off the ice, up to ${hockey.maxBounces} bounces; pushed at ${hockey.pushed.toFixed(1)} m/s`
+  );
+  check(hockey.offer?.startsWith('E — shoot the puck') && hockey.scored.inNet && hockey.scored.side === 1 && hockey.scored.score === '0 : 1' && hockey.faced, 'a shot down the middle scores, and the puck is faced off again');
+  check(hockey.out === 0 && hockey.maxBounces >= 2, 'the puck rings off the boards and never leaves the ice');
+  check(hockey.pushed > 2 && !hockey.autumn.visible && hockey.autumn.none, 'skating into it pushes it; out of winter there is no puck');
+} else {
+  check(false, 'the puck exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

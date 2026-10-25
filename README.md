@@ -31,6 +31,7 @@ npm run preview  # serve the production build
 | `E` (at the kiosk window) | buy a loaf of bread (8:00 — 20:00) |
 | `E` / `B` (at the soda machine behind the kiosk) | a glass of fizzy water with syrup (3 kop.) or plain (1 kop.), from the shared glass |
 | `E` (at the phone box behind the kiosk) | 2 kop. and dial 100, the speaking clock: it tells you the time over the six pips; `E` again hangs up |
+| `E` (by the puck on the hockey box, in winter) | shoot it the way you face (`⇧` for a slapshot), or skate into it; it rings off the boards, and through a goal mouth it scores |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |

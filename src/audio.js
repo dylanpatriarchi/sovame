@@ -679,6 +679,24 @@ export class Sound {
     src.stop(t + 1);
   }
 
+  /** The puck: a stick's crack on a shot, the boards' hollow bang, and the
+   * net's rattle on a goal. */
+  puck(kind, level = 1) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.01;
+    if (kind === 'shot') {
+      this.burst({ time: t, freq: 2600, q: 0.8, duration: 0.05, level: 0.09, type: 'highpass' });
+      this.burst({ time: t, freq: 320, q: 1.2, duration: 0.08, level: 0.05 });
+    } else if (kind === 'board') {
+      this.burst({ time: t, freq: 140, q: 0.9, duration: 0.3, level: 0.05 + 0.1 * level, type: 'lowpass' });
+      this.burst({ time: t + 0.01, freq: 900, q: 2.5, duration: 0.18, level: 0.02 + 0.04 * level });
+    } else if (kind === 'goal') {
+      // the net bellies out, the frame clanks
+      this.burst({ time: t, freq: 1800, q: 0.7, duration: 0.45, level: 0.05 });
+      for (let i = 0; i < 3; i++) this.burst({ time: t + 0.03 + i * 0.05, freq: 2400 - i * 300, q: 14, duration: 0.25, level: 0.03 });
+    }
+  }
+
   /** Three swallows from the glass. */
   gulp() {
     if (!this.ready) return;
