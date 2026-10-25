@@ -2542,6 +2542,85 @@ if (switched) {
   check(false, 'the light switches exist');
 }
 
+/* ================================================================ leaf piles */
+// the dvornik's leaf piles in autumn: a run (or a jump) through one bursts
+// it, the leaves thrown up to flutter down and lie scattered; a walk does
+// not; E kicks one; a minute and a half on it is raked up again
+console.log('→ leaf piles');
+const leaves = await page.evaluate(() => {
+  const g = window.__game;
+  const L = g.leafPiles;
+  if (!L) return null;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'autumn';
+  L.update(0);
+  const piles = L.piles.length;
+  const free = L.piles.every((p) => !W.collides(p.x, p.z, 0.8) && !['asphalt', 'stone', 'ice'].includes(W.surfaceAt(p.x, p.z)));
+  const shown = L.group.visible;
+  const [a, b] = L.piles;
+  const runner = (p, speed, vy = 0, up = 0) => ({ position: { x: p.x - 0.3, y: W.heightAt(p.x, p.z) + up, z: p.z }, speed, velocity: { x: speed, y: vy, z: 0 } });
+  // a walk through leaves it be, a run bursts it
+  L.update(0.05, runner(a, 2.7));
+  const walked = a.state;
+  L.update(0.05, runner(a, 5.6));
+  const ran = a.state;
+  const note = L.note;
+  let high = 0;
+  const n = L.leaves.count / L.piles.length;
+  const i0 = a.index * n;
+  for (let t = 0; t < 8; t += 0.05) {
+    L.update(0.05, null);
+    for (let i = i0; i < i0 + n; i++) high = Math.max(high, L.pos[i * 3 + 1] - a.y);
+  }
+  let flying = 0;
+  let spread = 0;
+  let ahead = 0;
+  for (let i = i0; i < i0 + n; i++) {
+    flying += L.flying[i];
+    spread += Math.hypot(L.pos[i * 3] - a.x, L.pos[i * 3 + 2] - a.z) / n;
+    ahead += (L.pos[i * 3] - a.x) / n;
+  }
+  const burst = { high, flying, spread, ahead, note };
+  // landing in one from a jump
+  L.update(0.05, runner(b, 0.5, -3, 0.4));
+  const jumped = b.state;
+  // E at the next: offered from a step away, the kick bursts it
+  const c = L.piles[2];
+  const it = W.interactables.find((i) => i.id === 'leaf-pile');
+  g.player.teleport(c.x - 1.9, c.z, -Math.PI / 2);
+  const reach = it.distanceTo(g.player.position.x, g.player.position.z);
+  const offer = it.prompt();
+  it.onUse();
+  const kicked = c.state;
+  // raked up again a minute and a half later
+  for (let t = 0; t < 100; t += 0.1) L.update(0.1, null);
+  let home = 0;
+  for (let i = i0; i < i0 + n; i++) home = Math.max(home, Math.hypot(L.pos[i * 3] - L.home[i * 3], L.pos[i * 3 + 1] - L.home[i * 3 + 1], L.pos[i * 3 + 2] - L.home[i * 3 + 2]));
+  const raked = { a: a.state, b: b.state, c: c.state, home };
+  // out of autumn: no heaps, nothing offered
+  W.season = 'winter';
+  L.update(0.1, null);
+  const winter = { shown: L.group.visible, offered: Number.isFinite(it.distanceTo(c.x - 1.9, c.z)) };
+  W.season = was.season;
+  L.update(0);
+  L.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { piles, free, shown, walked, ran, burst, jumped, reach, radius: it.radius, offer, kicked, raked, winter };
+});
+if (leaves) {
+  console.log(`  ${leaves.piles} piles; walk → ${leaves.walked}, run → ${leaves.ran}: up to ${leaves.burst.high.toFixed(1)} m, spread ${leaves.burst.spread.toFixed(1)} m, ${leaves.burst.ahead.toFixed(1)} m ahead; "${leaves.burst.note}"; jump → ${leaves.jumped}; "${leaves.offer}" at ${leaves.reach.toFixed(2)} m → ${leaves.kicked}; later ${leaves.raked.a}/${leaves.raked.b}/${leaves.raked.c}`);
+  check(leaves.piles >= 5 && leaves.free && leaves.shown, 'the leaf piles lie raked up on open ground in autumn');
+  check(leaves.walked === 'heap' && leaves.ran === 'scattered' && leaves.burst.high > 0.9 && leaves.burst.flying === 0 && leaves.burst.spread > 1.4 && leaves.burst.ahead > 0.3 && leaves.burst.note?.startsWith('Leaves everywhere') && leaves.jumped === 'scattered', 'a run or a jump through a pile bursts it, the leaves thrown up to land scattered on ahead; a walk does not');
+  check(leaves.reach < leaves.radius && leaves.offer === 'E — kick the leaf pile' && leaves.kicked === 'scattered', 'E at a pile kicks it apart');
+  check(leaves.raked.a === 'heap' && leaves.raked.b === 'heap' && leaves.raked.c === 'heap' && leaves.raked.home < 0.01 && !leaves.winter.shown && !leaves.winter.offered, 'the dvornik rakes them up again; out of autumn they are gone');
+} else {
+  check(false, 'the leaf piles exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
