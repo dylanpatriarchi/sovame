@@ -2453,6 +2453,95 @@ if (newyear) {
   check(false, 'the New Year tree exists');
 }
 
+/* ================================================================ light switches */
+// three switches in each flat's hall: E at one snaps its rocker over and the
+// lamp it serves goes out (its light and its glowing bulb), or comes back on;
+// each flat keeps its own, and they hold when you leave and come back
+console.log('→ light switches');
+const switched = await page.evaluate(async () => {
+  const g = window.__game;
+  const S = g.switches;
+  if (!S) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats[0];
+  const other = W.flats[1];
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  const ids = ['kitchen', 'room', 'hall'];
+  // every flat has its three, each with somewhere free to stand
+  const all = W.flats.every((q) => ids.every((r) => {
+    const it = W.interactables.find((i) => i.id === `${q.id}:switch-${r}`);
+    return it && !W.collides(it.x, it.z, 0.3);
+  }));
+  // in through the padded door, as the player would
+  g.state.interior = flat.parent;
+  P.teleport(flat.doorOut.x, flat.doorOut.z, 0);
+  W.interactables.find((i) => i.id === `${flat.id}:enter`).onUse();
+  await new Promise((r) => setTimeout(r, 5000));
+  const inside = g.state.interior === flat && W.litFlat === flat;
+  const lit0 = W.flatLights.map((l) => l.intensity);
+  // the nearest offer at each switch, as the game picks it
+  const nearest = () => {
+    let best = null;
+    let bd = Infinity;
+    const f = P.forwardVector;
+    for (const it of W.interactables) {
+      if ((it.key ?? 'KeyE') !== 'KeyE' || (it.available && !it.available())) continue;
+      if (it.y !== undefined && Math.abs(P.position.y - it.y) > 0.6) continue;
+      if (it.facing && f.x * it.facing.x + f.z * it.facing.z < 0.35) continue;
+      const d = it.distanceTo ? it.distanceTo(P.position.x, P.position.z) : Math.hypot(it.x - P.position.x, it.z - P.position.z);
+      if (d < it.radius && d < bd) {
+        best = it;
+        bd = d;
+      }
+    }
+    return best;
+  };
+  const offers = [];
+  const flips = [];
+  ids.forEach((r, i) => {
+    const it = W.interactables.find((q) => q.id === `${flat.id}:switch-${r}`);
+    // face the wall the switch is on
+    P.teleport(it.x, it.z, it.facing.z < 0 ? 0 : Math.PI);
+    const n = nearest();
+    offers.push(n?.id === it.id ? n.prompt() : `(${n?.id ?? 'nothing'})`);
+    const rocker = flat.rockers[i].rotation.x;
+    it.onUse();
+    flips.push({ on: flat.lightOn[i], light: W.flatLights[i].intensity, lamp: flat.lampMats[i].color.r, moved: flat.rockers[i].rotation.x !== rocker, prompt: it.prompt() });
+  });
+  S.update(0.1);
+  const dark = { note: S.note, lights: W.flatLights.map((l) => l.intensity), otherOn: other.lightOn.every(Boolean), otherLamp: other.lampMats[0].color.r };
+  // out to the landing and back in: still dark
+  W.interactables.find((i) => i.id === `${flat.id}:exit`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  const outLights = W.flatLights.map((l) => l.intensity);
+  g.state.interior = flat.parent;
+  P.teleport(flat.doorOut.x, flat.doorOut.z, 0);
+  W.interactables.find((i) => i.id === `${flat.id}:enter`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  const back = W.flatLights.map((l) => l.intensity);
+  // on again, one by one
+  ids.forEach((r, i) => W.interactables.find((q) => q.id === `${flat.id}:switch-${r}`).onUse());
+  const relit = { lights: W.flatLights.map((l) => l.intensity), lamp: flat.lampMats[1].color.r, note: S.note };
+  // and out of the stairwell, back where the next section expects you
+  W.interactables.find((i) => i.id === `${flat.id}:exit`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  W.interactables.find((i) => i.id === `${flat.parent.id}:exit`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  const outdoors = g.state.interior === was.interior;
+  g.state.mode = was.mode;
+  return { outdoors, all, inside, lit0, offers, flips, dark, outLights, back, relit };
+});
+if (switched) {
+  console.log(`  ${switched.offers.map((o) => `"${o}"`).join(', ')}; lights ${switched.lit0.join('/')} → ${switched.dark.lights.join('/')}; "${switched.dark.note}"; back in ${switched.back.join('/')}`);
+  check(switched.all && switched.inside && switched.lit0.every((v) => v > 0) && switched.offers.every((o, i) => o === `E — switch the ${['kitchen', 'room', 'hall'][i]} light off`), 'each flat has its three switches in the hall, each offered where you stand at it');
+  check(switched.flips.every((f) => !f.on && f.light === 0 && f.lamp < 0.5 && f.moved && f.prompt.endsWith(' on')) && switched.dark.lights.every((v) => v === 0) && switched.dark.note?.startsWith('All dark') && switched.dark.otherOn && switched.dark.otherLamp > 1, 'E snaps a switch over: its lamp and its light go out, in that flat only');
+  check(switched.outLights.every((v) => v === 0) && switched.back.every((v) => v === 0) && switched.relit.lights.every((v) => v > 0) && switched.relit.lamp > 1 && !switched.relit.note && switched.outdoors, 'the flat stays dark when you leave and come back, and lights up again switch by switch');
+} else {
+  check(false, 'the light switches exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

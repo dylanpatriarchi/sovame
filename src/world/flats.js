@@ -22,6 +22,16 @@ const SPLIT_X = -0.8; // kitchen | room partition
 const KITCHEN_DOOR = [-2.6, -1.8];
 const ROOM_DOOR = [0.4, 1.4];
 const BATH_X = 1.8;
+const LAMP_ON = new THREE.Color(1.9, 1.15, 0.55);
+/** The shared lamp lights' strength: kitchen, room, hall. */
+export const LIGHT_LEVELS = [5.5, 11, 3.5];
+/** The wall switches, in the hall as in every such flat: the kitchen's and
+ * the room's beside their doorways, the hall's own by the front door. */
+export const SWITCHES = [
+  { x: -1.55, z: HALL_Z - 0.06, facing: -1 },
+  { x: 0.15, z: HALL_Z - 0.06, facing: -1 },
+  { x: -1.35, z: -4, facing: 1 },
+];
 
 const FLAT_STYLES = [
   { wall: ['#c9b48a', '#a8865a'], carpet: ['#7a1f1c', '#c9a046', '#1d2f4a'], sofa: 0x5b6b4a, panel: 0x7f9a86 },
@@ -527,17 +537,22 @@ function buildFlat(ctx, stairwell, index, variant) {
   const furnMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 });
   addMesh(mergeGeometries(furn), furnMat);
 
-  // emissive lamps: chandelier bulbs, kitchen pendant, floor-lamp shade
-  const lampGeos = [];
+  // emissive lamps, one mesh per switch (kitchen, room, hall): the kitchen
+  // pendant; the chandelier bulbs and the floor-lamp shade; the hall dome
+  const lampGeos = [[], [], []];
   for (let k = 0; k < 3; k++) {
     const a = (k / 3) * Math.PI * 2;
-    lampGeos.push(new THREE.SphereGeometry(0.045, 10, 6).translate(1.3 + Math.cos(a) * 0.2, FH - 0.45, 1.2 + Math.sin(a) * 0.2));
+    lampGeos[1].push(new THREE.SphereGeometry(0.045, 10, 6).translate(1.3 + Math.cos(a) * 0.2, FH - 0.45, 1.2 + Math.sin(a) * 0.2));
   }
-  lampGeos.push(new THREE.CylinderGeometry(0.08, 0.26, 0.2, 18, 1, true).translate(-2.2, FH - 0.8, 3.2));
-  if (living) lampGeos.push(new THREE.CylinderGeometry(0.14, 0.22, 0.3, 16, 1, true).translate(3.15, 1.55, 3.6));
-  else lampGeos.push(new THREE.CylinderGeometry(0.05, 0.12, 0.12, 14, 1, true).translate(3.0, 1.12, 3.5));
-  lampGeos.push(new THREE.SphereGeometry(0.18, 16, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2).scale(1, 0.45, 1).translate(-0.6, FH, -2.8));
-  addMesh(mergeGeometries(lampGeos), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.9, 1.15, 0.55), side: THREE.DoubleSide }));
+  lampGeos[0].push(new THREE.CylinderGeometry(0.08, 0.26, 0.2, 18, 1, true).translate(-2.2, FH - 0.8, 3.2));
+  if (living) lampGeos[1].push(new THREE.CylinderGeometry(0.14, 0.22, 0.3, 16, 1, true).translate(3.15, 1.55, 3.6));
+  else lampGeos[1].push(new THREE.CylinderGeometry(0.05, 0.12, 0.12, 14, 1, true).translate(3.0, 1.12, 3.5));
+  lampGeos[2].push(new THREE.SphereGeometry(0.18, 16, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2).scale(1, 0.45, 1).translate(-0.6, FH, -2.8));
+  const lampMats = lampGeos.map((geos) => {
+    const mat = new THREE.MeshBasicMaterial({ color: LAMP_ON.clone(), side: THREE.DoubleSide });
+    addMesh(geos.length > 1 ? mergeGeometries(geos) : geos[0], mat);
+    return mat;
+  });
 
   group.traverse((obj) => {
     obj.layers.set(INTERIOR_LAYER);
@@ -588,6 +603,7 @@ function buildFlat(ctx, stairwell, index, variant) {
     radio: new THREE.Vector3(cx + X0 + 0.15, 1.55, cz + 3.3),
     // the kettle on the stove (its middle)
     kettle: new THREE.Vector3(cx + X0 + 0.27, 0.97, cz + 0.12),
+    lampMats,
     // kitchen pendant, room chandelier, hall ceiling dome
     lights: [new THREE.Vector3(cx - 2.2, FH - 1.0, cz + 2.7), new THREE.Vector3(cx + 0.8, FH - 0.6, cz + 0.2), new THREE.Vector3(cx - 0.6, FH - 0.35, cz - 2.8)],
     tv: screenMat ? { screenMat, glowMat: tvGlow.material, phase: rng.float(0, 6), pos: new THREE.Vector3(cx + unitX + 0.275, 1.01, cz + 0.72) } : null,
@@ -647,6 +663,9 @@ export function buildFlats(ctx) {
         radio: f.radio,
         kettle: f.kettle,
         lightPos: f.lights,
+        // the lamps on their switches: kitchen, room, hall
+        lightOn: [true, true, true],
+        lampMats: f.lampMats,
         tv: f.tv,
         group: f.group,
         /** Renumbers the flat (both sides of its door) and redecorates it. */
@@ -723,9 +742,9 @@ export function flatView(flat) {
  * shows only the flats reachable from where the player is. */
 export function setFlatLight(world, flat, interior = flat) {
   for (const f of world.flats ?? []) f.group.visible = !!interior && (f === interior || f.parent === interior);
-  const levels = [5.5, 11, 3.5];
   world.flatLights?.forEach((light, i) => {
     if (flat) light.position.copy(flat.lightPos[i]);
-    light.intensity = flat ? levels[i] : 0;
+    light.intensity = flat?.lightOn[i] ? LIGHT_LEVELS[i] : 0;
   });
+  world.litFlat = flat ?? null;
 }

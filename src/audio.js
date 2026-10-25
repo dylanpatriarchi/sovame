@@ -426,6 +426,14 @@ export class Sound {
     osc.stop(t + 0.2);
   }
 
+  /** A wall switch: the hard snap of its rocker, a little lower going off. */
+  click(on = true) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.burst({ time: t, freq: on ? 3200 : 2600, q: 2.2, duration: 0.018, level: 0.09, rate: 2.6 });
+    this.burst({ time: t + 0.006, freq: on ? 1100 : 900, q: 1.4, duration: 0.03, level: 0.05 });
+  }
+
   /* ------------------------------------------------ car */
 
   /** A tired four-cylinder: firing-rate saw + sub square through a lowpass,

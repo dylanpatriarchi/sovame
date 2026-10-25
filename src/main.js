@@ -35,6 +35,7 @@ import { Kettle } from './kettle.js';
 import { IceSlide } from './iceslide.js';
 import { GarageIcicles } from './garages.js';
 import { Television } from './tv.js';
+import { LightSwitches } from './switches.js';
 import { WindowDoodles } from './doodles.js';
 import { NewYear } from './newyear.js';
 import { Perf } from './perf.js';
@@ -255,6 +256,8 @@ async function boot() {
   const television = new Television({ world });
   // breath on a flat's window in winter, and a finger drawing in the mist
   const doodles = new WindowDoodles({ world });
+  // the light switches in each flat's hall: kitchen, room, hall
+  const switches = new LightSwitches({ world });
   // one flat behind a padded door on each landing, with a kitchen radio
   const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
   for (const flat of world.flats) {
@@ -308,6 +311,16 @@ async function boot() {
           television.turn(flat);
           sound.ui('tick');
         },
+      });
+    for (const spot of LightSwitches.spots(flat))
+      world.interactables.push({
+        id: `${flat.id}:switch-${spot.room}`,
+        x: spot.x,
+        z: spot.z + spot.facing * 0.5,
+        radius: 0.7,
+        facing: { x: 0, z: -spot.facing },
+        prompt: () => switches.prompt(flat, spot.i),
+        onUse: () => sound.click(switches.flip(flat, spot.i)),
       });
     WindowDoodles.spots(flat, world).forEach((spot, k) =>
       world.interactables.push({
@@ -978,6 +991,7 @@ async function boot() {
       if (mail.note && state.interior) text = mail.note;
       if (kettle.note && state.interior) text = kettle.note;
       if (television.note && state.interior) text = television.note;
+      if (switches.note && state.interior) text = switches.note;
       if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = icicles.note;
@@ -1105,7 +1119,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, newYear, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, switches, newYear, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1245,6 +1259,7 @@ async function boot() {
       icicles.update(dt, snowballs.balls);
       television.update(dt, state.elapsed);
       doodles.update(dt);
+      switches.update(dt);
       newYear.update(dt);
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
