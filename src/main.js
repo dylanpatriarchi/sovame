@@ -29,6 +29,7 @@ import { Puck } from './puck.js';
 import { Carpet } from './carpet.js';
 import { Target } from './target.js';
 import { Mail } from './mail.js';
+import { Hopscotch } from './hopscotch.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -497,6 +498,8 @@ async function boot() {
   snowballs.onImpact = (kind, pos) => target.impact(kind, pos);
   // the post boxes in the stairwells (their interactables are with the stairwell's own)
   const mail = new Mail({ env });
+  // hopscotch chalked on the sidewalk by the kiosk (out of winter): Space hops square to square
+  const hopscotch = new Hopscotch({ world, player, sound });
   world.interactables.push({
     id: 'target',
     x: 0,
@@ -881,6 +884,7 @@ async function boot() {
       if (!text && carpet.note) text = carpet.note;
       // what turned up in the post boxes, while it is read
       if (mail.note && state.interior) text = mail.note;
+      if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
@@ -1005,7 +1009,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1120,6 +1124,7 @@ async function boot() {
       carpet.update(dt, player.keys);
       target.update(dt);
       mail.update(dt);
+      hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {
       // paused behind the wheel: idle the engine

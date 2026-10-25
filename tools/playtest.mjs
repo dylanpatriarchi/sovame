@@ -1957,6 +1957,80 @@ if (mail) {
   check(false, 'the post boxes exist');
 }
 
+/* ================================================================ hopscotch */
+// hopscotch on the sidewalk, out of winter: a real jump into square 1 starts
+// a run, 1 to 10 in order finishes it with a time; a wrong square or a hop
+// off the drawing is back to 1; under the winter snow there is none
+console.log('→ hopscotch');
+const hop = await page.evaluate(() => {
+  const g = window.__game;
+  const H = g.hopscotch;
+  if (!H) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'autumn';
+  H.next = 0;
+  H.note = null;
+  // a real jump: up from square 1 and down into it again
+  const c1 = H.cellCenter(1);
+  P.teleport(c1.x, c1.z - 1.2, 0);
+  const offer = H.promptFor(P.position.x, P.position.z);
+  P.teleport(c1.x, c1.z, 0);
+  H.update(0.02);
+  P.velocity.set(0, 4.5, 0);
+  P.onGround = false;
+  P.position.y += 0.01;
+  let air = 0;
+  for (let i = 0; i < 120 && (air === 0 || !P.onGround); i++) {
+    P.update(1 / 60);
+    if (!P.onGround) air++;
+    H.update(1 / 60);
+  }
+  const first = { next: H.next, air, prompt: H.promptFor(P.position.x, P.position.z) };
+  // and on up to ten
+  const cells = [];
+  for (let n = 2; n <= 10; n++) {
+    const c = H.cellCenter(n);
+    cells.push(H.cellAt(c.x, c.z));
+    H.update(0.35);
+    H.land(c.x, c.z);
+  }
+  const done = { note: H.note, best: H.best, next: H.next };
+  // a wrong square
+  H.land(c1.x, c1.z);
+  const c3 = H.cellCenter(3);
+  H.land(c3.x, c3.z);
+  const wrong = { note: H.note, next: H.next };
+  // off the drawing mid-run
+  H.land(c1.x, c1.z);
+  H.land(c1.x - 1.4, c1.z + 1);
+  const off = { note: H.note, next: H.next };
+  // the winter snow covers it
+  W.season = 'winter';
+  H.note = null;
+  H.update(0);
+  H.land(c1.x, c1.z);
+  const winter = { visible: H.mesh.visible, next: H.next, prompt: H.promptFor(c1.x, c1.z) };
+  W.season = was.season;
+  H.update(0);
+  H.note = null;
+  H.next = 0;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offer, first, cells, done, wrong, off, winter };
+});
+if (hop) {
+  console.log(`  "${hop.offer}"; jumped into 1 (${hop.first.air} frames in the air) → "${hop.first.prompt}"; squares ${hop.cells.join(' ')}; "${hop.done.note}"; "${hop.wrong.note}"; "${hop.off.note}"`);
+  check(hop.offer?.startsWith('Hopscotch: Space') && hop.first.air > 10 && hop.first.next === 1 && hop.first.prompt === 'Hopscotch: 1 · now 2', 'a jump into square 1 starts a game of hopscotch');
+  check(hop.cells.join() === '2,3,4,5,6,7,8,9,10' && hop.done.note?.startsWith('Hopscotch: all ten in') && hop.done.best > 2 && hop.done.next === 0, 'squares 1 to 10 in order finish it, with the time');
+  check(hop.wrong.note === 'Square 3? Back to 1' && hop.wrong.next === 0 && hop.off.note === 'Off the drawing: back to 1' && hop.off.next === 0 && !hop.winter.visible && hop.winter.next === 0 && hop.winter.prompt === null, 'a wrong square or a hop off it is back to 1; none under the winter snow');
+} else {
+  check(false, 'the hopscotch exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
