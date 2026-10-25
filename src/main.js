@@ -19,6 +19,7 @@ import { Snowballs } from './snowballs.js';
 import { DistrictMap } from './map.js';
 import { PhotoMode } from './photo.js';
 import { Snowmen } from './snowmen.js';
+import { Bread, PRICE } from './bread.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -288,6 +289,45 @@ async function boot() {
       const spot = snowmen.spotFor(player.position, player.forwardVector);
       if (spot) snowmen.build(spot);
     },
+  });
+  // the kiosk sells a loaf over the counter (8:00 to 20:00); B crumbles it
+  // for the pigeons, a handful at a time, wherever a flock lives near enough
+  const bread = new Bread({ world, sound, env });
+  const counter = world.points.counter;
+  if (counter) {
+    world.interactables.push({
+      id: 'kiosk',
+      x: counter.x,
+      z: counter.z,
+      radius: 1,
+      // right at the window it is the counter, not the radio, that answers
+      distanceTo: (x, z) => (Math.hypot(x - counter.x, z - counter.z) < 1.4 ? 0 : Infinity),
+      facing: { x: 0, z: 1 },
+      available: () => !driving.active,
+      prompt: () =>
+        !bread.open ? 'The kiosk is shut · open 8:00 — 20:00' : bread.full ? 'Enough bread for now' : `E — buy a loaf (${PRICE} kop.)`,
+      onUse: () => {
+        if (!bread.buy()) sound.ui('tick');
+      },
+    });
+  }
+  world.interactables.push({
+    id: 'crumbs',
+    key: 'KeyB',
+    x: 0,
+    z: 0,
+    radius: 50,
+    distanceTo: () =>
+      bread.handfuls <= 0 ||
+      state.interior ||
+      driving.active ||
+      state.smoking ||
+      !bread.pigeonsNear(player.position) ||
+      !bread.spotFor(player.position, player.forwardVector)
+        ? Infinity
+        : 49.95,
+    prompt: () => `B — crumble bread for the pigeons (${bread.handfuls} left)`,
+    onUse: () => bread.crumble(player.position, player.forwardVector),
   });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
@@ -681,7 +721,7 @@ async function boot() {
       }
       return;
     }
-    if ((event.code === 'KeyE' || event.code === 'KeyF') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
+    if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
@@ -772,7 +812,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 

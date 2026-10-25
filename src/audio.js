@@ -665,6 +665,46 @@ export class Sound {
     for (let i = 0; i < 6; i++) click(t + 0.22 + i * 0.028, 0.025, 1800, 0.018);
   }
 
+  /** Coppers on the kiosk's tin counter, and the paper round the loaf. */
+  till() {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.005;
+    // two or three coins, each a short bright ring
+    for (let i = 0; i < 3; i++) {
+      const at = t + i * 0.07 + this.rng.float(0, 0.03);
+      for (const f of [2900, 4300]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f * this.rng.float(0.94, 1.06);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(f > 3000 ? 0.012 : 0.02, at + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+        osc.connect(g).connect(this.master);
+        osc.start(at);
+        osc.stop(at + 0.2);
+      }
+    }
+    this.crumble(0.35, 0.03);
+  }
+
+  /** Bread torn and crumbled in the hand: a dry, papery crackle. */
+  crumble(delay = 0, level = 0.04) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.005 + delay;
+    for (let i = 0; i < 7; i++) {
+      this.burst({
+        time: t + i * 0.035 + this.rng.float(0, 0.02),
+        freq: this.rng.float(2200, 4200),
+        q: 1.4,
+        duration: 0.04,
+        level: level * this.rng.float(0.5, 1),
+        rate: 1.4,
+      });
+    }
+  }
+
   /** A snowball bursting `dist` m away: a soft thump and the crunch of powder. */
   splat(dist, pan = 0, kind = 'wall') {
     if (!this.ready) return;

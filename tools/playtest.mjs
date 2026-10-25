@@ -1168,6 +1168,99 @@ if (sman) {
   check(false, 'snowmen exist');
 }
 
+/* ================================================================ bread */
+// the kiosk sells a loaf over the counter in opening hours; B crumbles a
+// handful for the pigeons, who flutter over, eat it up and go home again
+console.log('→ bread');
+const bread = await page.evaluate(() => {
+  const g = window.__game;
+  const B = g.bread;
+  const P = g.world.pigeons;
+  if (!B || !P) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior, clock: g.env.cur.clockMinutes };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const kiosk = g.world.interactables.find((i) => i.id === 'kiosk');
+  const crumbs = g.world.interactables.find((i) => i.id === 'crumbs');
+  const c = g.world.points.counter;
+  // at the window at noon, facing the counter
+  g.env.cur.clockMinutes = 12 * 60;
+  g.player.teleport(c.x, c.z, Math.PI);
+  const here = kiosk.distanceTo(c.x, c.z) < kiosk.radius;
+  const offer = kiosk.prompt();
+  const radioStill = kiosk.distanceTo(11.6, -1.5) === Infinity;
+  kiosk.onUse();
+  const bought = B.handfuls;
+  // after hours the window is shut
+  g.env.cur.clockMinutes = 22 * 60;
+  const shut = kiosk.prompt();
+  kiosk.onUse();
+  const afterShut = B.handfuls;
+  g.env.cur.clockMinutes = 12 * 60;
+  // land everyone, then crumble a handful on the snow 8 m from the kiosk flock
+  const D = g.world.dog;
+  const dogAt = D.position.clone();
+  const run = (secs, pl) => {
+    for (let t = 0; t < secs; t += 0.05) {
+      D.position.set(-25, 0, 12);
+      P.update(0.05, { player: pl });
+    }
+  };
+  for (const f of P.flocks) {
+    if (f.state !== 'ground') {
+      f.state = 'landing';
+      for (const b of f.birds) b.target = P.spot(f, b);
+    }
+  }
+  run(30, null);
+  const f = P.flocks[0];
+  g.player.teleport(17.3, 2.7, Math.PI / 2);
+  const pl = g.player.position;
+  const feedOffer = crumbs.distanceTo() < crumbs.radius ? crumbs.prompt() : null;
+  crumbs.onUse();
+  const pile = P.piles.at(-1);
+  const near = () => f.birds.filter((b) => Math.hypot(b.pos.x - pile.x, b.pos.z - pile.z) < 1.3).length;
+  let came = null;
+  for (let t = 0; t < 20 && came === null; t += 0.5) {
+    run(0.5, pl);
+    if (f.state === 'ground' && near() === f.birds.length) came = t;
+  }
+  const lowest = Math.min(...f.birds.map((b) => Math.hypot(b.pos.x - pl.x, b.pos.z - pl.z)));
+  let eaten = null;
+  for (let t = 0; t < 60 && eaten === null; t += 0.5) {
+    run(0.5, pl);
+    if (!P.piles.includes(pile)) eaten = t;
+  }
+  // the player walks off: they settle back home
+  run(25, null);
+  const home = Math.hypot(
+    f.birds.reduce((s, b) => s + b.pos.x, 0) / f.birds.length - f.home.x,
+    f.birds.reduce((s, b) => s + b.pos.z, 0) / f.birds.length - f.home.z,
+  );
+  // another handful, then the player treads on it
+  crumbs.onUse();
+  run(15, pl);
+  const fedAgain = f.state === 'ground' && f.pile === P.piles.at(-1);
+  const tread = { x: P.piles.at(-1).x, z: P.piles.at(-1).z };
+  run(0.3, tread);
+  const scattered = f.state;
+  D.position.copy(dogAt);
+  g.env.cur.clockMinutes = was.clock;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { here, offer, radioStill, bought, shut, afterShut, feedOffer, came, lowest, eaten, home, left: B.handfuls, fedAgain, scattered };
+});
+if (bread) {
+  console.log(`  "${bread.offer}" → ${bread.bought} handfuls; at night "${bread.shut}"; "${bread.feedOffer}"; the flock at the crumbs after ${bread.came} s (nearest ${bread.lowest.toFixed(1)} m), eaten after ${bread.eaten} s, ${bread.home.toFixed(1)} m from home after; trodden on → ${bread.scattered}`);
+  check(bread.here && bread.offer === 'E — buy a loaf (13 kop.)' && bread.bought === 4 && bread.radioStill, 'the kiosk sells a loaf at the window');
+  check(bread.shut.startsWith('The kiosk is shut') && bread.afterShut === 4, 'the kiosk sells nothing after hours');
+  check(bread.feedOffer?.startsWith('B — crumble bread') && bread.came !== null && bread.lowest < 2.5, 'crumbled bread brings the pigeons round your feet');
+  check(bread.eaten !== null && bread.home < 3.5, 'the pigeons eat the crumbs up and go home');
+  check(bread.fedAgain && bread.scattered !== 'ground' && bread.left === 2, 'treading on the crumbs puts them up');
+} else {
+  check(false, 'bread and pigeons exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

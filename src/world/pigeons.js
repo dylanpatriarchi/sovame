@@ -3,8 +3,11 @@
 // coming too close (the player, the dog, a passer-by, a car), or a snowball
 // landing among them, sends the whole flock up with a clatter of wings: it
 // wheels round over the roofs a while and glides back down once the coast is
-// clear. Their own seeded stream, no colliders; every bird part is one
-// instanced mesh, so the lot costs four draw calls.
+// clear. Crumble some bread nearby and they come for it instead: they flutter
+// over to the crumbs and feed round your feet, flighty only if you tread on
+// them, and go home once it is all gone. Their own seeded stream, no
+// colliders; every bird part is one instanced mesh, so the lot costs four
+// draw calls (and one more for the crumbs).
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { damp, Rng, TAU } from "../util.js";
@@ -19,6 +22,11 @@ const FLY = 7.5; // m/s wheeling round
 const SCARE = { player: 4.5, dog: 4, person: 1.8, car: 4.5, snowball: 6 };
 const AIR_MIN = 9; // s aloft at least
 const CLEAR = 10; // m: nobody this near the feeding spot before landing
+export const FEED_REACH = 22; // m: flocks living this near come for the crumbs
+const PILE_R = 0.75; // m: they feed round the crumbs this close
+const PILES = 4; // crumb piles on the ground at once
+const SPECKS = 30; // crumbs per handful
+const EAT = 0.008; // of a handful, per bird per second of pecking
 
 const _m = new THREE.Matrix4();
 const _p = new THREE.Matrix4();
@@ -101,13 +109,18 @@ class Pigeons {
     this.t = 0;
     /** Wing clatters and coos to be heard (main.js plays them). */
     this.voice = [];
+    /** Crumbs on the ground: { x, z, left (0..1), specks }. */
+    this.piles = [];
     this.flocks = FLOCKS.map((f) => ({
       ...f,
+      home: { x: f.x, z: f.z, r: f.r },
+      pile: null,
       state: "ground",
       timer: 0,
       ang: 0,
       alt: 9,
       R: 9,
+      dir: 1,
       birds: [],
     }));
     const count = this.flocks.reduce((s, f) => s + f.n, 0);
@@ -134,6 +147,18 @@ class Pigeons {
     this.wingsL = make(wingL, count, "pigeon-wing");
     this.wingsR = make(wingR, count, "pigeon-wing");
     this.group.add(this.bodies, this.heads, this.wingsL, this.wingsR);
+    // the crumbs: pale specks of bread on the snow
+    this.crumbs = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.03, 0.014, 0.024),
+      new THREE.MeshStandardMaterial({ color: 0xd8b57a, roughness: 0.9 }),
+      PILES * SPECKS,
+    );
+    this.crumbs.name = "bread-crumbs";
+    this.crumbs.frustumCulled = false;
+    this.crumbs.count = 0;
+    this.crumbs.raycast = () => {};
+    this.crumbs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.group.add(this.crumbs);
 
     let i = 0;
     for (const f of this.flocks) {
@@ -228,13 +253,92 @@ class Pigeons {
     this.voice.push({ kind: "flutter", x: f.x, z: f.z, n: f.birds.length });
   }
 
+  /** A handful of crumbs scattered round (x, z): the flocks near enough come for them. */
+  feed(x, z) {
+    const specks = [];
+    for (let k = 0; k < SPECKS; k++) {
+      const a = this.rng.float(0, TAU);
+      const r = Math.sqrt(this.rng.next()) * 0.55;
+      const sx = x + Math.cos(a) * r;
+      const sz = z + Math.sin(a) * r;
+      specks.push({
+        x: sx,
+        y: this.ground(sx, sz) + 0.006,
+        z: sz,
+        yaw: this.rng.float(0, TAU),
+        s: this.rng.float(0.6, 1.4),
+      });
+    }
+    const pile = { x, z, left: 1, specks };
+    this.piles.push(pile);
+    if (this.piles.length > PILES) this.piles.shift();
+    return pile;
+  }
+
+  /** The crumb pile this flock should be feeding at, if any. */
+  pileFor(f) {
+    let best = null;
+    let bestD = FEED_REACH;
+    for (const p of this.piles) {
+      const d = Math.hypot(p.x - f.home.x, p.z - f.home.z);
+      if (d < bestD) {
+        best = p;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** A short flight from where the birds stand to the flock's (new) feeding place. */
+  hop(f) {
+    f.state = "landing";
+    // should something put them off on the way, they wheel round from here
+    f.ang = this.rng.float(0, TAU);
+    f.dir = this.rng.sign();
+    f.R = this.rng.float(8, 13);
+    f.alt = this.rng.float(8, 12);
+    for (const b of f.birds) {
+      b.delay = this.rng.float(0, 0.5);
+      b.landed = false;
+      b.mode = "fly";
+      b.target = this.spot(f, b);
+      b.vel.set(0, 2.4 + this.rng.float(0, 0.8), 0);
+    }
+    this.voice.push({ kind: "flutter", x: f.x, z: f.z, n: f.birds.length });
+  }
+
+  /** Follows the crumbs: off to a new pile, home again once it is eaten. */
+  forage(f) {
+    const pile = this.pileFor(f);
+    if (pile === f.pile) return;
+    f.pile = pile;
+    const at = pile ?? f.home;
+    f.x = at.x;
+    f.z = at.z;
+    f.r = pile ? PILE_R : f.home.r;
+    if (f.state === "ground") {
+      // too far to walk: they flutter over
+      const far = f.birds.some(
+        (b) => Math.hypot(b.pos.x - f.x, b.pos.z - f.z) > f.r + 1.5,
+      );
+      if (far) this.hop(f);
+    } else {
+      if (f.state === "landing")
+        for (const b of f.birds) b.target = this.spot(f, b);
+      else if (pile) f.timer = Math.min(f.timer, 1.5);
+    }
+  }
+
   /** Is anything alarming within reach of the flock? Returns its position. */
   threat(f, player, extra = 0) {
     const hit = (x, z, r) => Math.hypot(x - f.x, z - f.z) < f.r + r;
-    // the player and the dog are watched from further off before landing
-    if (player && hit(player.x, player.z, SCARE.player + extra)) return player;
+    // the player and the dog are watched from further off before landing;
+    // at the crumbs only a car or treading right on them puts the birds up
+    const fed = f.pile ? 0.6 - f.r : null;
+    if (player && hit(player.x, player.z, fed ?? SCARE.player + extra))
+      return player;
     const dog = this.world.dog;
-    if (dog && hit(dog.position.x, dog.position.z, SCARE.dog + extra))
+    if (dog && hit(dog.position.x, dog.position.z, fed ?? SCARE.dog + extra))
       return dog.position;
     for (const c of this.world.trafficCars ?? [])
       if (Math.abs(c.speed) > 1 && hit(c.x, c.z, SCARE.car)) return c;
@@ -243,7 +347,8 @@ class Pigeons {
         return c;
     for (const p of this.world.people?.list ?? []) {
       if (!p.root.visible || p.idle || p.onFurniture) continue;
-      if (hit(p.position.x, p.position.z, SCARE.person)) return p.position;
+      if (hit(p.position.x, p.position.z, fed ?? SCARE.person))
+        return p.position;
     }
     return null;
   }
@@ -260,7 +365,10 @@ class Pigeons {
         }
       }
     }
+    // eaten up: the crumbs are gone
+    this.piles = this.piles.filter((p) => p.left > 0);
     for (const f of this.flocks) {
+      this.forage(f);
       if (f.state === "ground") {
         const t = this.threat(f, player);
         if (t) this.takeOff(f, t.x, t.z);
@@ -316,6 +424,13 @@ class Pigeons {
           }
         }
       }
+      // pecking at the crumbs eats them up
+      if (
+        f.pile &&
+        b.mode === "peck" &&
+        Math.hypot(b.pos.x - f.pile.x, b.pos.z - f.pile.z) < f.r + 0.3
+      )
+        f.pile.left -= EAT * dt;
       b.step += dt * (moving ? 14 : 0);
       b.peck = damp(b.peck, b.mode === "peck" ? 1 : 0, 6, dt);
       b.spread = damp(b.spread, 0, 8, dt);
@@ -457,7 +572,25 @@ class Pigeons {
         }
       }
     }
-    for (const m of [this.bodies, this.heads, this.wingsL, this.wingsR])
+    // the crumbs thin out as they are eaten
+    let n = 0;
+    for (const p of this.piles) {
+      const shown = Math.ceil(p.left * SPECKS);
+      for (let k = 0; k < shown; k++) {
+        const c = p.specks[k];
+        _q.setFromEuler(_e.set(0, c.yaw, 0));
+        _m.compose(_v.set(c.x, c.y, c.z), _q, _s.setScalar(c.s));
+        this.crumbs.setMatrixAt(n++, _m);
+      }
+    }
+    this.crumbs.count = n;
+    for (const m of [
+      this.bodies,
+      this.heads,
+      this.wingsL,
+      this.wingsR,
+      this.crumbs,
+    ])
       m.instanceMatrix.needsUpdate = true;
   }
 }

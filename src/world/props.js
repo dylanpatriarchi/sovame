@@ -386,6 +386,8 @@ export function buildProps(ctx) {
 
     world.kiosk = { windowMat, light: kLight, glow: kGlow, glowBase: 0.5 };
     world.points.radio = new THREE.Vector3(x, 1.8, z - d / 2 - 0.6);
+    // where you stand to be served, just off the step
+    world.points.counter = new THREE.Vector3(x, 0, z - d / 2 - 1.05);
     ctx.addZone('Продуктовый киоск', 'Grocery kiosk', 9, 15, 0, 8);
   }
 
