@@ -36,6 +36,7 @@ import { IceSlide } from './iceslide.js';
 import { GarageIcicles } from './garages.js';
 import { Television } from './tv.js';
 import { WindowDoodles } from './doodles.js';
+import { NewYear } from './newyear.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -574,6 +575,17 @@ async function boot() {
       pebbles.toss({ x: camera.position.x + f.x * 0.3, y: camera.position.y - 0.25, z: camera.position.z + f.z * 0.3 }, f);
     },
   });
+  // the New Year tree by the playground in winter: E sends a firework up
+  const newYear = new NewYear({ world, sound });
+  world.interactables.push({
+    id: 'new-year-tree',
+    x: 0,
+    z: 0,
+    radius: 1.6,
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? newYear.distanceTo(x, z) : Infinity),
+    prompt: () => newYear.prompt,
+    onUse: () => newYear.launch(),
+  });
   // a ride down the ice slide in winter: E at the foot of its stairs
   const iceSlide = new IceSlide({ world, player, camera, sound });
   world.interactables.push({
@@ -969,6 +981,7 @@ async function boot() {
       if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = icicles.note;
+      if (!text && !state.interior) text = newYear.note;
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
     }
@@ -1092,7 +1105,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, newYear, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1103,6 +1116,18 @@ async function boot() {
     const dz = z - camera.position.z;
     const dist = Math.hypot(dx, dz);
     return { dist, pan: dist > 0.01 ? (dx * _right.x + dz * _right.z) / dist : 0 };
+  };
+  // fireworks: the whistle going up, and the bang arriving after the flash
+  newYear.onLaunch = (p) => {
+    if (state.interior) return;
+    const h = heard(p.x, p.z);
+    sound.rocket(h.dist, h.pan);
+  };
+  newYear.onBurst = (p) => {
+    if (state.interior) return;
+    const h = heard(p.x, p.z);
+    const dist = Math.hypot(h.dist, p.y - camera.position.y);
+    sound.bang(dist, h.pan, dist / 340);
   };
   // an icicle shattering on the ground
   icicles.onShatter = (c) => {
@@ -1220,6 +1245,7 @@ async function boot() {
       icicles.update(dt, snowballs.balls);
       television.update(dt, state.elapsed);
       doodles.update(dt);
+      newYear.update(dt);
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();

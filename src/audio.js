@@ -1231,6 +1231,58 @@ export class Sound {
     }
   }
 
+  /** A firework rocket going up `dist` m away: the fizz of the fuse and a
+   * whistle rising as it climbs. */
+  rocket(dist, pan = 0) {
+    if (!this.ready || dist > 200) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const level = 0.035 / (1 + dist * dist * 0.002);
+    if (level < 0.0015) return;
+    const out = this.#out(pan);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(900, t);
+    osc.frequency.exponentialRampToValueAtTime(2600, t + 1.2);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(level, t + 0.15);
+    env.gain.setValueAtTime(level, t + 0.9);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 1.25);
+    osc.connect(env).connect(out);
+    osc.start(t);
+    osc.stop(t + 1.3);
+    this.burst({ time: t, freq: 3000, q: 0.6, duration: 1.2, level: level * 0.6, type: 'highpass', out });
+  }
+
+  /** A firework bursting `dist` m away (the sound comes after the flash,
+   * `delay` s later): a deep bang and a crackle of sparks. */
+  bang(dist, pan = 0, delay = 0) {
+    if (!this.ready || dist > 300) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01 + delay;
+    const level = 0.22 / (1 + dist * dist * 0.0015);
+    if (level < 0.002) return;
+    const out = this.#out(pan);
+    this.burst({ time: t, freq: 120, q: 0.7, duration: 0.7, level, type: 'lowpass', out });
+    this.burst({ time: t, freq: 900, q: 0.5, duration: 0.25, level: level * 0.5, out });
+    const thump = ctx.createOscillator();
+    thump.frequency.setValueAtTime(70, t);
+    thump.frequency.exponentialRampToValueAtTime(32, t + 0.4);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(level * 0.8, t + 0.01);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    thump.connect(env).connect(out);
+    thump.start(t);
+    thump.stop(t + 0.55);
+    // the crackle as the sparks burn out
+    const pops = this.rng.int(10, 18);
+    for (let i = 0; i < pops; i++) {
+      this.burst({ time: t + 0.5 + this.rng.float(0, 1.4), freq: this.rng.float(2500, 6000), q: 1.5, duration: 0.02, level: level * this.rng.float(0.1, 0.3), out });
+    }
+  }
+
   /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
   meow(dist, pan = 0) {
     if (!this.ready) return;

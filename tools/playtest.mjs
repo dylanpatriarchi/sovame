@@ -2375,6 +2375,84 @@ if (doodle) {
   check(false, 'the window doodles exist');
 }
 
+/* ================================================================ new year */
+// the New Year tree by the playground in winter: the garland chases round,
+// E at the tree sends a rocket up that bursts into sparks which fall and
+// fade; out of winter the tree is gone and so is its collider
+console.log('→ new year');
+const newyear = await page.evaluate(() => {
+  const g = window.__game;
+  const N = g.newYear;
+  if (!N) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  N.update(0.1);
+  const it = W.interactables.find((i) => i.id === 'new-year-tree');
+  const tree = { x: N.base.x, z: N.base.z };
+  // walk up to it: blocked at the trunk, offered a step away
+  P.teleport(tree.x + 2.6, tree.z, Math.PI / 2);
+  const reach = it.distanceTo(P.position.x, P.position.z);
+  const offered = reach < it.radius && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  const trunk = W.collides(tree.x, tree.z, 0.3);
+  // the garland changes from frame to frame
+  const c0 = [];
+  const c1 = [];
+  const col = N.bulbs.instanceColor;
+  for (let i = 0; i < 8; i++) c0.push(col.getX(i));
+  N.update(0.4);
+  for (let i = 0; i < 8; i++) c1.push(col.getX(i));
+  const chasing = c0.some((v, i) => Math.abs(v - c1[i]) > 0.3);
+  // a rocket: up, the burst, the sparks falling
+  it.onUse();
+  const up = N.flying;
+  let maxY = 0;
+  let sparks = 0;
+  for (let t = 0; t < 2; t += 0.05) {
+    N.update(0.05);
+    const pos = N.sparkGeo.attributes.position;
+    let lit = 0;
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > -100) {
+      lit++;
+      maxY = Math.max(maxY, pos.getY(i));
+    }
+    sparks = Math.max(sparks, lit);
+  }
+  const burst = { flying: N.flying, sparks, maxY: maxY - N.base.y, note: N.note };
+  for (let t = 0; t < 4; t += 0.1) N.update(0.1);
+  const after = { shown: N.sparks.visible };
+  // three at most in the air
+  N.cooldown = 0;
+  for (let i = 0; i < 5; i++) {
+    N.cooldown = 0;
+    it.onUse();
+  }
+  const capped = N.flying;
+  for (let t = 0; t < 6; t += 0.1) N.update(0.1);
+  // out of winter: no tree, no collider
+  W.season = 'autumn';
+  N.update(0.1);
+  const autumn = { shown: N.group.visible, trunk: W.collides(tree.x, tree.z, 0.3), offered: Number.isFinite(it.distanceTo(tree.x + 2.6, tree.z)) };
+  W.season = was.season;
+  N.update(0);
+  N.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, trunk, chasing, up, burst, after, capped, autumn };
+});
+if (newyear) {
+  console.log(`  "${newyear.offer}" (offered ${newyear.offered}); ${newyear.burst.sparks} sparks up to ${newyear.burst.maxY.toFixed(1)} m; "${newyear.burst.note}"; ${newyear.capped} at once`);
+  check(newyear.offered && newyear.offer === 'E — light a firework (салют)' && newyear.trunk && newyear.chasing, 'the New Year tree stands by the playground in winter, its garland chasing round');
+  check(newyear.up === 1 && newyear.burst.flying === 0 && newyear.burst.sparks > 80 && newyear.burst.maxY > 15 && newyear.burst.note?.startsWith('С Новым годом') && !newyear.after.shown && newyear.capped === 3, 'E sends a rocket up to burst into sparks that fall and fade, three at most at once');
+  check(!newyear.autumn.shown && !newyear.autumn.trunk && !newyear.autumn.offered, 'out of winter the tree is gone, and its collider with it');
+} else {
+  check(false, 'the New Year tree exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
