@@ -1519,6 +1519,56 @@ console.log(
 check(rink.winter.slid && rink.winter.glide > 3 && rink.winter.glide > rink.snow.glide * 4, 'a run on the winter ice carries on into a slide');
 check(!rink.snow.slid && rink.snow.glide < 1 && !rink.autumn.slid && rink.autumn.glide < 1, 'snow, and the ice out of winter, stop you short');
 
+/* ================================================================ soda */
+// the soda-water machine by the kiosk: E pours a glass with syrup (3 kop.),
+// B a plain one (1 kop.); it fills, fizzing, and is drunk
+console.log('→ soda');
+const soda = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.soda;
+  if (!S) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  // its footprint is its own: no other collider, no road, no path under it
+  const others = g.world.colliders.filter((c) => c !== S.rect && c.minX < S.rect.maxX && c.maxX > S.rect.minX && c.minZ < S.rect.maxZ && c.maxZ > S.rect.minZ).length;
+  const ground = g.world.surfaceAt((S.rect.minX + S.rect.maxX) / 2, (S.rect.minZ + S.rect.maxZ) / 2);
+  g.player.teleport(S.stand.x, S.stand.z, 0);
+  const free = !g.world.collides(S.stand.x, S.stand.z, 0.3);
+  const it = g.world.interactables.find((i) => i.id === 'soda');
+  const plain = g.world.interactables.find((i) => i.id === 'soda-plain');
+  const offer = it.distanceTo(S.stand.x, S.stand.z) < it.radius ? it.prompt() : null;
+  it.onUse();
+  const filling = S.state;
+  let full = 0;
+  for (let i = 0; i < 60 && S.state === 'filling'; i++) {
+    S.update(0.05);
+    full = Math.max(full, S.level);
+  }
+  const drinking = S.state;
+  for (let i = 0; i < 200 && S.state !== 'idle'; i++) S.update(0.05);
+  const after = { state: S.state, drunk: S.drunk, spent: S.spent };
+  plain.onUse();
+  for (let i = 0; i < 200 && S.state !== 'idle'; i++) S.update(0.05);
+  const spent = S.spent;
+  S.update(0, { season: 'winter' });
+  const capWinter = S.cap.visible;
+  S.update(0, { season: 'autumn' });
+  const capAutumn = S.cap.visible;
+  S.update(0, { season: g.world.season });
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { others, ground, free, offer, filling, full, drinking, after, spent, capWinter, capAutumn };
+});
+if (soda) {
+  console.log(`  on ${soda.ground}, ${soda.others} colliders under it; "${soda.offer}" → ${soda.filling} (full ${soda.full.toFixed(2)}) → ${soda.drinking} → ${soda.after.state}; drunk ${soda.after.drunk}, spent ${soda.spent} kop.`);
+  check(soda.others === 0 && soda.ground !== 'asphalt' && soda.free, 'the soda machine stands on its own patch of ground, free to walk up to');
+  check(soda.offer?.startsWith('E — soda with syrup') && soda.filling === 'filling' && soda.full > 0.95 && soda.drinking === 'drinking' && soda.after.state === 'idle' && soda.after.drunk === 1, 'E pours a glass of soda, which fills and is drunk');
+  check(soda.spent === 4 && soda.capWinter && !soda.capAutumn, 'syrup 3 kop., plain 1 kop.; snow on the lid only in winter');
+} else {
+  check(false, 'the soda machine exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

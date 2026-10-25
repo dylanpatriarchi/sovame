@@ -28,6 +28,7 @@ npm run preview  # serve the production build
 | Left mouse button / `G` | throw a snowball (in winter, outdoors) |
 | `E` (looking down at open snow) | build a snowman (in winter; five stand at a time) |
 | `E` (at the kiosk window) | buy a loaf of bread (8:00 — 20:00) |
+| `E` / `B` (at the soda machine behind the kiosk) | a glass of fizzy water with syrup (3 kop.) or plain (1 kop.), from the shared glass |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |

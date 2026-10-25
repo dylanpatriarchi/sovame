@@ -568,6 +568,72 @@ export class Sound {
   /* ------------------------------------------------ ambience by zone */
 
   /** One skate stroke on the hockey box, `dist` m away, `pan` -1..1. */
+  /** The soda machine: a coin dropping through, the valve's thunk, then
+   * water hissing into the glass and fizzing for `secs`. */
+  soda(secs = 2.6) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.02;
+    // the coin rattling down the chute
+    for (let i = 0; i < 4; i++) {
+      const at = t + i * 0.07 + i * i * 0.01;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = 2400 - i * 220;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.exponentialRampToValueAtTime(0.03 / (1 + i * 0.4), at + 0.004);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+      osc.connect(env).connect(this.master);
+      osc.start(at);
+      osc.stop(at + 0.08);
+    }
+    // the valve
+    this.burst({ time: t + 0.32, freq: 140, q: 0.9, duration: 0.18, level: 0.06, type: 'lowpass' });
+    // the pour, then the fizz settling
+    const at = t + 0.45;
+    const src = ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    src.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.setValueAtTime(900, at);
+    band.frequency.linearRampToValueAtTime(1500, at + secs);
+    band.Q.value = 1.2;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, at);
+    env.gain.exponentialRampToValueAtTime(0.035, at + 0.1);
+    env.gain.setValueAtTime(0.035, at + secs - 0.4);
+    env.gain.exponentialRampToValueAtTime(0.0001, at + secs + 0.3);
+    src.connect(band).connect(env).connect(this.master);
+    src.start(at, this.rng.float(0, 1));
+    src.stop(at + secs + 0.35);
+    for (let i = 0; i < 26; i++) {
+      this.burst({ time: at + this.rng.float(0.2, secs + 1.2), freq: this.rng.float(5000, 9000), q: 6, duration: 0.012, level: this.rng.float(0.004, 0.012), type: 'bandpass' });
+    }
+  }
+
+  /** Three swallows from the glass. */
+  gulp() {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.05;
+    for (let i = 0; i < 3; i++) {
+      const at = t + i * 0.45;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(260, at);
+      osc.frequency.exponentialRampToValueAtTime(120, at + 0.12);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.exponentialRampToValueAtTime(0.05, at + 0.02);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+      osc.connect(env).connect(this.master);
+      osc.start(at);
+      osc.stop(at + 0.18);
+    }
+  }
+
   /** Boot soles gliding on ice: a soft hiss, brighter the faster. */
   slide(speed = 2) {
     if (!this.ready) return;

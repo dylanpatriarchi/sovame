@@ -22,6 +22,7 @@ import { Snowmen } from './snowmen.js';
 import { Bread, PRICE } from './bread.js';
 import { Badges } from './badges.js';
 import { Swings } from './swings.js';
+import { Soda } from './soda.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -310,6 +311,28 @@ async function boot() {
         !bread.open ? 'The kiosk is shut · open 8:00 — 20:00' : bread.full ? 'Enough bread for now' : `E — buy a loaf (${PRICE} kop.)`,
       onUse: () => {
         if (!bread.buy()) sound.ui('tick');
+      },
+    });
+  }
+  // the soda-water machine behind it: E with syrup, B plain
+  const soda = new Soda({ world, sound });
+  for (const [id, key, syrup] of [
+    ['soda', 'KeyE', true],
+    ['soda-plain', 'KeyB', false],
+  ]) {
+    world.interactables.push({
+      id,
+      key,
+      x: soda.stand.x,
+      z: soda.stand.z,
+      radius: 1,
+      // the plain button a hair further, so the prompt names both
+      distanceTo: (x, z) => Math.hypot(x - soda.stand.x, z - soda.stand.z) + (syrup ? 0 : 0.001),
+      facing: { x: 0, z: -1 },
+      available: () => !driving.active && !state.interior,
+      prompt: () => soda.prompt,
+      onUse: () => {
+        if (!soda.buy(syrup)) sound.ui('tick');
       },
     });
   }
@@ -873,7 +896,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, soda, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1008,6 +1031,7 @@ async function boot() {
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
     badges.update(dt);
+    soda.update(dt, { night: env.cur.lamp, season: world.season });
     world.cats?.update(dt, { player: state.mode === 'playing' ? onFoot : null, speed: Math.hypot(player.velocity.x, player.velocity.z) });
     if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
     if (!sound.ready && world.cats) world.cats.voice.length = 0;
