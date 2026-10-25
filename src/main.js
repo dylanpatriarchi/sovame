@@ -27,6 +27,7 @@ import { Phone } from './phone.js';
 import { Angels } from './angels.js';
 import { Puck } from './puck.js';
 import { Carpet } from './carpet.js';
+import { Target } from './target.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -478,6 +479,18 @@ async function boot() {
     prompt: () => carpet.hangPrompt,
     onUse: () => carpet.hang(),
   });
+  // a chalk target on a garage door: snowballs that land in it score
+  const target = new Target({ world, sound });
+  snowballs.onImpact = (kind, pos) => target.impact(kind, pos);
+  world.interactables.push({
+    id: 'target',
+    x: 0,
+    z: 0,
+    radius: 2.5,
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? target.distanceTo(x, z) : Infinity),
+    prompt: () => target.prompt,
+    onUse: () => target.wipe(),
+  });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
       id: spot.id,
@@ -851,6 +864,7 @@ async function boot() {
       if (angels.active) text = angels.prompt;
       if (carpet.hanging) text = carpet.hangingPrompt;
       if (!text && carpet.note) text = carpet.note;
+      if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
     }
@@ -974,7 +988,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1087,6 +1101,7 @@ async function boot() {
       swings.update(dt, player.keys);
       angels.update(dt);
       carpet.update(dt, player.keys);
+      target.update(dt);
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {
       // paused behind the wheel: idle the engine

@@ -273,6 +273,8 @@ export class Snowballs {
   }
 
   #impact(pos, normal, kind, listener) {
+    // for whatever keeps score of where they land (the chalk target)
+    this.onImpact?.(kind, pos, normal);
     // the pigeons nearby take fright
     this.world.pigeons?.scare(pos.x, pos.z);
     this.world.cats?.scare(pos.x, pos.z);

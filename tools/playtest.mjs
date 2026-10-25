@@ -1833,6 +1833,68 @@ if (carpet) {
   check(false, 'the carpet frame exists');
 }
 
+/* ================================================================ target */
+// a chalk target on a garage door: a snowball in the middle scores 10, in
+// the rings 5 and 2, on the door outside it nothing; E at the door wipes it
+console.log('→ target');
+const target = await page.evaluate(() => {
+  const g = window.__game;
+  const T = g.target;
+  if (!T) return null;
+  const S = g.snowballs;
+  const P = g.player;
+  const W = g.world;
+  const V = g.camera.position.constructor;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const fly = () => {
+    for (let i = 0; i < 600 && S.balls.some((b) => b.alive); i++) S.update(1 / 60);
+    return S.hits.at(-1);
+  };
+  const c = T.center;
+  // 7 m out from the door, throwing straight at it: find the lift that hits the middle
+  const throwAt = (k, dz) => {
+    S.cooldown = 0;
+    const before = T.score;
+    S.throw(new V(c.x + 7, c.y, c.z), new V(-1, k, dz / 7).normalize());
+    const hit = fly();
+    return { points: T.score - before, kind: hit?.kind, y: hit?.y, z: hit?.z };
+  };
+  T.wipe();
+  let lift = null;
+  for (let k = -0.08; k <= 0.25 && lift === null; k += 0.005) {
+    const r = throwAt(k, 0);
+    if (r.points === 10) lift = k;
+  }
+  const bull = { lift, note: T.note, score: T.score };
+  const middle = lift === null ? null : throwAt(lift, 0.26);
+  const outer = lift === null ? null : throwAt(lift, 0.42);
+  const door = lift === null ? null : throwAt(lift, 0.9);
+  const total = T.score;
+  const hits = T.hits;
+  // the door: E wipes it, from right in front
+  P.teleport(c.x + 1.5, c.z, Math.PI / 2);
+  const it = W.interactables.find((i) => i.id === 'target');
+  const offer = it.distanceTo(P.position.x, P.position.z) < it.radius ? it.prompt() : null;
+  it.onUse();
+  const wiped = { score: T.score, none: it.distanceTo(P.position.x, P.position.z) === Infinity };
+  T.wipe();
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { bull, middle, outer, door, total, hits, offer, wiped };
+});
+if (target) {
+  console.log(
+    `  bullseye at lift ${target.bull.lift?.toFixed(3)} ("${target.bull.note}"); 0.26 m off: +${target.middle?.points}; 0.42 m off: +${target.outer?.points}; 0.9 m off: +${target.door?.points} (${target.door?.kind}); ${target.total} in ${target.hits}; "${target.offer}"`
+  );
+  check(target.bull.lift !== null && target.bull.note?.startsWith('Bullseye! +10'), 'a snowball in the middle of the chalk target scores 10');
+  check(target.middle?.points === 5 && target.outer?.points === 2 && target.door?.points === 0 && target.door?.kind === 'wall' && target.hits >= 3, 'the rings score 5 and 2, the door outside them nothing');
+  check(target.offer?.startsWith(`Chalk target: ${target.total} points`) && target.wiped.score === 0 && target.wiped.none, 'E at the door wipes the score');
+} else {
+  check(false, 'the chalk target exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
