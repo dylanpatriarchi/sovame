@@ -923,6 +923,71 @@ if (dog) {
   check(false, 'the dog exists');
 }
 
+/* ================================================================ pigeons */
+// two flocks peck about on the ground; whoever comes too close (or a
+// snowball) sends them up, they wheel round and land again once it is quiet
+console.log('→ pigeons');
+const pig = await page.evaluate(() => {
+  const g = window.__game;
+  const P = g.world.pigeons;
+  if (!P) return null;
+  const D = g.world.dog;
+  const dogAt = D.position.clone();
+  const keepDogAway = () => D.position.set(-25, 0, 12);
+  const run = (secs, opts = {}) => {
+    for (let t = 0; t < secs; t += 0.05) {
+      keepDogAway();
+      P.update(0.05, opts);
+    }
+  };
+  // land everyone, then let them potter about
+  for (const f of P.flocks) {
+    if (f.state !== 'ground') {
+      f.state = 'landing';
+      for (const b of f.birds) b.target = P.spot(f, b);
+    }
+  }
+  run(30);
+  const all = P.flocks.flatMap((f) => f.birds);
+  const settled = P.flocks.every((f) => f.state === 'ground');
+  const blocked = all.filter((b) => g.world.collides(b.pos.x, b.pos.z, 0.08)).length;
+  const onGround = all.every((b) => Math.abs(b.pos.y - g.world.heightAt(b.pos.x, b.pos.z)) < 0.05);
+  // the player walks up to the kiosk flock
+  const f = P.flocks[0];
+  P.voice.length = 0;
+  const pl = { x: f.x + 5, z: f.z };
+  run(0.3, { player: pl });
+  const fled = f.state;
+  const flutter = P.voice.some((v) => v.kind === 'flutter');
+  run(5, { player: pl });
+  const height = Math.min(...f.birds.map((b) => b.pos.y));
+  // the player moves on: they come back down
+  let back = null;
+  for (let t = 0; t < 60 && back === null; t += 0.5) {
+    run(0.5, {});
+    if (f.state === 'ground') back = t;
+  }
+  // a snowball landing among the other flock
+  const f2 = P.flocks[1];
+  const b0 = f2.birds[0].pos;
+  g.snowballs.cooldown = 0;
+  const V = b0.constructor;
+  g.snowballs.throw(new V(b0.x - 4, 1.4, b0.z), new V(1, -0.33, 0).normalize());
+  for (let i = 0; i < 200 && g.snowballs.balls.some((b) => b.alive); i++) g.snowballs.update(1 / 60);
+  const snowFled = `${f2.state} (${g.snowballs.hits.at(-1)?.kind} ${Math.hypot(g.snowballs.hits.at(-1).x - b0.x, g.snowballs.hits.at(-1).z - b0.z).toFixed(1)} m off)`;
+  D.position.copy(dogAt);
+  return { settled, blocked, onGround, count: all.length, fled, flutter, height, back, snowFled };
+});
+if (pig) {
+  console.log(`  ${pig.count} birds, ${pig.blocked} in a collider; player near → ${pig.fled} (${pig.flutter ? 'flutter' : 'silent'}), lowest ${pig.height.toFixed(1)} m after 5 s, back down after ${pig.back} s; snowball → ${pig.snowFled}`);
+  check(pig.settled && pig.blocked === 0 && pig.onGround, 'the pigeons peck about on open ground');
+  check(pig.fled !== 'ground' && pig.flutter && pig.height > 3, 'pigeons clatter up when the player comes near');
+  check(pig.back !== null, 'the pigeons land again once the player has gone');
+  check(!pig.snowFled.startsWith('ground'), 'a snowball sends the pigeons up');
+} else {
+  check(false, 'the pigeons exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

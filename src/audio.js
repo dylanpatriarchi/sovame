@@ -731,6 +731,91 @@ export class Sound {
     }
   }
 
+  /** A flock of `n` pigeons clattering up: a rattle of wingbeats that thins out. */
+  flutter(dist, pan = 0, n = 8) {
+    if (!this.ready) return;
+    const level = 0.09 / (1 + dist * dist * 0.008);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = clamp(pan, -1, 1);
+      panner.connect(this.master);
+    }
+    const out = panner ?? this.master;
+    const t0 = ctx.currentTime + 0.02;
+    // each bird its own burst of claps, staggered as they lift off
+    for (let i = 0; i < Math.min(n, 9); i++) {
+      const t = t0 + this.rng.float(0, 0.35);
+      const dur = this.rng.float(0.7, 1.3);
+      const rate = this.rng.float(9, 13);
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.flatNoise;
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.frequency.value = this.rng.float(900, 1600);
+      band.Q.value = 0.9;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0, t);
+      // the claps: a sharp gain spike every wingbeat, fading
+      const beats = Math.floor(dur * rate);
+      const each = level / Math.sqrt(Math.min(n, 9));
+      for (let k = 0; k < beats; k++) {
+        const bt = t + k / rate;
+        const g = each * (1 - k / beats) * this.rng.float(0.6, 1);
+        env.gain.setValueAtTime(0.0001, bt);
+        env.gain.linearRampToValueAtTime(g, bt + 0.008);
+        env.gain.exponentialRampToValueAtTime(0.0001, bt + 0.05);
+      }
+      noise.connect(band).connect(env).connect(out);
+      noise.start(t, this.rng.float(0, 1));
+      noise.stop(t + dur + 0.1);
+    }
+  }
+
+  /** A pigeon's soft throaty coo, `dist` m away. */
+  coo(dist, pan = 0) {
+    if (!this.ready) return;
+    const level = 0.03 / (1 + dist * dist * 0.02);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = clamp(pan, -1, 1);
+      panner.connect(this.master);
+    }
+    const out = panner ?? this.master;
+    let t = ctx.currentTime + 0.03;
+    const base = this.rng.float(330, 390);
+    // "croo-oo-oo": a swelling note, then two falling ones
+    for (const [len, from, to] of [
+      [0.32, 0.92, 1.08],
+      [0.22, 1.02, 0.86],
+      [0.26, 0.98, 0.8],
+    ]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(base * from, t);
+      osc.frequency.exponentialRampToValueAtTime(base * to, t + len);
+      // the throaty burr
+      const trem = ctx.createOscillator();
+      trem.frequency.value = 28;
+      const tg = ctx.createGain();
+      tg.gain.value = 0.35;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(level, t + len * 0.4);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      trem.connect(tg).connect(env.gain);
+      osc.connect(env).connect(out);
+      osc.start(t);
+      trem.start(t);
+      osc.stop(t + len + 0.02);
+      trem.stop(t + len + 0.02);
+      t += len + 0.04;
+    }
+  }
+
   /** A crow's caw: two or three hoarse "kraa"s, `dist` m away. */
   caw(dist, pan = 0) {
     if (!this.ready) return;

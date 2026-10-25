@@ -755,6 +755,17 @@ async function boot() {
       const h = heard(dog.position.x, dog.position.z);
       sound.bark(h.dist * (state.interior ? 3 : 1), h.pan, kind, times);
     }
+    // pigeons clattering up, or cooing on the ground
+    const pigeons = world.pigeons;
+    if (pigeons?.voice.length) {
+      for (const v of pigeons.voice) {
+        const h = heard(v.x, v.z);
+        const dist = h.dist * (state.interior ? 3 : 1);
+        if (v.kind === 'flutter') sound.flutter(dist, h.pan, v.n);
+        else sound.coo(dist, h.pan);
+      }
+      pigeons.voice.length = 0;
+    }
     // the bus's doors folding open or shut at the stop
     const bus = world.bus;
     if (bus?.hiss) {
@@ -831,6 +842,8 @@ async function boot() {
     world.traffic?.update(dt, { keepClear: onFoot ? [onFoot] : [], lights: env.cur.lamp });
     // the stray dog takes an interest in the player on foot
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
+    world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
+    if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
     sound.updateWind(env.wind.gust);
     updateAmbience(dt);
     snowballs.update(dt, sound.ready ? heard : null);

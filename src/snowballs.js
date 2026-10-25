@@ -273,6 +273,8 @@ export class Snowballs {
   }
 
   #impact(pos, normal, kind, listener) {
+    // the pigeons nearby take fright
+    this.world.pigeons?.scare(pos.x, pos.z);
     // something for the dog to chase
     if (kind === 'ground' || kind === 'wall') this.world.dog?.snowball(pos.x, pos.z, false);
     this.hits.push({ kind, x: pos.x, y: pos.y, z: pos.z, nx: normal?.x ?? 0, ny: normal?.y ?? 0, nz: normal?.z ?? 0 });
