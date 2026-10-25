@@ -747,6 +747,14 @@ async function boot() {
         if (!car || h.dist < car.dist) car = { ...h, speed: Math.abs(c.speed), big: !!c.isBus };
       }
     }
+    // the dog barking (or yelping)
+    const dog = world.dog;
+    if (dog?.voice) {
+      const { kind, times } = dog.voice;
+      dog.voice = null;
+      const h = heard(dog.position.x, dog.position.z);
+      sound.bark(h.dist * (state.interior ? 3 : 1), h.pan, kind, times);
+    }
     // the bus's doors folding open or shut at the stop
     const bus = world.bus;
     if (bus?.hiss) {
@@ -821,6 +829,8 @@ async function boot() {
     // drivers stop for the player on foot (on the title screen, the camera)
     const onFoot = state.mode === 'title' ? camera.position : !state.interior && !driving.active ? player.position : null;
     world.traffic?.update(dt, { keepClear: onFoot ? [onFoot] : [], lights: env.cur.lamp });
+    // the stray dog takes an interest in the player on foot
+    world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     sound.updateWind(env.wind.gust);
     updateAmbience(dt);
     snowballs.update(dt, sound.ready ? heard : null);

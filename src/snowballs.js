@@ -218,6 +218,13 @@ export class Snowballs {
       this.#impact(pos, null, 'person', listener);
       return true;
     }
+    // the dog: small and low
+    const dog = world.dog;
+    if (dog && pos.y < dog.root.position.y + 0.75 && (pos.x - dog.position.x) ** 2 + (pos.z - dog.position.z) ** 2 < 0.4 * 0.4) {
+      dog.snowball(from.x, from.z, true);
+      this.#impact(pos, null, 'person', listener);
+      return true;
+    }
     // walls, trees, cars: only once the ball reaches a collider (cheap, 2D)
     // is the actual surface looked for, with a ray along its path through
     // the meshes whose bounds the path crosses
@@ -266,6 +273,8 @@ export class Snowballs {
   }
 
   #impact(pos, normal, kind, listener) {
+    // something for the dog to chase
+    if (kind === 'ground' || kind === 'wall') this.world.dog?.snowball(pos.x, pos.z, false);
     this.hits.push({ kind, x: pos.x, y: pos.y, z: pos.z, nx: normal?.x ?? 0, ny: normal?.y ?? 0, nz: normal?.z ?? 0 });
     if (this.hits.length > 16) this.hits.shift();
     // powder

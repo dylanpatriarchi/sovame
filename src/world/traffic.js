@@ -261,6 +261,7 @@ export function buildTraffic(ctx) {
       const points = [];
       for (const p of keepClear) points.push({ x: p.x, z: p.z, r: 0.5 });
       for (const p of world.people?.list ?? []) points.push({ x: p.position.x, z: p.position.z, r: 0.4 });
+      if (world.dog) points.push({ x: world.dog.position.x, z: world.dog.position.z, r: 0.5 });
       for (const c of world.cars ?? []) if (c.driven) points.push({ x: c.x, z: c.z, r: 2.3 });
       const lit = lights > 0.15;
       for (const t of cars) {

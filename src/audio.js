@@ -681,6 +681,56 @@ export class Sound {
     src.stop(t + 0.22);
   }
 
+  /**
+   * The stray dog: a few hoarse barks ("гав"), or one high yelp. A buzzy
+   * voice through a mouth formant that opens and drops at each bark.
+   */
+  bark(dist, pan = 0, kind = 'bark', times = 2) {
+    if (!this.ready) return;
+    const level = 0.11 / (1 + dist * dist * 0.006);
+    if (level < 0.0015) return;
+    const ctx = this.ctx;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = clamp(pan, -1, 1);
+      panner.connect(this.master);
+    }
+    const out = panner ?? this.master;
+    let t = ctx.currentTime + 0.02;
+    const yelp = kind === 'yelp';
+    for (let i = 0; i < (yelp ? 1 : times); i++) {
+      const dur = yelp ? 0.32 : this.rng.float(0.11, 0.16);
+      const f = yelp ? 900 : this.rng.float(260, 320);
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f * (yelp ? 1.3 : 1.25), t);
+      osc.frequency.exponentialRampToValueAtTime(f * (yelp ? 0.55 : 0.7), t + dur);
+      const formant = ctx.createBiquadFilter();
+      formant.type = 'bandpass';
+      formant.Q.value = 3;
+      formant.frequency.setValueAtTime(yelp ? 2200 : 1100, t);
+      formant.frequency.exponentialRampToValueAtTime(yelp ? 1300 : 650, t + dur);
+      // a breathy edge
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.flatNoise;
+      const ng = ctx.createGain();
+      ng.gain.value = 0.25;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(level, t + 0.012);
+      env.gain.setValueAtTime(level, t + dur * 0.35);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(formant);
+      noise.connect(ng).connect(formant);
+      formant.connect(env).connect(out);
+      osc.start(t);
+      noise.start(t, this.rng.float(0, 1));
+      osc.stop(t + dur + 0.02);
+      noise.stop(t + dur + 0.02);
+      t += dur + this.rng.float(0.14, 0.26);
+    }
+  }
+
   /** A crow's caw: two or three hoarse "kraa"s, `dist` m away. */
   caw(dist, pan = 0) {
     if (!this.ready) return;

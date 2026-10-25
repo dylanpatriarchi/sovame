@@ -842,6 +842,87 @@ if (snow) {
   check(false, 'snowballs exist');
 }
 
+/* ================================================================ dog */
+// the stray on the obelisk square: wanders and sniffs about at home,
+// tags along with the player, runs after a snowball, bolts when hit, and
+// the drivers stop for it
+console.log('→ dog');
+const dog = await page.evaluate(() => {
+  const g = window.__game;
+  const D = g.world.dog;
+  if (!D) return null;
+  const run = (secs, opts = {}) => {
+    const states = new Set();
+    for (let t = 0; t < secs; t += 0.05) {
+      D.update(0.05, { player: null, cars: [], ...opts });
+      states.add(D.state);
+    }
+    return states;
+  };
+  const near = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  // a minute on its own
+  const states = run(60);
+  const home = { x: D.position.x, z: D.position.z };
+  const homeFree = !g.world.collides(home.x, home.z, 0.25);
+  // the player comes up and walks off north along the avenue
+  const pl = { x: D.position.x + 6, z: D.position.z };
+  run(3, { player: pl });
+  const noticed = D.state;
+  for (const [x, z] of [[-8, 0], [-8, 20]]) {
+    for (let k = 0; k < 160; k++) {
+      pl.x += (x - pl.x) * 0.03;
+      pl.z += (z - pl.z) * 0.03;
+      D.update(0.05, { player: pl, cars: [] });
+    }
+  }
+  const followGap = near(pl, D.position);
+  const followFree = !g.world.collides(D.position.x, D.position.z, 0.25);
+  // a snowball lands 5 m away
+  D.state = 'idle';
+  D.cooldown = 60;
+  D.voice = null;
+  const ball = { x: D.position.x + 4, z: D.position.z + 3 };
+  D.snowball(ball.x, ball.z, false);
+  const chasing = D.state;
+  const before = near(ball, D.position);
+  run(3);
+  const after = near(ball, D.position);
+  // hit by one thrown from 3 m to the west
+  const from = { x: D.position.x - 3, z: D.position.z };
+  D.snowball(from.x, from.z, true);
+  const yelp = D.voice?.kind;
+  const hitState = D.state;
+  const d0 = near(from, D.position);
+  run(2);
+  const d1 = near(from, D.position);
+  // stood in the lane ahead of a moving car: the driver stops
+  const moving = () => g.world.trafficCars.find((c) => !c.isBus && c.speed > 4);
+  for (let i = 0; i < 1200 && !moving(); i++) g.world.traffic.update(0.05, { keepClear: [], lights: 0 });
+  const car = moving();
+  let carStopped = null;
+  if (car) {
+    D.state = 'idle';
+    D.timer = 99;
+    D.position.set(car.x + Math.sin(car.heading) * 9, 0, car.z + Math.cos(car.heading) * 9);
+    for (let i = 0; i < 80; i++) g.world.traffic.update(0.05, { keepClear: [], lights: 0 });
+    carStopped = { speed: car.speed, gap: near(car, D.position) };
+  }
+  D.position.set(home.x, 0, home.z);
+  D.state = 'idle';
+  D.timer = 2;
+  return { states: [...states], home, homeFree, noticed, followGap, followFree, chasing, before, after, yelp, hitState, d0, d1, carStopped };
+});
+if (dog) {
+  console.log(`  alone: ${dog.states.join('/')}, at (${dog.home.x.toFixed(1)}, ${dog.home.z.toFixed(1)}); following ${dog.followGap.toFixed(1)} m behind; snowball ${dog.before.toFixed(1)} → ${dog.after.toFixed(1)} m; hit: ${dog.yelp}, ${dog.d0.toFixed(1)} → ${dog.d1.toFixed(1)} m away; car ${dog.carStopped ? `${dog.carStopped.speed.toFixed(2)} m/s at ${dog.carStopped.gap.toFixed(1)} m` : 'none'}`);
+  check(dog.states.length >= 2 && dog.homeFree && dog.home.x > -32 && dog.home.x < -5 && dog.home.z > -14 && dog.home.z < 18, 'the dog wanders about its square, clear of everything');
+  check(dog.noticed === 'follow' && dog.followGap < 6 && dog.followFree, 'the dog tags along with the player');
+  check(dog.chasing === 'chase' && dog.after < dog.before - 2, 'the dog runs after a snowball');
+  check(dog.yelp === 'yelp' && dog.hitState === 'flee' && dog.d1 > dog.d0 + 3, 'a dog hit by a snowball yelps and bolts');
+  check(dog.carStopped && dog.carStopped.speed < 0.5 && dog.carStopped.gap > 1, 'drivers stop for the dog');
+} else {
+  check(false, 'the dog exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
