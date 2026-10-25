@@ -30,6 +30,7 @@ import { Carpet } from './carpet.js';
 import { Target } from './target.js';
 import { Mail } from './mail.js';
 import { Hopscotch } from './hopscotch.js';
+import { Pebbles } from './pebbles.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -508,6 +509,20 @@ async function boot() {
     distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? target.distanceTo(x, z) : Infinity),
     prompt: () => target.prompt,
     onUse: () => target.wipe(),
+  });
+  // pebbles tossed from the edge of the frozen pond: the new ice sings
+  const pebbles = new Pebbles({ world, sound });
+  world.interactables.push({
+    id: 'pebble',
+    x: 0,
+    z: 0,
+    radius: 2.9,
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? pebbles.distanceTo(x, z, player.forwardVector) : Infinity),
+    prompt: () => pebbles.prompt,
+    onUse: () => {
+      const f = player.forwardVector;
+      pebbles.toss({ x: camera.position.x + f.x * 0.3, y: camera.position.y - 0.25, z: camera.position.z + f.z * 0.3 }, f);
+    },
   });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
@@ -1009,7 +1024,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1124,6 +1139,7 @@ async function boot() {
       carpet.update(dt, player.keys);
       target.update(dt);
       mail.update(dt);
+      pebbles.update(dt);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {

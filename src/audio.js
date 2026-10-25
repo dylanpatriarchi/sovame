@@ -1104,6 +1104,47 @@ export class Sound {
     }
   }
 
+  /** A pebble on new ice: the sheet sings, a falling "pew" that rings on
+   * (the high notes outrun the low along the ice), softer with every hop. */
+  iceSing(level = 1) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const peak = 0.05 * clamp(level, 0, 1);
+    if (peak < 0.002) return;
+    const delay = ctx.createDelay(0.5);
+    delay.delayTime.value = 0.07;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.45;
+    delay.connect(feedback).connect(delay);
+    delay.connect(this.master);
+    for (const [at, f0, f1, len, k] of [
+      [0, 3400, 520, 0.22, 1],
+      [0.03, 2600, 380, 0.3, 0.55],
+    ]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f0, t + at);
+      osc.frequency.exponentialRampToValueAtTime(f1, t + at + len);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t + at);
+      env.gain.exponentialRampToValueAtTime(peak * k, t + at + 0.008);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+      osc.connect(env);
+      env.connect(this.master);
+      env.connect(delay);
+      osc.start(t + at);
+      osc.stop(t + at + len + 0.02);
+    }
+    // the knock of the stone itself
+    this.burst({ time: t, freq: 1800, q: 1.2, duration: 0.04, level: peak * 0.6 });
+    // the echo loop would ring on forever, unheard: cut it once it has died away
+    setTimeout(() => {
+      delay.disconnect();
+      feedback.disconnect();
+    }, 2000);
+  }
+
   /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
   meow(dist, pan = 0) {
     if (!this.ready) return;

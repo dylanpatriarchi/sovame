@@ -2031,6 +2031,67 @@ if (hop) {
   check(false, 'the hopscotch exists');
 }
 
+/* ================================================================ pebbles */
+// a pebble tossed from the edge of the frozen pond skips, sings on the ice
+// each time it touches, slides on and stays where it stops, on the ice
+console.log('→ pebbles');
+const peb = await page.evaluate(() => {
+  const g = window.__game;
+  const B = g.pebbles;
+  if (!B) return null;
+  const P = g.player;
+  const W = g.world;
+  const S = g.sound;
+  const pond = W.pond;
+  const was = { mode: g.state.mode, interior: g.state.interior, sing: S.iceSing };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  let sings = 0;
+  S.iceSing = () => sings++;
+  const it = W.interactables.find((i) => i.id === 'pebble');
+  // on the east bank, facing the ice; then facing away; then too far back
+  P.teleport(pond.x + pond.r + 1, pond.z, Math.PI / 2);
+  const offer = it.distanceTo(P.position.x, P.position.z) < it.radius ? it.prompt() : null;
+  P.teleport(pond.x + pond.r + 1, pond.z, -Math.PI / 2);
+  const away = it.distanceTo(P.position.x, P.position.z);
+  P.teleport(pond.x + pond.r + 5, pond.z, Math.PI / 2);
+  const far = it.distanceTo(P.position.x, P.position.z);
+  P.teleport(pond.x + pond.r + 1, pond.z, Math.PI / 2);
+  P.update(0);
+  it.onUse();
+  const p = B.list.at(-1);
+  let t = 0;
+  while (p.moving && t < 30) {
+    B.update(1 / 60);
+    t += 1 / 60;
+  }
+  const res = {
+    t,
+    skips: p.skips,
+    sings,
+    lost: p.lost,
+    travel: Math.hypot(p.pos.x - p.from.x, p.pos.z - p.from.z),
+    onIce: Math.hypot(p.pos.x - pond.x, p.pos.z - pond.z) < pond.r,
+    y: p.pos.y,
+  };
+  // a whole handful: only the last dozen stay
+  for (let i = 0; i < 14; i++) it.onUse();
+  for (let i = 0; i < 1800 && B.list.some((q) => q.moving); i++) B.update(1 / 60);
+  const kept = B.list.length;
+  S.iceSing = was.sing;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offer, away: away === Infinity, far: far === Infinity, res, kept };
+});
+if (peb) {
+  console.log(`  "${peb.offer}" (facing away: none ${peb.away}, too far back: none ${peb.far}); ${peb.res.skips} skips, ${peb.res.sings} songs, ${peb.res.travel.toFixed(1)} m in ${peb.res.t.toFixed(1)} s, on the ice ${peb.res.onIce} (y ${peb.res.y.toFixed(3)}); ${peb.kept} kept`);
+  check(peb.offer === 'E — toss a pebble onto the ice' && peb.away && peb.far, 'a pebble is offered at the edge of the pond, facing the ice');
+  check(peb.res.skips >= 2 && peb.res.sings === peb.res.skips && !peb.res.lost && peb.res.onIce && peb.res.travel > 6 && peb.res.y < 0.1, 'it skips, singing on the ice each time, and slides to a stop on it');
+  check(peb.kept === 12, 'only the last dozen pebbles stay on the ice');
+} else {
+  check(false, 'the pebbles exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

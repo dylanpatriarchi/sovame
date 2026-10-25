@@ -37,6 +37,7 @@ npm run preview  # serve the production build
 | Snowballs at the chalk target on a garage door | 10 in the middle, 5 and 2 in the rings; the score comes up as you hit; `E` at the door wipes it |
 | `E` (at the post boxes by a stairwell's door) | look through the slots: the morning paper and its headline, a letter, a postcard, a bill; a few finds, then nothing until the post comes at seven |
 | `Space` (on the hopscotch by the kiosk, out of winter) | jump from square to square, 1 to 10 in order, for a time; a wrong square or a hop off the drawing is back to 1 |
+| `E` (at the edge of the frozen pond, facing the ice) | toss a pebble: it skips and slides far over the ice, and the new ice sings its falling "pew" at every touch |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |
