@@ -2268,6 +2268,56 @@ if (icicles) {
   check(false, 'the icicles exist');
 }
 
+/* ================================================================ tv */
+// the TV in a living-room flat: E at the set turns the knob round the
+// channels (news, figure skating, the test card, off) and the screen and
+// the sound follow; bedroom flats have no set
+console.log('→ tv');
+const tv = await page.evaluate(() => {
+  const g = window.__game;
+  const T = g.television;
+  if (!T) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats.find((f) => f.tv);
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = flat;
+  const it = W.interactables.find((i) => i.id === `${flat.id}:tv`);
+  P.teleport(it.x, it.z, Math.PI / 2);
+  const f = P.forwardVector;
+  const offered = Math.hypot(it.x - P.position.x, it.z - P.position.z) < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const screen = flat.tv.screenMat;
+  const look = () => ({ id: T.current(flat).id, map: !!screen.map, bright: screen.color.r + screen.color.g + screen.color.b, glow: flat.tv.glowMat.opacity, sound: T.soundFor(flat), prompt: it.prompt() });
+  T.update(0.1, 10);
+  const seen = [look()];
+  const maps = new Set([screen.map]);
+  for (let i = 0; i < 4; i++) {
+    it.onUse();
+    T.update(0.1, 10 + i);
+    seen.push(look());
+    maps.add(screen.map);
+  }
+  const note = T.note;
+  const sets = W.flats.filter((q) => q.tv).length;
+  const knobs = W.interactables.filter((i) => i.id.endsWith(':tv')).length;
+  const bedroom = W.flats.find((q) => !q.tv);
+  const noSet = !W.interactables.some((i) => i.id === `${bedroom.id}:tv`);
+  T.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, seen, maps: maps.size, note, sets, knobs, noSet };
+});
+if (tv) {
+  console.log(`  ${tv.seen.map((s) => `${s.id} (${s.bright.toFixed(2)})`).join(' → ')}; "${tv.seen[0].prompt}"; ${tv.knobs} sets`);
+  const [news, skating, test, off, again] = tv.seen;
+  check(tv.offered && news.id === 'news' && news.map && news.sound.voice === 1 && news.prompt === 'E — turn the knob to the next channel' && tv.knobs === tv.sets && tv.noSet, 'the TV is offered in the living-room flats, on the news');
+  check(skating.id === 'skating' && skating.sound.voice === 0 && skating.sound.music > 0 && test.id === 'test' && test.sound.tone === 1 && tv.maps === 4, 'the knob turns to figure skating and the test card, each with its own picture and sound');
+  check(off.id === 'off' && !off.map && off.bright < 0.2 && off.glow === 0 && off.prompt === 'E — turn the TV on' && off.sound.voice + off.sound.music + off.sound.tone === 0 && again.id === 'news' && again.bright > 1, 'and to off (dark and silent), then round to the news again');
+} else {
+  check(false, 'the TV exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

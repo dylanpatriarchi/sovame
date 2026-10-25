@@ -34,6 +34,7 @@ import { Pebbles } from './pebbles.js';
 import { Kettle } from './kettle.js';
 import { IceSlide } from './iceslide.js';
 import { GarageIcicles } from './garages.js';
+import { Television } from './tv.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -248,6 +249,8 @@ async function boot() {
   }
   // the kettle on each kitchen stove: E lights the gas, and it whistles at the boil
   const kettle = new Kettle({ world, sound });
+  // the TV in the living-room flats: E turns the knob round the channels
+  const television = new Television({ world });
   // one flat behind a padded door on each landing, with a kitchen radio
   const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
   for (const flat of world.flats) {
@@ -289,6 +292,19 @@ async function boot() {
       prompt: () => kettle.prompt(flat),
       onUse: () => kettle.use(flat),
     });
+    if (flat.tv)
+      world.interactables.push({
+        id: `${flat.id}:tv`,
+        x: flat.tv.pos.x + 1.1,
+        z: flat.tv.pos.z,
+        radius: 0.9,
+        facing: { x: -1, z: 0 },
+        prompt: () => television.prompt(flat),
+        onUse: () => {
+          television.turn(flat);
+          sound.ui('tick');
+        },
+      });
   }
 
   const env = new Environment({
@@ -934,6 +950,7 @@ async function boot() {
       // what turned up in the post boxes, while it is read
       if (mail.note && state.interior) text = mail.note;
       if (kettle.note && state.interior) text = kettle.note;
+      if (television.note && state.interior) text = television.note;
       if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = icicles.note;
@@ -1060,7 +1077,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1083,7 +1100,9 @@ async function boot() {
     if (!sound.ready) return;
     _right.setFromMatrixColumn(camera.matrixWorld, 0);
     // a stairwell: TVs behind the padded doors of the landing
-    const tv = state.interior && !state.interior.kind ? 1 : 0;
+    // or, in a living-room flat, its own set: the channel that is on
+    const set = state.interior?.kind === 'flat' ? television.soundFor(state.interior) : null;
+    const tv = set ? set.voice : state.interior && !state.interior.kind ? 1 : 0;
     let car = null;
     if (!state.interior) {
       for (const c of world.trafficCars ?? []) {
@@ -1132,7 +1151,7 @@ async function boot() {
       }
     }
     const crows = (world.crows ?? []).map((c) => heard(c.crow.position.x, c.crow.position.z));
-    sound.ambience(dt, { tv, car, crows });
+    sound.ambience(dt, { tv, tvMusic: set?.music ?? null, tone: set?.tone ?? 0, car, crows });
     // skates on the hockey box: one stroke per push of a blade
     for (const p of world.people?.list ?? []) {
       if (!p.stroke) continue;
@@ -1184,6 +1203,7 @@ async function boot() {
       pebbles.update(dt);
       iceSlide.update(dt);
       icicles.update(dt, snowballs.balls);
+      television.update(dt, state.elapsed);
       kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();

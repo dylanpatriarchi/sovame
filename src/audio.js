@@ -1361,13 +1361,32 @@ export class Sound {
    * nearest moving car { dist, speed, pan, big } or null (big: the bus),
    * crows: [{ dist, pan }].
    */
-  ambience(dt, { tv = 0, car = null, crows = [] } = {}) {
+  ambience(dt, { tv = 0, tvMusic = null, tone = 0, car = null, crows = [] } = {}) {
     if (!this.ready) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     // the TV: a new phrase of syllables every couple of seconds
-    this.tvGain.gain.setTargetAtTime(0.05 * tv, now, 0.6);
-    this.tvMusic.gain.setTargetAtTime(tv > 0 ? 0.035 : 0, now, 1.5);
+    // (a set on music alone still needs its speaker; a voice cut off mid-phrase stops at once)
+    const bed = tvMusic ?? (tv > 0 ? 0.035 : 0);
+    this.tvGain.gain.setTargetAtTime(0.05 * Math.max(tv, bed > 0 ? 1 : 0), now, 0.6);
+    this.tvMusic.gain.setTargetAtTime(bed, now, tvMusic === null ? 1.5 : 0.3);
+    if (tv > 0.01) this.tvTalking = true;
+    else if (this.tvTalking) {
+      this.tvTalking = false;
+      this.tvSyllable.gain.cancelScheduledValues(now);
+      this.tvSyllable.gain.setTargetAtTime(0, now, 0.05);
+      this.tvNext = now;
+    }
+    // the test card's steady 1 kHz tone, out of the set's little speaker
+    if (tone > 0 && !this.toneGain) {
+      this.toneGain = ctx.createGain();
+      this.toneGain.gain.value = 0;
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 1000;
+      osc.connect(this.toneGain).connect(this.master);
+      osc.start();
+    }
+    this.toneGain?.gain.setTargetAtTime(0.012 * tone, now, 0.05);
     if (tv > 0.01 && now > this.tvNext - 0.3) {
       let t = Math.max(now, this.tvNext);
       const words = this.rng.int(4, 11);

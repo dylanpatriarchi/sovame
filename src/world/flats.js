@@ -590,7 +590,7 @@ function buildFlat(ctx, stairwell, index, variant) {
     kettle: new THREE.Vector3(cx + X0 + 0.27, 0.97, cz + 0.12),
     // kitchen pendant, room chandelier, hall ceiling dome
     lights: [new THREE.Vector3(cx - 2.2, FH - 1.0, cz + 2.7), new THREE.Vector3(cx + 0.8, FH - 0.6, cz + 0.2), new THREE.Vector3(cx - 0.6, FH - 0.35, cz - 2.8)],
-    tv: screenMat ? { screenMat, glowMat: tvGlow.material, phase: rng.float(0, 6) } : null,
+    tv: screenMat ? { screenMat, glowMat: tvGlow.material, phase: rng.float(0, 6), pos: new THREE.Vector3(cx + unitX + 0.275, 1.01, cz + 0.72) } : null,
   };
 }
 
@@ -670,7 +670,8 @@ export function buildFlats(ctx) {
   }
   ctx.addUpdater((dt, t) => {
     for (const flat of world.flats) {
-      if (!flat.tv) continue;
+      // (unless the TV module has taken the screens over)
+      if (!flat.tv || flat.tv.manual) continue;
       const k = 0.55 + 0.3 * Math.sin(t * 1.7 + flat.tv.phase) * Math.sin(t * 0.63 + flat.tv.phase * 2) + (Math.sin(t * 0.21 + flat.tv.phase) > 0.9 ? 0.25 : 0);
       flat.tv.screenMat.color.setRGB(0.45 * k, 0.6 * k, 0.95 * k);
       flat.tv.glowMat.opacity = 0.08 + 0.08 * k;
