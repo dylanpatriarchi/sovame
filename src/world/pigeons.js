@@ -181,7 +181,10 @@ class Pigeons {
       if (!this.world.collides(x, z, 0.12) && (k > 8 || !crowded(x, z)))
         return { x, z };
     }
-    return { x: f.x, z: f.z };
+    // nowhere better: stay put
+    return self && !this.world.collides(self.pos.x, self.pos.z, 0.12)
+      ? { x: self.pos.x, z: self.pos.z }
+      : { x: f.x, z: f.z };
   }
 
   ground(x, z) {
@@ -301,10 +304,16 @@ class Pigeons {
           dy = Math.atan2(Math.sin(dy), Math.cos(dy));
           b.yaw += dy * Math.min(1, dt * 8);
           const s = Math.min(d, WALK * dt);
-          b.pos.x += Math.sin(b.yaw) * s;
-          b.pos.z += Math.cos(b.yaw) * s;
-          b.pos.y = this.ground(b.pos.x, b.pos.z);
-          moving = true;
+          const nx = b.pos.x + Math.sin(b.yaw) * s;
+          const nz = b.pos.z + Math.cos(b.yaw) * s;
+          if (this.world.collides(nx, nz, 0.1)) {
+            // a post or a bench in the way: peck here instead
+            b.mode = "peck";
+            b.timer = this.rng.float(1, 2.5);
+          } else {
+            b.pos.set(nx, this.ground(nx, nz), nz);
+            moving = true;
+          }
         }
       }
       b.step += dt * (moving ? 14 : 0);
