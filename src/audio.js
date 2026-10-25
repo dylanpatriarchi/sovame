@@ -613,6 +613,50 @@ export class Sound {
     }
   }
 
+  /** The payphone's line, heard down the handset (300–3400 Hz): the dial
+   * tone, the dial's pulses, a ring, the speaking clock and its six pips,
+   * the short beeps of a dead line, the hook. */
+  phone(kind, len = 1, digit = 1) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.02;
+    const line = ctx.createBiquadFilter();
+    line.type = 'bandpass';
+    line.frequency.value = 1000;
+    line.Q.value = 0.35;
+    line.connect(this.master);
+    const tone = (at, dur, freq = 425, level = 0.025) => {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = freq;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.exponentialRampToValueAtTime(level, at + 0.01);
+      env.gain.setValueAtTime(level, at + dur - 0.01);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      osc.connect(env).connect(line);
+      osc.start(at);
+      osc.stop(at + dur + 0.02);
+    };
+    const click = (at, level = 0.05) => this.burst({ time: at, freq: 1800, q: 1.2, duration: 0.02, level, out: line });
+    if (kind === 'tone') tone(t, 1.15);
+    else if (kind === 'dial') {
+      // the finger-stop's whirr, then one pulse a tenth of a second
+      this.burst({ time: t, freq: 600, q: 2, duration: 0.3, level: 0.012 });
+      const n = digit === 0 ? 10 : digit;
+      for (let i = 0; i < n; i++) click(t + 0.35 + i * 0.1, 0.03);
+    } else if (kind === 'ring') tone(t + 0.3, 0.8);
+    else if (kind === 'time') {
+      // a woman's voice, too far down the line to make out
+      for (let i = 0; i < 7; i++) {
+        const at = t + 0.1 + i * 0.14;
+        this.burst({ time: at, freq: this.rng.float(500, 900), q: 3, duration: 0.12, level: 0.03, out: line });
+      }
+      // six pips, a second apart, the last one long
+      for (let i = 0; i < 6; i++) tone(t + 1.3 + i, i === 5 ? 0.35 : 0.1, 1000, 0.03);
+    } else if (kind === 'dead') for (let i = 0; i < 3; i++) tone(t + i * 0.7, 0.35);
+    else if (kind === 'hangup') click(t, 0.08);
+  }
+
   /** Three swallows from the glass. */
   gulp() {
     if (!this.ready) return;

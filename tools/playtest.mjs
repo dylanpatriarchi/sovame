@@ -1569,6 +1569,53 @@ if (soda) {
   check(false, 'the soda machine exists');
 }
 
+/* ================================================================ phone */
+// the phone box behind the kiosk: E dials 100 for the speaking clock, which
+// reads out the game's own time; walking off hangs up
+console.log('→ phone');
+const phoneBox = await page.evaluate(() => {
+  const g = window.__game;
+  const P = g.phone;
+  if (!P) return null;
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  const others = g.world.colliders.filter((c) => c !== P.rect && c.minX < P.rect.maxX && c.maxX > P.rect.minX && c.minZ < P.rect.maxZ && c.maxZ > P.rect.minZ).length;
+  g.player.teleport(P.stand.x, P.stand.z, 0);
+  const pl = g.player.position;
+  const free = !g.world.collides(pl.x, pl.z, 0.3);
+  const it = g.world.interactables.find((i) => i.id === 'phone');
+  const offer = it.distanceTo ? null : Math.hypot(it.x - pl.x, it.z - pl.z) < it.radius ? it.prompt() : null;
+  it.onUse();
+  const stages = [];
+  let heard = null;
+  for (let i = 0; i < 400 && P.busy; i++) {
+    P.update(0.05, { player: pl });
+    if (P.busy && stages.at(-1) !== P.stage) stages.push(P.stage);
+    if (P.stage === 'time') heard = it.prompt();
+  }
+  const m = Math.round(g.env.cur.clockMinutes) % 1440;
+  const clock = `${Math.floor(m / 60)} hours ${m % 60} minutes`;
+  const after = { busy: P.busy, calls: P.calls, spent: P.spent };
+  // a second call, and the caller walks off
+  it.onUse();
+  P.update(0.5, { player: pl });
+  const ringing = P.busy;
+  P.update(0.05, { player: { x: pl.x + 5, z: pl.z } });
+  const dropped = !P.busy;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { others, free, offer, stages, heard, clock, after, ringing, dropped };
+});
+if (phoneBox) {
+  console.log(`  ${phoneBox.others} colliders under it; "${phoneBox.offer}" → ${phoneBox.stages.join(' → ')}; heard ${phoneBox.heard}; walked off → dropped ${phoneBox.dropped}`);
+  check(phoneBox.others === 0 && phoneBox.free && phoneBox.offer?.startsWith('E — call the speaking clock'), 'the phone box stands clear, with a call offered at its front');
+  check(phoneBox.stages.join() === 'tone,dial,ring,time,dead' && phoneBox.heard?.includes(phoneBox.clock) && !phoneBox.after.busy && phoneBox.after.spent === 2, 'dialling 100 gets the speaking clock, telling the time of day');
+  check(phoneBox.ringing && phoneBox.dropped, 'walking off with the call on hangs up');
+} else {
+  check(false, 'the phone box exists');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

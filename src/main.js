@@ -23,6 +23,7 @@ import { Bread, PRICE } from './bread.js';
 import { Badges } from './badges.js';
 import { Swings } from './swings.js';
 import { Soda } from './soda.js';
+import { Phone } from './phone.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -336,6 +337,18 @@ async function boot() {
       },
     });
   }
+  // and the phone box beside it: E dials 100, the speaking clock
+  const phone = new Phone({ world, sound, env });
+  world.interactables.push({
+    id: 'phone',
+    x: phone.stand.x,
+    z: phone.stand.z,
+    radius: 1,
+    facing: { x: 0, z: -1 },
+    available: () => !driving.active && !state.interior,
+    prompt: () => phone.prompt,
+    onUse: () => (phone.busy ? phone.hangUp() : phone.call()),
+  });
   world.interactables.push({
     id: 'crumbs',
     key: 'KeyB',
@@ -896,7 +909,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, soda, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1032,6 +1045,7 @@ async function boot() {
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
     badges.update(dt);
     soda.update(dt, { night: env.cur.lamp, season: world.season });
+    phone.update(dt, { player: state.mode === 'playing' ? player.position : null, night: env.cur.lamp, season: world.season });
     world.cats?.update(dt, { player: state.mode === 'playing' ? onFoot : null, speed: Math.hypot(player.velocity.x, player.velocity.z) });
     if (!sound.ready && world.pigeons) world.pigeons.voice.length = 0;
     if (!sound.ready && world.cats) world.cats.voice.length = 0;
