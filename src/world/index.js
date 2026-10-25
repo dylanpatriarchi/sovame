@@ -6,6 +6,7 @@ import { WORLD, SEASONS } from '../config.js';
 import * as TX from '../textures.js';
 import { buildTerrain } from './terrain.js';
 import { buildBuildings } from './buildings.js';
+import { buildIcicles } from './icicles.js';
 import { buildProps } from './props.js';
 import { buildVegetation } from './vegetation.js';
 import { buildPeople } from './people.js';
@@ -76,6 +77,7 @@ export class World {
         'Apartment blocks and courtyards',
         () => {
           buildBuildings(this.ctx);
+          buildIcicles(this.ctx);
           buildEntrances(this.ctx);
           addFacadeLift(this);
         },

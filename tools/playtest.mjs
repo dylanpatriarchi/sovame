@@ -1062,6 +1062,40 @@ if (photoR) {
   check(false, 'photo mode exists');
 }
 
+/* ================================================================ icicles */
+// icicles hang under the eaves and the entrance canopies in winter only,
+// and never low enough to brush a head
+console.log('→ icicles');
+const ice = await page.evaluate(() => {
+  const g = window.__game;
+  const I = g.world.icicles;
+  if (!I) return null;
+  const M = new g.camera.matrixWorld.constructor();
+  let lowest = Infinity;
+  for (const mesh of I.meshes) {
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, M);
+      const e = M.elements;
+      // tip: the base minus the (scaled) length
+      lowest = Math.min(lowest, e[13] - Math.hypot(e[4], e[5], e[6]));
+    }
+  }
+  const was = g.world.season;
+  g.env.setSeason('autumn');
+  const autumn = I.meshes.some((m) => m.visible);
+  g.env.setSeason('winter');
+  const winter = I.meshes.every((m) => m.visible);
+  g.env.setSeason(was);
+  return { count: I.count, blocks: I.meshes.length, lowest, autumn, winter };
+});
+if (ice) {
+  console.log(`  ${ice.count} icicles on ${ice.blocks} blocks, lowest tip ${ice.lowest.toFixed(2)} m`);
+  check(ice.count > 2000 && ice.winter && !ice.autumn, 'icicles hang in winter and are gone in autumn');
+  check(ice.lowest > 1.95, 'no icicle hangs low enough to brush a head');
+} else {
+  check(false, 'the icicles exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road
