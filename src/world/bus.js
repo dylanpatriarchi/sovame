@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp } from '../util.js';
 import { makeSignTexture } from '../textures.js';
-import { box, colorize, plain } from './vehicles.js';
+import { box, colorize, escapesFromBox, plain } from './vehicles.js';
 
 export const BUS = {
   length: 10.5,
@@ -578,6 +578,10 @@ export class Bus {
 
   overlapsCircle(x, z, r) {
     return this.distanceTo(x, z) < r;
+  }
+
+  escapes(x, z, r) {
+    return escapesFromBox(this.x, this.z, this.heading, HALF_W, HALF_L, x, z, r);
   }
 
   /** A point in the bus's own frame (x right-to-left, y up, z nose), in the world. */

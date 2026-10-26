@@ -323,6 +323,9 @@ export function buildTraffic(ctx) {
         const room = roomAhead(t, points);
         if (room < Infinity) target = Math.min(target, Math.sqrt(2 * DECEL * Math.max(0, room)));
         if (room < 0.2) target = 0;
+        // already touching someone (they stepped out right under the bumper):
+        // the brakes lock there and then, it does not roll on into them
+        if (room < 0) t.speed = 0;
         if (t.bus) target = Math.min(target, busCall(t, dt));
         t.speed = target < t.speed ? Math.max(target, t.speed - DECEL * 1.6 * dt) : Math.min(target, t.speed + ACCEL * dt);
         t.s = (t.s + t.speed * dt) % path.length;

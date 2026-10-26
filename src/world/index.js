@@ -336,6 +336,19 @@ export class World {
     return false;
   }
 
+  /**
+   * A vehicle that moved onto someone (a car still braking, a bus pulling
+   * over) would otherwise leave them inside its body, where every step
+   * collides: the nearest free spot just clear of it, or null if not caught.
+   */
+  escapeVehicles(x, z, r) {
+    for (const c of this.colliders) {
+      if (!c.car?.escapes || !c.car.overlapsCircle(x, z, r)) continue;
+      for (const spot of c.car.escapes(x, z, r)) if (!this.collides(spot.x, spot.z, r)) return spot;
+    }
+    return null;
+  }
+
   /** Same check against the pre-expansion district (legacy scatter passes). */
   collidesHistoric(x, z, r) {
     if (Math.abs(x) > WORLD.bounds || Math.abs(z) > WORLD.bounds) return true;
