@@ -2031,6 +2031,517 @@ if (hop) {
   check(false, 'the hopscotch exists');
 }
 
+/* ================================================================ pebbles */
+// a pebble tossed from the edge of the frozen pond skips, sings on the ice
+// each time it touches, slides on and stays where it stops, on the ice
+console.log('→ pebbles');
+const peb = await page.evaluate(() => {
+  const g = window.__game;
+  const B = g.pebbles;
+  if (!B) return null;
+  const P = g.player;
+  const W = g.world;
+  const S = g.sound;
+  const pond = W.pond;
+  const was = { mode: g.state.mode, interior: g.state.interior, sing: S.iceSing };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  let sings = 0;
+  S.iceSing = () => sings++;
+  const it = W.interactables.find((i) => i.id === 'pebble');
+  // on the east bank, facing the ice; then facing away; then too far back
+  P.teleport(pond.x + pond.r + 1, pond.z, Math.PI / 2);
+  const offer = it.distanceTo(P.position.x, P.position.z) < it.radius ? it.prompt() : null;
+  P.teleport(pond.x + pond.r + 1, pond.z, -Math.PI / 2);
+  const away = it.distanceTo(P.position.x, P.position.z);
+  P.teleport(pond.x + pond.r + 5, pond.z, Math.PI / 2);
+  const far = it.distanceTo(P.position.x, P.position.z);
+  P.teleport(pond.x + pond.r + 1, pond.z, Math.PI / 2);
+  P.update(0);
+  it.onUse();
+  const p = B.list.at(-1);
+  let t = 0;
+  while (p.moving && t < 30) {
+    B.update(1 / 60);
+    t += 1 / 60;
+  }
+  const res = {
+    t,
+    skips: p.skips,
+    sings,
+    lost: p.lost,
+    travel: Math.hypot(p.pos.x - p.from.x, p.pos.z - p.from.z),
+    onIce: Math.hypot(p.pos.x - pond.x, p.pos.z - pond.z) < pond.r,
+    y: p.pos.y,
+  };
+  // a whole handful: only the last dozen stay
+  for (let i = 0; i < 14; i++) it.onUse();
+  for (let i = 0; i < 1800 && B.list.some((q) => q.moving); i++) B.update(1 / 60);
+  const kept = B.list.length;
+  S.iceSing = was.sing;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offer, away: away === Infinity, far: far === Infinity, res, kept };
+});
+if (peb) {
+  console.log(`  "${peb.offer}" (facing away: none ${peb.away}, too far back: none ${peb.far}); ${peb.res.skips} skips, ${peb.res.sings} songs, ${peb.res.travel.toFixed(1)} m in ${peb.res.t.toFixed(1)} s, on the ice ${peb.res.onIce} (y ${peb.res.y.toFixed(3)}); ${peb.kept} kept`);
+  check(peb.offer === 'E — toss a pebble onto the ice' && peb.away && peb.far, 'a pebble is offered at the edge of the pond, facing the ice');
+  check(peb.res.skips >= 2 && peb.res.sings === peb.res.skips && !peb.res.lost && peb.res.onIce && peb.res.travel > 6 && peb.res.y < 0.1, 'it skips, singing on the ice each time, and slides to a stop on it');
+  check(peb.kept === 12, 'only the last dozen pebbles stay on the ice');
+} else {
+  check(false, 'the pebbles exist');
+}
+
+/* ================================================================ kettle */
+// the kettle on a flat's stove: E lights the gas, it comes to the boil and
+// whistles, E takes it off and pours the tea; the flame, the steam and the
+// whistle stay in that flat
+console.log('→ kettle');
+const kettle = await page.evaluate(() => {
+  const g = window.__game;
+  const K = g.kettle;
+  if (!K) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats[0];
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = flat;
+  const it = W.interactables.find((i) => i.id === `${flat.id}:kettle`);
+  P.teleport(it.x, it.z, Math.PI / 2);
+  const f = P.forwardVector;
+  const offered = Math.hypot(it.x - P.position.x, it.z - P.position.z) < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  it.onUse();
+  const lit = { prompt: it.prompt(), flame: (K.update(0.1, flat), K.flame.visible), flameAt: K.flame.position.distanceTo(flat.kettle) };
+  // half a minute on the gas, a frame at a time
+  let steamed = 0;
+  for (let t = 0; t < 30; t += 0.1) {
+    K.update(0.1, flat);
+    steamed = Math.max(steamed, K.puffs.filter((p) => p.sprite.visible && p.sprite.material.opacity > 0.05).length);
+  }
+  const boiling = { ...K.status(flat), prompt: it.prompt() };
+  // to the stairwell and back: the flame and the steam stay in the flat
+  K.update(0.5, null);
+  const away = { flame: K.flame.visible, steam: K.puffs.filter((p) => p.sprite.visible).length, boiling: K.status(flat).boiling };
+  K.update(0.1, flat);
+  const teas = K.teas;
+  it.onUse();
+  const poured = { note: K.note, status: K.status(flat), prompt: it.prompt(), teas: K.teas - teas };
+  K.update(0.1, flat);
+  const off = K.flame.visible;
+  // another flat's kettle is cold
+  const other = K.status(W.flats[1]);
+  K.cancel();
+  K.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, lit, steamed, boiling, away, poured, off, other };
+});
+if (kettle) {
+  console.log(`  "${kettle.offer}" (offered ${kettle.offered}) → "${kettle.lit.prompt}"; ${kettle.steamed} puffs at most; boiling ${kettle.boiling.boiling} "${kettle.boiling.prompt}"; poured "${kettle.poured.note}"`);
+  check(kettle.offered && kettle.offer === 'E — put the kettle on' && kettle.lit.flame && kettle.lit.flameAt < 0.15 && kettle.lit.prompt === 'E — turn the gas off', 'the kettle is offered at the stove and E lights the gas under it');
+  check(kettle.boiling.boiling && kettle.steamed >= 3 && kettle.boiling.prompt.startsWith('E — take the kettle off') && !kettle.away.flame && kettle.away.steam === 0 && kettle.away.boiling, 'it comes to the boil and steams, and its flame and steam stay in the flat');
+  check(!kettle.poured.status.on && kettle.poured.teas === 1 && /tea/i.test(kettle.poured.note ?? '') && !kettle.off && kettle.poured.prompt === 'E — put the kettle on' && !kettle.other.on && kettle.other.heat === 0, 'E takes it off and pours the tea; the other kettles are cold');
+} else {
+  check(false, 'the kettle exists');
+}
+
+/* ================================================================ ice slide */
+// a ride down the ice slide in winter: up the stairs, sit at the top, down
+// the chute faster and faster, out over the run-out and into the snow, then
+// back on your feet with how far it went; out of winter it is not offered
+console.log('→ ice slide');
+const slide = await page.evaluate(() => {
+  const g = window.__game;
+  const S = g.iceSlide;
+  if (!S) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season, enabled: P.enabled };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  const it = W.interactables.find((i) => i.id === 'ice-slide');
+  // at the foot of the stairs, looking up them
+  P.teleport(-205, -118 + 4.6, 0);
+  const f = P.forwardVector;
+  const reach = it.distanceTo(P.position.x, P.position.z);
+  const offered = reach < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  it.onUse();
+  const stages = [];
+  let topY = 0;
+  let topV = 0;
+  let t = 0;
+  for (; t < 40 && S.active; t += 0.05) {
+    S.update(0.05);
+    if (stages[stages.length - 1] !== S.stage) stages.push(S.stage);
+    topY = Math.max(topY, P.position.y);
+    topV = Math.max(topV, S.v);
+  }
+  const end = { x: P.position.x, z: P.position.z, enabled: P.enabled, active: S.active, note: S.note, last: S.last, clear: !W.collides(P.position.x, P.position.z, 0.3), cam: g.camera.position.y - P.position.y };
+  // out of winter: no ride
+  W.season = 'autumn';
+  const autumn = Number.isFinite(it.distanceTo(-205, -113.4));
+  W.season = was.season;
+  S.note = null;
+  P.enabled = was.enabled;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, stages, topY, topV, t, end, autumn };
+});
+if (slide) {
+  console.log(`  "${slide.offer}" (offered ${slide.offered}); ${slide.stages.join(' → ')} in ${slide.t.toFixed(1)} s; up to ${slide.topY.toFixed(2)} m, ${slide.topV.toFixed(1)} m/s; "${slide.end.note}"`);
+  check(slide.offered && slide.offer.startsWith('E — climb up and slide down') && !slide.autumn, 'the ice slide is offered at the foot of its stairs, in winter only');
+  check(slide.stages.join(' ') === 'climb sit down out stand idle' && slide.topY > 2.4 && slide.topV > 5 && slide.topV < 9, 'up the stairs, sat at the top and down the chute at a good speed');
+  check(!slide.end.active && slide.end.enabled && slide.end.clear && slide.end.last > 12 && slide.end.last < 30 && /^Slid \d+\.\d m/.test(slide.end.note ?? '') && slide.end.cam > 1.2, 'out over the run-out into the snow, and back on your feet with how far it went');
+} else {
+  check(false, 'the ice slide ride exists');
+}
+
+/* ================================================================ icicles */
+// icicles hanging from the garage roofs' front edges in winter: a snowball
+// thrown through one knocks it down, it shatters on the ground, and it
+// grows back after a while; out of winter there are none
+console.log('→ icicles');
+const icicles = await page.evaluate(() => {
+  const g = window.__game;
+  const I = g.icicles;
+  if (!I) return null;
+  const S = g.snowballs;
+  const W = g.world;
+  const V = g.camera.position.constructor;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  I.update(0, []);
+  const total = I.list.length;
+  const placed = I.list.every((c) => c.y - c.len > 1.9 && !W.collides(c.x, c.z, 0.02));
+  const step = () => {
+    S.update(1 / 60);
+    I.update(1 / 60, S.balls);
+  };
+  // a long one, and a throw at it from 6 m out in front of the garages
+  const c = I.list.find((q) => q.len > 0.3 && q.state === 'hanging');
+  const aim = { x: c.x, y: c.y - c.len * 0.6, z: c.z };
+  const from = new V(c.x, aim.y - 0.4, c.z + c.facing * 6);
+  const before = I.knocked;
+  let lift = null;
+  for (let k = -0.1; k <= 0.25 && lift === null; k += 0.004) {
+    S.cooldown = 0;
+    S.throw(from, new V(0, k, -c.facing).normalize());
+    for (let i = 0; i < 300 && S.balls.some((b) => b.alive); i++) step();
+    if (c.state !== 'hanging') lift = k;
+  }
+  const knocked = I.knocked - before;
+  let shards = 0;
+  for (let i = 0; i < 200 && c.state === 'falling'; i++) step();
+  for (let i = 0; i < 10; i++) {
+    step();
+    shards = Math.max(shards, I.shardMesh.visible ? I.shards.filter((s) => s.age < 0.9).length : 0);
+  }
+  const fell = { state: c.state, note: I.note };
+  // it grows back
+  I.update(121, []);
+  const regrowing = { state: c.state, grow: c.grow };
+  for (let i = 0; i < 40; i++) I.update(1, []);
+  const grown = { state: c.state, grow: c.grow };
+  // out of winter: none to see, none to knock
+  W.season = 'autumn';
+  I.update(0, []);
+  const autumn = { shown: I.mesh.visible, swept: I.sweep(new V(c.x, aim.y, c.z + 1), new V(c.x, aim.y, c.z - 1)) };
+  W.season = was.season;
+  I.update(0, []);
+  I.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { total, placed, lift, knocked, shards, fell, regrowing, grown, autumn };
+});
+if (icicles) {
+  console.log(`  ${icicles.total} icicles; knocked at lift ${icicles.lift?.toFixed(3)} (${icicles.knocked}); ${icicles.shards} shards; "${icicles.fell.note}"; regrown ${icicles.grown.grow}`);
+  check(icicles.total > 60 && icicles.placed, 'icicles hang along the garage roofs, clear of the doors and the walls');
+  check(icicles.lift !== null && icicles.knocked >= 1 && icicles.knocked <= 3 && icicles.fell.state === 'gone' && icicles.shards >= 3 && /^Icicles knocked down: \d+/.test(icicles.fell.note ?? ''), 'a snowball knocks one down and it shatters on the ground');
+  check(icicles.regrowing.state === 'hanging' && icicles.regrowing.grow < 0.1 && icicles.grown.grow === 1 && !icicles.autumn.shown && icicles.autumn.swept === 0, 'it grows back, and out of winter there are none');
+} else {
+  check(false, 'the icicles exist');
+}
+
+/* ================================================================ tv */
+// the TV in a living-room flat: E at the set turns the knob round the
+// channels (news, figure skating, the test card, off) and the screen and
+// the sound follow; bedroom flats have no set
+console.log('→ tv');
+const tv = await page.evaluate(() => {
+  const g = window.__game;
+  const T = g.television;
+  if (!T) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats.find((f) => f.tv);
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  g.state.interior = flat;
+  const it = W.interactables.find((i) => i.id === `${flat.id}:tv`);
+  P.teleport(it.x, it.z, Math.PI / 2);
+  const f = P.forwardVector;
+  const offered = Math.hypot(it.x - P.position.x, it.z - P.position.z) < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const screen = flat.tv.screenMat;
+  const look = () => ({ id: T.current(flat).id, map: !!screen.map, bright: screen.color.r + screen.color.g + screen.color.b, glow: flat.tv.glowMat.opacity, sound: T.soundFor(flat), prompt: it.prompt() });
+  T.update(0.1, 10);
+  const seen = [look()];
+  const maps = new Set([screen.map]);
+  for (let i = 0; i < 4; i++) {
+    it.onUse();
+    T.update(0.1, 10 + i);
+    seen.push(look());
+    maps.add(screen.map);
+  }
+  const note = T.note;
+  const sets = W.flats.filter((q) => q.tv).length;
+  const knobs = W.interactables.filter((i) => i.id.endsWith(':tv')).length;
+  const bedroom = W.flats.find((q) => !q.tv);
+  const noSet = !W.interactables.some((i) => i.id === `${bedroom.id}:tv`);
+  T.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, seen, maps: maps.size, note, sets, knobs, noSet };
+});
+if (tv) {
+  console.log(`  ${tv.seen.map((s) => `${s.id} (${s.bright.toFixed(2)})`).join(' → ')}; "${tv.seen[0].prompt}"; ${tv.knobs} sets`);
+  const [news, skating, test, off, again] = tv.seen;
+  check(tv.offered && news.id === 'news' && news.map && news.sound.voice === 1 && news.prompt === 'E — turn the knob to the next channel' && tv.knobs === tv.sets && tv.noSet, 'the TV is offered in the living-room flats, on the news');
+  check(skating.id === 'skating' && skating.sound.voice === 0 && skating.sound.music > 0 && test.id === 'test' && test.sound.tone === 1 && tv.maps === 4, 'the knob turns to figure skating and the test card, each with its own picture and sound');
+  check(off.id === 'off' && !off.map && off.bright < 0.2 && off.glow === 0 && off.prompt === 'E — turn the TV on' && off.sound.voice + off.sound.music + off.sound.tone === 0 && again.id === 'news' && again.bright > 1, 'and to off (dark and silent), then round to the news again');
+} else {
+  check(false, 'the TV exists');
+}
+
+/* ================================================================ window doodles */
+// breath on a flat's window in winter: E mists the glass round where you
+// stand and a finger draws in the mist; it clears in half a minute; out of
+// winter it is not offered
+console.log('→ window doodles');
+const doodle = await page.evaluate(() => {
+  const g = window.__game;
+  const D = g.doodles;
+  if (!D) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats[0];
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = flat;
+  W.season = 'winter';
+  const it = W.interactables.find((i) => i.id === `${flat.id}:window1`);
+  // every window has somewhere free to stand at it
+  const free = W.flats.every((q) => [1, 2].every((k) => {
+    const w = W.interactables.find((i) => i.id === `${q.id}:window${k}`);
+    return w && !W.collides(w.x, w.z, 0.3);
+  }));
+  P.teleport(it.x, it.z, Math.PI);
+  const f = P.forwardVector;
+  const offered = it.available() && Math.hypot(it.x - P.position.x, it.z - P.position.z) < it.radius && f.x * it.facing.x + f.z * it.facing.z > 0.35 && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  const kinds = [it.onUse(), it.onUse()];
+  D.update(0.1);
+  const pane = flat.panes[0];
+  const s = D.panes.get(pane);
+  const px = s.ctx.getImageData(0, 0, s.canvas.width, s.canvas.height).data;
+  let mist = 0;
+  let lines = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i] > 128) mist++;
+    if (px[i + 1] > 128) lines++;
+  }
+  const u = pane.material.uniforms;
+  const misted = { fog: u?.uFog.value, bound: u?.tDraw.value === s.tex, share: mist / (px.length / 4), lines };
+  for (let t = 0; t < 32; t++) D.update(1);
+  const cleared = u?.uFog.value;
+  W.season = 'autumn';
+  const autumn = it.available();
+  W.season = was.season;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, free, offer, kinds, misted, cleared, autumn, windows: W.interactables.filter((i) => /:window\d$/.test(i.id)).length, flats: W.flats.length };
+});
+if (doodle) {
+  console.log(`  "${doodle.offer}" (offered ${doodle.offered}); drew ${doodle.kinds.join(', ')}; mist ${(doodle.misted.share * 100).toFixed(0)}% of the pane, ${doodle.misted.lines} px of lines; fog ${doodle.misted.fog?.toFixed(2)} → ${doodle.cleared}`);
+  check(doodle.offered && doodle.free && doodle.offer === 'E — breathe on the glass and draw in the mist' && doodle.windows === doodle.flats * 2 && !doodle.autumn, 'every flat window is offered for a breath in winter, and not out of it');
+  check(doodle.kinds.every(Boolean) && doodle.misted.bound && doodle.misted.fog > 0.95 && doodle.misted.share > 0.05 && doodle.misted.share < 0.8 && doodle.misted.lines > 100, 'E mists the glass round where you stand and draws in the mist');
+  check(doodle.cleared === 0, 'the mist clears again, drawing and all');
+} else {
+  check(false, 'the window doodles exist');
+}
+
+/* ================================================================ new year */
+// the New Year tree by the playground in winter: the garland chases round,
+// E at the tree sends a rocket up that bursts into sparks which fall and
+// fade; out of winter the tree is gone and so is its collider
+console.log('→ new year');
+const newyear = await page.evaluate(() => {
+  const g = window.__game;
+  const N = g.newYear;
+  if (!N) return null;
+  const P = g.player;
+  const W = g.world;
+  const was = { mode: g.state.mode, interior: g.state.interior, season: W.season };
+  g.state.mode = 'playing';
+  g.state.interior = null;
+  W.season = 'winter';
+  N.update(0.1);
+  const it = W.interactables.find((i) => i.id === 'new-year-tree');
+  const tree = { x: N.base.x, z: N.base.z };
+  // walk up to it: blocked at the trunk, offered a step away
+  P.teleport(tree.x + 2.6, tree.z, Math.PI / 2);
+  const reach = it.distanceTo(P.position.x, P.position.z);
+  const offered = reach < it.radius && !W.collides(P.position.x, P.position.z, 0.3);
+  const offer = it.prompt();
+  const trunk = W.collides(tree.x, tree.z, 0.3);
+  // the garland changes from frame to frame
+  const c0 = [];
+  const c1 = [];
+  const col = N.bulbs.instanceColor;
+  for (let i = 0; i < 8; i++) c0.push(col.getX(i));
+  N.update(0.4);
+  for (let i = 0; i < 8; i++) c1.push(col.getX(i));
+  const chasing = c0.some((v, i) => Math.abs(v - c1[i]) > 0.3);
+  // a rocket: up, the burst, the sparks falling
+  it.onUse();
+  const up = N.flying;
+  let maxY = 0;
+  let sparks = 0;
+  for (let t = 0; t < 2; t += 0.05) {
+    N.update(0.05);
+    const pos = N.sparkGeo.attributes.position;
+    let lit = 0;
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > -100) {
+      lit++;
+      maxY = Math.max(maxY, pos.getY(i));
+    }
+    sparks = Math.max(sparks, lit);
+  }
+  const burst = { flying: N.flying, sparks, maxY: maxY - N.base.y, note: N.note };
+  for (let t = 0; t < 4; t += 0.1) N.update(0.1);
+  const after = { shown: N.sparks.visible };
+  // three at most in the air
+  N.cooldown = 0;
+  for (let i = 0; i < 5; i++) {
+    N.cooldown = 0;
+    it.onUse();
+  }
+  const capped = N.flying;
+  for (let t = 0; t < 6; t += 0.1) N.update(0.1);
+  // out of winter: no tree, no collider
+  W.season = 'autumn';
+  N.update(0.1);
+  const autumn = { shown: N.group.visible, trunk: W.collides(tree.x, tree.z, 0.3), offered: Number.isFinite(it.distanceTo(tree.x + 2.6, tree.z)) };
+  W.season = was.season;
+  N.update(0);
+  N.note = null;
+  g.state.mode = was.mode;
+  g.state.interior = was.interior;
+  return { offered, offer, trunk, chasing, up, burst, after, capped, autumn };
+});
+if (newyear) {
+  console.log(`  "${newyear.offer}" (offered ${newyear.offered}); ${newyear.burst.sparks} sparks up to ${newyear.burst.maxY.toFixed(1)} m; "${newyear.burst.note}"; ${newyear.capped} at once`);
+  check(newyear.offered && newyear.offer === 'E — light a firework (салют)' && newyear.trunk && newyear.chasing, 'the New Year tree stands by the playground in winter, its garland chasing round');
+  check(newyear.up === 1 && newyear.burst.flying === 0 && newyear.burst.sparks > 80 && newyear.burst.maxY > 15 && newyear.burst.note?.startsWith('С Новым годом') && !newyear.after.shown && newyear.capped === 3, 'E sends a rocket up to burst into sparks that fall and fade, three at most at once');
+  check(!newyear.autumn.shown && !newyear.autumn.trunk && !newyear.autumn.offered, 'out of winter the tree is gone, and its collider with it');
+} else {
+  check(false, 'the New Year tree exists');
+}
+
+/* ================================================================ light switches */
+// three switches in each flat's hall: E at one snaps its rocker over and the
+// lamp it serves goes out (its light and its glowing bulb), or comes back on;
+// each flat keeps its own, and they hold when you leave and come back
+console.log('→ light switches');
+const switched = await page.evaluate(async () => {
+  const g = window.__game;
+  const S = g.switches;
+  if (!S) return null;
+  const P = g.player;
+  const W = g.world;
+  const flat = W.flats[0];
+  const other = W.flats[1];
+  const was = { mode: g.state.mode, interior: g.state.interior };
+  g.state.mode = 'playing';
+  const ids = ['kitchen', 'room', 'hall'];
+  // every flat has its three, each with somewhere free to stand
+  const all = W.flats.every((q) => ids.every((r) => {
+    const it = W.interactables.find((i) => i.id === `${q.id}:switch-${r}`);
+    return it && !W.collides(it.x, it.z, 0.3);
+  }));
+  // in through the padded door, as the player would
+  g.state.interior = flat.parent;
+  P.teleport(flat.doorOut.x, flat.doorOut.z, 0);
+  W.interactables.find((i) => i.id === `${flat.id}:enter`).onUse();
+  await new Promise((r) => setTimeout(r, 5000));
+  const inside = g.state.interior === flat && W.litFlat === flat;
+  const lit0 = W.flatLights.map((l) => l.intensity);
+  // the nearest offer at each switch, as the game picks it
+  const nearest = () => {
+    let best = null;
+    let bd = Infinity;
+    const f = P.forwardVector;
+    for (const it of W.interactables) {
+      if ((it.key ?? 'KeyE') !== 'KeyE' || (it.available && !it.available())) continue;
+      if (it.y !== undefined && Math.abs(P.position.y - it.y) > 0.6) continue;
+      if (it.facing && f.x * it.facing.x + f.z * it.facing.z < 0.35) continue;
+      const d = it.distanceTo ? it.distanceTo(P.position.x, P.position.z) : Math.hypot(it.x - P.position.x, it.z - P.position.z);
+      if (d < it.radius && d < bd) {
+        best = it;
+        bd = d;
+      }
+    }
+    return best;
+  };
+  const offers = [];
+  const flips = [];
+  ids.forEach((r, i) => {
+    const it = W.interactables.find((q) => q.id === `${flat.id}:switch-${r}`);
+    // face the wall the switch is on
+    P.teleport(it.x, it.z, it.facing.z < 0 ? 0 : Math.PI);
+    const n = nearest();
+    offers.push(n?.id === it.id ? n.prompt() : `(${n?.id ?? 'nothing'})`);
+    const rocker = flat.rockers[i].rotation.x;
+    it.onUse();
+    flips.push({ on: flat.lightOn[i], light: W.flatLights[i].intensity, lamp: flat.lampMats[i].color.r, moved: flat.rockers[i].rotation.x !== rocker, prompt: it.prompt() });
+  });
+  S.update(0.1);
+  const dark = { note: S.note, lights: W.flatLights.map((l) => l.intensity), otherOn: other.lightOn.every(Boolean), otherLamp: other.lampMats[0].color.r };
+  // out to the landing and back in: still dark
+  W.interactables.find((i) => i.id === `${flat.id}:exit`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  const outLights = W.flatLights.map((l) => l.intensity);
+  g.state.interior = flat.parent;
+  P.teleport(flat.doorOut.x, flat.doorOut.z, 0);
+  W.interactables.find((i) => i.id === `${flat.id}:enter`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  const back = W.flatLights.map((l) => l.intensity);
+  // on again, one by one
+  ids.forEach((r, i) => W.interactables.find((q) => q.id === `${flat.id}:switch-${r}`).onUse());
+  const relit = { lights: W.flatLights.map((l) => l.intensity), lamp: flat.lampMats[1].color.r, note: S.note };
+  // and out of the stairwell, back where the next section expects you
+  W.interactables.find((i) => i.id === `${flat.id}:exit`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  W.interactables.find((i) => i.id === `${flat.parent.id}:exit`).onUse();
+  await new Promise((r) => setTimeout(r, 4000));
+  const outdoors = g.state.interior === was.interior;
+  g.state.mode = was.mode;
+  return { outdoors, all, inside, lit0, offers, flips, dark, outLights, back, relit };
+});
+if (switched) {
+  console.log(`  ${switched.offers.map((o) => `"${o}"`).join(', ')}; lights ${switched.lit0.join('/')} → ${switched.dark.lights.join('/')}; "${switched.dark.note}"; back in ${switched.back.join('/')}`);
+  check(switched.all && switched.inside && switched.lit0.every((v) => v > 0) && switched.offers.every((o, i) => o === `E — switch the ${['kitchen', 'room', 'hall'][i]} light off`), 'each flat has its three switches in the hall, each offered where you stand at it');
+  check(switched.flips.every((f) => !f.on && f.light === 0 && f.lamp < 0.5 && f.moved && f.prompt.endsWith(' on')) && switched.dark.lights.every((v) => v === 0) && switched.dark.note?.startsWith('All dark') && switched.dark.otherOn && switched.dark.otherLamp > 1, 'E snaps a switch over: its lamp and its light go out, in that flat only');
+  check(switched.outLights.every((v) => v === 0) && switched.back.every((v) => v === 0) && switched.relit.lights.every((v) => v > 0) && switched.relit.lamp > 1 && !switched.relit.note && switched.outdoors, 'the flat stays dark when you leave and come back, and lights up again switch by switch');
+} else {
+  check(false, 'the light switches exist');
+}
+
 /* ================================================================ ambience */
 // the zone sounds follow where you are: a TV murmurs in a stairwell and
 // falls silent outside, the engine of a passing car is heard by the road

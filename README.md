@@ -37,6 +37,14 @@ npm run preview  # serve the production build
 | Snowballs at the chalk target on a garage door | 10 in the middle, 5 and 2 in the rings; the score comes up as you hit; `E` at the door wipes it |
 | `E` (at the post boxes by a stairwell's door) | look through the slots: the morning paper and its headline, a letter, a postcard, a bill; a few finds, then nothing until the post comes at seven |
 | `Space` (on the hopscotch by the kiosk, out of winter) | jump from square to square, 1 to 10 in order, for a time; a wrong square or a hop off the drawing is back to 1 |
+| `E` (at the edge of the frozen pond, facing the ice) | toss a pebble: it skips and slides far over the ice, and the new ice sings its falling "pew" at every touch |
+| `E` (at the stove in a flat kitchen) | put the kettle on: blue gas flame, steam as it heats, a whistle at the boil; `E` again takes it off and pours a glass of tea |
+| `E` (at the foot of the ice slide's stairs, in winter) | climb up, sit at the top and ride down the icy chute, out over the run-out into the snow; how far you went from the top comes up at the end |
+| Snowballs at the icicles on the garage roofs (in winter) | knock one down: it drops and shatters on the ground with a tinkle; it grows back after a couple of minutes |
+| `E` (at the TV in a living-room flat) | turn the knob: «Время» with the announcer, figure skating to music, the test card and its tone, off |
+| `E` (at a flat's window, in winter) | breathe on the cold glass: it mists over where you stand and a finger draws in the mist (a heart, a sun, a name...); it clears in half a minute |
+| `E` (at a light switch in a flat's hall) | switch the kitchen, room or hall light off or on: the lamp and its light go out, and from a dark kitchen you see the yard; each flat keeps its own |
+| `E` (at the New Year tree by the playground, in winter) | send a rocket up from beside the tree: it climbs, bursts in coloured stars and bangs a moment later |
 | `B` | crumble a handful of bread for the pigeons: the flocks nearby come and feed round your feet |
 | `E` (by a cat on a porch) | stroke it: it purrs (run past, or bring the dog, and it is down the basement vent) |
 | `E` (by a playground swing) | sit on it: `W` on the way forward and `S` on the way back pump it higher, `E` gets off (or jumps off) |

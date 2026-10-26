@@ -30,6 +30,14 @@ import { Carpet } from './carpet.js';
 import { Target } from './target.js';
 import { Mail } from './mail.js';
 import { Hopscotch } from './hopscotch.js';
+import { Pebbles } from './pebbles.js';
+import { Kettle } from './kettle.js';
+import { IceSlide } from './iceslide.js';
+import { GarageIcicles } from './garages.js';
+import { Television } from './tv.js';
+import { LightSwitches } from './switches.js';
+import { WindowDoodles } from './doodles.js';
+import { NewYear } from './newyear.js';
 import { Perf } from './perf.js';
 import { PLAYER, QUALITY, SETTINGS_DEFAULTS } from './config.js';
 import { DynamicResolution } from './resolution.js';
@@ -242,6 +250,14 @@ async function boot() {
       onUse: () => mail.look(interior),
     });
   }
+  // the kettle on each kitchen stove: E lights the gas, and it whistles at the boil
+  const kettle = new Kettle({ world, sound });
+  // the TV in the living-room flats: E turns the knob round the channels
+  const television = new Television({ world });
+  // breath on a flat's window in winter, and a finger drawing in the mist
+  const doodles = new WindowDoodles({ world });
+  // the light switches in each flat's hall: kitchen, room, hall
+  const switches = new LightSwitches({ world });
   // one flat behind a padded door on each landing, with a kitchen radio
   const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
   for (const flat of world.flats) {
@@ -274,6 +290,50 @@ async function boot() {
         sound.ui('tick');
       },
     });
+    world.interactables.push({
+      id: `${flat.id}:kettle`,
+      x: flat.kettle.x + 0.75,
+      z: flat.kettle.z,
+      radius: 0.9,
+      facing: { x: -1, z: 0 },
+      prompt: () => kettle.prompt(flat),
+      onUse: () => kettle.use(flat),
+    });
+    if (flat.tv)
+      world.interactables.push({
+        id: `${flat.id}:tv`,
+        x: flat.tv.pos.x + 1.1,
+        z: flat.tv.pos.z,
+        radius: 0.9,
+        facing: { x: -1, z: 0 },
+        prompt: () => television.prompt(flat),
+        onUse: () => {
+          television.turn(flat);
+          sound.ui('tick');
+        },
+      });
+    for (const spot of LightSwitches.spots(flat))
+      world.interactables.push({
+        id: `${flat.id}:switch-${spot.room}`,
+        x: spot.x,
+        z: spot.z + spot.facing * 0.5,
+        radius: 0.7,
+        facing: { x: 0, z: -spot.facing },
+        prompt: () => switches.prompt(flat, spot.i),
+        onUse: () => sound.click(switches.flip(flat, spot.i)),
+      });
+    WindowDoodles.spots(flat, world).forEach((spot, k) =>
+      world.interactables.push({
+        id: `${flat.id}:window${k + 1}`,
+        x: spot.stand.x,
+        z: spot.stand.z,
+        radius: 0.75,
+        facing: { x: 0, z: 1 },
+        available: () => doodles.usable,
+        prompt: () => 'E — breathe on the glass and draw in the mist',
+        onUse: () => doodles.breathe(spot, player.position.x - spot.x, camera.position.y),
+      })
+    );
   }
 
   const env = new Environment({
@@ -474,7 +534,7 @@ async function boot() {
   });
   // the carpet-beating frame by the playground: E beats the rug, or hangs you on the bare bar
   const carpet = new Carpet({ world, player, sound });
-  const outdoorsFree = () => !state.interior && !driving.active && !state.smoking && !swings.active && !angels.active;
+  const outdoorsFree = () => !state.interior && !driving.active && !state.smoking && !swings.active && !angels.active && !iceSlide.active;
   world.interactables.push({
     id: 'carpet',
     x: 0,
@@ -495,7 +555,12 @@ async function boot() {
   });
   // a chalk target on a garage door: snowballs that land in it score
   const target = new Target({ world, sound });
-  snowballs.onImpact = (kind, pos) => target.impact(kind, pos);
+  // icicles on the garage roofs' edges: a snowball knocks them down
+  const icicles = new GarageIcicles({ world, sound });
+  snowballs.onImpact = (kind, pos) => {
+    target.impact(kind, pos);
+    icicles.impact(kind, pos);
+  };
   // the post boxes in the stairwells (their interactables are with the stairwell's own)
   const mail = new Mail({ env });
   // hopscotch chalked on the sidewalk by the kiosk (out of winter): Space hops square to square
@@ -508,6 +573,43 @@ async function boot() {
     distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? target.distanceTo(x, z) : Infinity),
     prompt: () => target.prompt,
     onUse: () => target.wipe(),
+  });
+  // pebbles tossed from the edge of the frozen pond: the new ice sings
+  const pebbles = new Pebbles({ world, sound });
+  world.interactables.push({
+    id: 'pebble',
+    x: 0,
+    z: 0,
+    radius: 2.9,
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? pebbles.distanceTo(x, z, player.forwardVector) : Infinity),
+    prompt: () => pebbles.prompt,
+    onUse: () => {
+      const f = player.forwardVector;
+      pebbles.toss({ x: camera.position.x + f.x * 0.3, y: camera.position.y - 0.25, z: camera.position.z + f.z * 0.3 }, f);
+    },
+  });
+  // the New Year tree by the playground in winter: E sends a firework up
+  const newYear = new NewYear({ world, sound });
+  world.interactables.push({
+    id: 'new-year-tree',
+    x: 0,
+    z: 0,
+    radius: 1.6,
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? newYear.distanceTo(x, z) : Infinity),
+    prompt: () => newYear.prompt,
+    onUse: () => newYear.launch(),
+  });
+  // a ride down the ice slide in winter: E at the foot of its stairs
+  const iceSlide = new IceSlide({ world, player, camera, sound });
+  world.interactables.push({
+    id: 'ice-slide',
+    x: 0,
+    z: 0,
+    radius: 1.2,
+    facing: { x: 0, z: -1 },
+    distanceTo: (x, z) => (outdoorsFree() && !carpet.hanging ? iceSlide.distanceTo(x, z) : Infinity),
+    prompt: () => iceSlide.prompt,
+    onUse: () => iceSlide.start(),
   });
   for (const spot of smokeSpots(world)) {
     world.interactables.push({
@@ -662,7 +764,7 @@ async function boot() {
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = !state.smoking && !swings.active && !angels.active && !carpet.hanging;
+    player.enabled = !state.smoking && !swings.active && !angels.active && !carpet.hanging && !iceSlide.active;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
@@ -673,6 +775,8 @@ async function boot() {
     swings.getOff();
     angels.cancel();
     carpet.cancel();
+    kettle.cancel();
+    iceSlide.cancel();
     leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
@@ -876,16 +980,22 @@ async function boot() {
     if (driving.active) {
       text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
     } else {
-      const it = state.smoking || swings.active || angels.active || carpet.hanging ? null : nearestInteractable();
+      const it = state.smoking || swings.active || angels.active || carpet.hanging || iceSlide.active ? null : nearestInteractable();
       text = it && !state.transitioning ? it.prompt() : null;
       if (swings.active && !state.transitioning) text = swings.height > 0.15 ? 'W / S — pump · E — jump off' : 'W / S — pump · E — get off';
       if (angels.active) text = angels.prompt;
       if (carpet.hanging) text = carpet.hangingPrompt;
       if (!text && carpet.note) text = carpet.note;
+      if (!text && iceSlide.note && !state.interior) text = iceSlide.note;
       // what turned up in the post boxes, while it is read
       if (mail.note && state.interior) text = mail.note;
+      if (kettle.note && state.interior) text = kettle.note;
+      if (television.note && state.interior) text = television.note;
+      if (switches.note && state.interior) text = switches.note;
       if (!text && !state.interior) text = hopscotch.promptFor(player.position.x, player.position.z);
       if (!text && !state.interior) text = target.noteFor(player.position.x, player.position.z);
+      if (!text && !state.interior) text = icicles.note;
+      if (!text && !state.interior) text = newYear.note;
       // a goal is announced to anyone on the box
       if (!text && puck.inNet && Math.hypot(player.position.x - puck.rink.x, player.position.z - puck.rink.z) < 22) text = puck.prompt;
     }
@@ -918,7 +1028,7 @@ async function boot() {
     if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && swings.active) swings.getOff();
     else if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && angels.active) angels.getUp();
     else if (event.code === 'KeyE' && !event.repeat && state.mode === 'playing' && carpet.hanging) carpet.drop();
-    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active && !angels.active && !carpet.hanging) {
+    else if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyB') && state.mode === 'playing' && !state.transitioning && !state.smoking && !swings.active && !angels.active && !carpet.hanging && !iceSlide.active) {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
@@ -1009,7 +1119,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, switches, newYear, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1021,12 +1131,32 @@ async function boot() {
     const dist = Math.hypot(dx, dz);
     return { dist, pan: dist > 0.01 ? (dx * _right.x + dz * _right.z) / dist : 0 };
   };
+  // fireworks: the whistle going up, and the bang arriving after the flash
+  newYear.onLaunch = (p) => {
+    if (state.interior) return;
+    const h = heard(p.x, p.z);
+    sound.rocket(h.dist, h.pan);
+  };
+  newYear.onBurst = (p) => {
+    if (state.interior) return;
+    const h = heard(p.x, p.z);
+    const dist = Math.hypot(h.dist, p.y - camera.position.y);
+    sound.bang(dist, h.pan, dist / 340);
+  };
+  // an icicle shattering on the ground
+  icicles.onShatter = (c) => {
+    if (state.interior) return;
+    const h = heard(c.x, c.z);
+    sound.tinkle(h.dist, h.pan);
+  };
 
   function updateAmbience(dt) {
     if (!sound.ready) return;
     _right.setFromMatrixColumn(camera.matrixWorld, 0);
     // a stairwell: TVs behind the padded doors of the landing
-    const tv = state.interior && !state.interior.kind ? 1 : 0;
+    // or, in a living-room flat, its own set: the channel that is on
+    const set = state.interior?.kind === 'flat' ? television.soundFor(state.interior) : null;
+    const tv = set ? set.voice : state.interior && !state.interior.kind ? 1 : 0;
     let car = null;
     if (!state.interior) {
       for (const c of world.trafficCars ?? []) {
@@ -1075,7 +1205,7 @@ async function boot() {
       }
     }
     const crows = (world.crows ?? []).map((c) => heard(c.crow.position.x, c.crow.position.z));
-    sound.ambience(dt, { tv, car, crows });
+    sound.ambience(dt, { tv, tvMusic: set?.music ?? null, tone: set?.tone ?? 0, car, crows });
     // skates on the hockey box: one stroke per push of a blade
     for (const p of world.people?.list ?? []) {
       if (!p.stroke) continue;
@@ -1124,6 +1254,14 @@ async function boot() {
       carpet.update(dt, player.keys);
       target.update(dt);
       mail.update(dt);
+      pebbles.update(dt);
+      iceSlide.update(dt);
+      icicles.update(dt, snowballs.balls);
+      television.update(dt, state.elapsed);
+      doodles.update(dt);
+      switches.update(dt);
+      newYear.update(dt);
+      kettle.update(dt, state.interior?.kind === 'flat' ? state.interior : null);
       hopscotch.update(dt, { active: player.enabled && !state.interior && !driving.active });
       if (smoke.update(dt, state.elapsed)) endSmoke();
     } else if (driving.active) {

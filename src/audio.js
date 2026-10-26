@@ -426,6 +426,14 @@ export class Sound {
     osc.stop(t + 0.2);
   }
 
+  /** A wall switch: the hard snap of its rocker, a little lower going off. */
+  click(on = true) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.burst({ time: t, freq: on ? 3200 : 2600, q: 2.2, duration: 0.018, level: 0.09, rate: 2.6 });
+    this.burst({ time: t + 0.006, freq: on ? 1100 : 900, q: 1.4, duration: 0.03, level: 0.05 });
+  }
+
   /* ------------------------------------------------ car */
 
   /** A tired four-cylinder: firing-rate saw + sub square through a lowpass,
@@ -1104,6 +1112,185 @@ export class Sound {
     }
   }
 
+  /** A pebble on new ice: the sheet sings, a falling "pew" that rings on
+   * (the high notes outrun the low along the ice), softer with every hop. */
+  iceSing(level = 1) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const peak = 0.05 * clamp(level, 0, 1);
+    if (peak < 0.002) return;
+    const delay = ctx.createDelay(0.5);
+    delay.delayTime.value = 0.07;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.45;
+    delay.connect(feedback).connect(delay);
+    delay.connect(this.master);
+    for (const [at, f0, f1, len, k] of [
+      [0, 3400, 520, 0.22, 1],
+      [0.03, 2600, 380, 0.3, 0.55],
+    ]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f0, t + at);
+      osc.frequency.exponentialRampToValueAtTime(f1, t + at + len);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t + at);
+      env.gain.exponentialRampToValueAtTime(peak * k, t + at + 0.008);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+      osc.connect(env);
+      env.connect(this.master);
+      env.connect(delay);
+      osc.start(t + at);
+      osc.stop(t + at + len + 0.02);
+    }
+    // the knock of the stone itself
+    this.burst({ time: t, freq: 1800, q: 1.2, duration: 0.04, level: peak * 0.6 });
+    // the echo loop would ring on forever, unheard: cut it once it has died away
+    setTimeout(() => {
+      delay.disconnect();
+      feedback.disconnect();
+    }, 2000);
+  }
+
+  /** The kettle on the stove, all 0..1: the hiss of the gas, the rumble of
+   * the water coming to the boil, and the whistle on the spout. The nodes
+   * are built the first time, then only their levels follow. */
+  kettle({ gas = 0, boil = 0, whistle = 0 } = {}) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    if (!this.kettleNodes) {
+      if (gas + boil + whistle <= 0) return;
+      const hiss = ctx.createBufferSource();
+      hiss.buffer = this.flatNoise;
+      hiss.loop = true;
+      const hissFilter = ctx.createBiquadFilter();
+      hissFilter.type = 'bandpass';
+      hissFilter.frequency.value = 2400;
+      hissFilter.Q.value = 0.8;
+      const gasGain = ctx.createGain();
+      gasGain.gain.value = 0;
+      hiss.connect(hissFilter).connect(gasGain).connect(this.master);
+      const rumble = ctx.createBufferSource();
+      rumble.buffer = this.noise;
+      rumble.loop = true;
+      const rumbleFilter = ctx.createBiquadFilter();
+      rumbleFilter.type = 'lowpass';
+      rumbleFilter.frequency.value = 380;
+      const boilGain = ctx.createGain();
+      boilGain.gain.value = 0;
+      rumble.connect(rumbleFilter).connect(boilGain).connect(this.master);
+      // the whistle: two close tones beating, with a wobble in the pitch
+      const whistleGain = ctx.createGain();
+      whistleGain.gain.value = 0;
+      whistleGain.connect(this.master);
+      const tones = [2150, 2185].map((f) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        osc.connect(whistleGain);
+        return osc;
+      });
+      const wobble = ctx.createOscillator();
+      wobble.frequency.value = 5.5;
+      const depth = ctx.createGain();
+      depth.gain.value = 18;
+      wobble.connect(depth);
+      for (const osc of tones) depth.connect(osc.frequency);
+      for (const src of [hiss, rumble, wobble, ...tones]) src.start();
+      this.kettleNodes = { gasGain, boilGain, whistleGain, tones };
+    }
+    const n = this.kettleNodes;
+    n.gasGain.gain.setTargetAtTime(0.012 * clamp(gas, 0, 1), now, 0.15);
+    n.boilGain.gain.setTargetAtTime(0.05 * clamp(boil, 0, 1) ** 2, now, 0.5);
+    // it rises as it comes in, from a breathy note to the full shriek
+    const w = clamp(whistle, 0, 1);
+    n.whistleGain.gain.setTargetAtTime(0.022 * w, now, 0.6);
+    n.tones[0].frequency.setTargetAtTime(1700 + 450 * w, now, 0.8);
+    n.tones[1].frequency.setTargetAtTime(1730 + 455 * w, now, 0.8);
+  }
+
+  /** An icicle shattering on the ground `dist` m away: a crack, then a
+   * scatter of glassy pings as the pieces skitter off. */
+  tinkle(dist, pan = 0) {
+    if (!this.ready || dist > 60) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const level = 0.05 / (1 + dist * dist * 0.02);
+    if (level < 0.002) return;
+    const out = this.#out(pan);
+    this.burst({ time: t, freq: 4200, q: 0.8, duration: 0.05, level: level * 1.2, type: 'highpass', out });
+    const pings = this.rng.int(5, 9);
+    for (let i = 0; i < pings; i++) {
+      const at = t + 0.01 + this.rng.float(0, 0.35) * (i / pings + 0.1);
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = this.rng.float(2600, 6200);
+      const env = ctx.createGain();
+      const peak = level * this.rng.float(0.25, 0.7);
+      const len = this.rng.float(0.05, 0.16);
+      env.gain.setValueAtTime(0.0001, at);
+      env.gain.exponentialRampToValueAtTime(peak, at + 0.003);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      osc.connect(env).connect(out);
+      osc.start(at);
+      osc.stop(at + len + 0.02);
+    }
+  }
+
+  /** A firework rocket going up `dist` m away: the fizz of the fuse and a
+   * whistle rising as it climbs. */
+  rocket(dist, pan = 0) {
+    if (!this.ready || dist > 200) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const level = 0.035 / (1 + dist * dist * 0.002);
+    if (level < 0.0015) return;
+    const out = this.#out(pan);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(900, t);
+    osc.frequency.exponentialRampToValueAtTime(2600, t + 1.2);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(level, t + 0.15);
+    env.gain.setValueAtTime(level, t + 0.9);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 1.25);
+    osc.connect(env).connect(out);
+    osc.start(t);
+    osc.stop(t + 1.3);
+    this.burst({ time: t, freq: 3000, q: 0.6, duration: 1.2, level: level * 0.6, type: 'highpass', out });
+  }
+
+  /** A firework bursting `dist` m away (the sound comes after the flash,
+   * `delay` s later): a deep bang and a crackle of sparks. */
+  bang(dist, pan = 0, delay = 0) {
+    if (!this.ready || dist > 300) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01 + delay;
+    const level = 0.22 / (1 + dist * dist * 0.0015);
+    if (level < 0.002) return;
+    const out = this.#out(pan);
+    this.burst({ time: t, freq: 120, q: 0.7, duration: 0.7, level, type: 'lowpass', out });
+    this.burst({ time: t, freq: 900, q: 0.5, duration: 0.25, level: level * 0.5, out });
+    const thump = ctx.createOscillator();
+    thump.frequency.setValueAtTime(70, t);
+    thump.frequency.exponentialRampToValueAtTime(32, t + 0.4);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(level * 0.8, t + 0.01);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    thump.connect(env).connect(out);
+    thump.start(t);
+    thump.stop(t + 0.55);
+    // the crackle as the sparks burn out
+    const pops = this.rng.int(10, 18);
+    for (let i = 0; i < pops; i++) {
+      this.burst({ time: t + 0.5 + this.rng.float(0, 1.4), freq: this.rng.float(2500, 6000), q: 1.5, duration: 0.02, level: level * this.rng.float(0.1, 0.3), out });
+    }
+  }
+
   /** A cat's "mrrow", `dist` m away: a nasal voice rising, then falling away. */
   meow(dist, pan = 0) {
     if (!this.ready) return;
@@ -1234,13 +1421,32 @@ export class Sound {
    * nearest moving car { dist, speed, pan, big } or null (big: the bus),
    * crows: [{ dist, pan }].
    */
-  ambience(dt, { tv = 0, car = null, crows = [] } = {}) {
+  ambience(dt, { tv = 0, tvMusic = null, tone = 0, car = null, crows = [] } = {}) {
     if (!this.ready) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
     // the TV: a new phrase of syllables every couple of seconds
-    this.tvGain.gain.setTargetAtTime(0.05 * tv, now, 0.6);
-    this.tvMusic.gain.setTargetAtTime(tv > 0 ? 0.035 : 0, now, 1.5);
+    // (a set on music alone still needs its speaker; a voice cut off mid-phrase stops at once)
+    const bed = tvMusic ?? (tv > 0 ? 0.035 : 0);
+    this.tvGain.gain.setTargetAtTime(0.05 * Math.max(tv, bed > 0 ? 1 : 0), now, 0.6);
+    this.tvMusic.gain.setTargetAtTime(bed, now, tvMusic === null ? 1.5 : 0.3);
+    if (tv > 0.01) this.tvTalking = true;
+    else if (this.tvTalking) {
+      this.tvTalking = false;
+      this.tvSyllable.gain.cancelScheduledValues(now);
+      this.tvSyllable.gain.setTargetAtTime(0, now, 0.05);
+      this.tvNext = now;
+    }
+    // the test card's steady 1 kHz tone, out of the set's little speaker
+    if (tone > 0 && !this.toneGain) {
+      this.toneGain = ctx.createGain();
+      this.toneGain.gain.value = 0;
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 1000;
+      osc.connect(this.toneGain).connect(this.master);
+      osc.start();
+    }
+    this.toneGain?.gain.setTargetAtTime(0.012 * tone, now, 0.05);
     if (tv > 0.01 && now > this.tvNext - 0.3) {
       let t = Math.max(now, this.tvNext);
       const words = this.rng.int(4, 11);
