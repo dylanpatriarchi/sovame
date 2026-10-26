@@ -1213,6 +1213,18 @@ export class Sound {
 
   /** An icicle shattering on the ground `dist` m away: a crack, then a
    * scatter of glassy pings as the pieces skitter off. */
+  /** A heap of dry leaves thrown up: a long crackling rustle, thinning out. */
+  rustle(strength = 1) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.005;
+    const n = Math.round(14 + strength * 12);
+    for (let i = 0; i < n; i++) {
+      const at = t + Math.pow(i / n, 1.6) * 0.9;
+      const level = 0.05 * strength * (1 - (i / n) * 0.7) * this.rng.float(0.5, 1);
+      this.burst({ time: at, freq: this.rng.float(2200, 5200), q: this.rng.float(0.6, 1.4), duration: this.rng.float(0.03, 0.09), level, rate: this.rng.float(1.4, 2.4) });
+    }
+  }
+
   tinkle(dist, pan = 0) {
     if (!this.ready || dist > 60) return;
     const ctx = this.ctx;
