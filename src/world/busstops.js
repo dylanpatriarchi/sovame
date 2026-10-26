@@ -106,7 +106,7 @@ export function buildBusStops(ctx) {
     put(new THREE.CylinderGeometry(0.22, 0.18, 0.7, 10), M.metal, -DEEP / 2 + 0.2, 0.51, -LEN / 2 - 0.5);
     world.group.add(g);
 
-    // colliders: the back wall, the two end walls, the sign post (the road
+    // colliders: the back wall and its bench, the two end walls, the sign post (the road
     // here runs along x or z, so the walls stay axis-aligned)
     const at = (lx, lz) => {
       const c = Math.cos(g.rotation.y);
@@ -119,9 +119,13 @@ export function buildBusStops(ctx) {
       ctx.addColliderRect(Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.z, b.z), Math.max(a.z, b.z));
     };
     rect(DEEP / 2 - 0.12, DEEP / 2 + 0.12, -LEN / 2, LEN / 2);
+    // the bench along it
+    rect(DEEP / 2 - 0.78, DEEP / 2 - 0.12, -2.25, 2.25);
     for (const s of [-1, 1]) rect(-DEEP / 2, DEEP / 2, s * (LEN / 2) - 0.08, s * (LEN / 2) + 0.08);
     const post = at(-DEEP / 2 - 0.5, LEN / 2 + 1.2);
     ctx.addBoxCollider(post.x, post.z, 0.12, 0.12, 0.1);
+    const bin = at(-DEEP / 2 + 0.2, -LEN / 2 - 0.5);
+    ctx.addBoxCollider(bin.x, bin.z, 0.44, 0.44, 0.05);
     const c0 = at(-DEEP / 2 - 1, -LEN / 2 - 1);
     const c1 = at(DEEP / 2 + 1, LEN / 2 + 1);
     ctx.addZone('Автобусная остановка', `Bus stop · ${stop.name}`, c0.x, c1.x, c0.z, c1.z);
