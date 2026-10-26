@@ -46,6 +46,7 @@ export class World {
     // (mounds, litter, tree relocation) so their seeded placement does not
     // drift when the playable edge moves
     this.legacyColliders = [];
+    this.lateColliders = [];
     this.legacyHeightRects = [];
     this.heightRects = [];
     this.surfaceRects = [];
@@ -113,6 +114,7 @@ export class World {
       await new Promise((resolve) => setTimeout(resolve, 24));
       stages[i][1]();
     }
+    this.colliders.push(...this.lateColliders);
     // the parked cars' historic footprints only shaped the scatter passes:
     // from now on each car's own (moving) collider stands for it
     this.colliders = this.colliders.filter((c) => !c.buildOnly);
@@ -216,6 +218,11 @@ export class World {
         const rect = { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
         self.colliders.push(rect);
         if (!north) self.legacyColliders.push(rect);
+      },
+      /** A collider that only goes up once the world is built: the seeded
+       * scatter passes never see it, so the trees stay where they were. */
+      addLateColliderRect(x0, x1, z0, z1) {
+        self.lateColliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
       },
       addBoxCollider(cx, cz, w, d, pad = 0.1, north = false) {
         this.addColliderRect(cx - w / 2 - pad, cx + w / 2 + pad, cz - d / 2 - pad, cz + d / 2 + pad, north);

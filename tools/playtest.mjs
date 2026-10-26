@@ -130,8 +130,8 @@ const LEGS = [
       [-30, -2.9],
       [-29.4, -2.1], // north of the birch at (-28.5, -3.1)
       [-20, -2.1],
-      [-15, -5.2], // bench at (-12.5, -4), power pole at (-12.6, 0)
-      [-11, -5.2],
+      [-15, -5.7], // between the end of the bench at (-12.5, -4) and the notice board at (-11.8, -8), power pole at (-12.6, 0)
+      [-11, -5.7],
       [-8.5, -2],
     ],
   },
