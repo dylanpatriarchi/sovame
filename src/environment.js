@@ -629,9 +629,19 @@ export class Environment {
     // kiosk always lit, brighter in the evening
     if (this.world.kiosk) {
       const level = 0.35 + 0.65 * clamp(c.lamp + 0.15, 0, 1);
-      this.world.kiosk.light.intensity = 5 + 16 * level;
-      this.world.kiosk.glow.material.opacity = 0.22 + 0.5 * level;
-      this.world.kiosk.windowMat.color.setRGB(0.22 + 0.78 * level, 0.19 + 0.62 * level, 0.13 + 0.36 * level);
+      this.world.kiosk.light.intensity = 3 + 9 * level;
+      this.world.kiosk.glow.material.opacity = 0.08 + 0.22 * level;
+      // the same hours the counter keeps (8:00 to 20:00): shut, the tube is off
+      const k = this.world.kiosk;
+      const m = (this.cur.clockMinutes ?? 12 * 60) % 1440;
+      const open = m >= 8 * 60 && m < 20 * 60;
+      const map = open ? k.openTex : k.shutTex;
+      if (map && k.windowMat.map !== map) k.windowMat.map = map;
+      const lit = open ? level : 0.3 * level;
+      k.light.intensity *= open ? 1 : 0.25;
+      k.glow.material.opacity *= open ? 1 : 0.35;
+      // the texture carries the colours: the tint only warms and dims it
+      k.windowMat.color.setRGB(0.3 + 0.75 * lit, 0.28 + 0.62 * lit, 0.24 + 0.42 * lit);
     }
     if (this.world.garlandMats) {
       // the fir lights turn on only when the street lamps are on
