@@ -744,6 +744,50 @@ if (traffic) {
   check(false, 'world.traffic exists');
 }
 
+// walking into the bumper of a car of the traffic: neither must get stuck
+// (the player is pushed out of its body, the car moves on once you step aside)
+console.log('→ walking into a moving car');
+const carBump = await page.evaluate(() => {
+  const g = window.__game;
+  const W = g.world;
+  const P = g.player;
+  const keep = { ...P.position };
+  const step = (n, keys) => {
+    for (let i = 0; i < n; i++) {
+      P.keys = { ...keys };
+      P.update(0.05);
+      W.traffic.update(0.05, { keepClear: [P.position], lights: 0 });
+    }
+  };
+  P.enabled = true;
+  step(200, {});
+  const out = [];
+  for (const car of W.trafficCars.filter((c) => !c.isBus).slice(0, 2)) {
+    for (const ahead of [3.5, 9]) {
+      P.teleport(car.x + Math.sin(car.heading) * ahead, car.z + Math.cos(car.heading) * ahead, 0);
+      let inside = 0;
+      for (let i = 0; i < 80; i++) {
+        P.yaw = Math.atan2(P.position.x - car.x, P.position.z - car.z);
+        step(1, { forward: true });
+        if (car.overlapsCircle(P.position.x, P.position.z, 0.3)) inside++;
+      }
+      const p0 = { x: P.position.x, z: P.position.z };
+      P.yaw = car.heading + Math.PI / 2;
+      step(40, { forward: true });
+      const walked = Math.hypot(P.position.x - p0.x, P.position.z - p0.z);
+      const c0 = { x: car.x, z: car.z };
+      step(60, {});
+      out.push({ ahead, inside, walked: Number(walked.toFixed(2)), carMoved: Number(Math.hypot(car.x - c0.x, car.z - c0.z).toFixed(2)) });
+    }
+  }
+  P.keys = {};
+  P.teleport(keep.x, keep.z, 0);
+  return out;
+});
+console.log('  ' + carBump.map((r) => `from ${r.ahead} m: ${r.inside} steps inside, walked off ${r.walked} m, car on ${r.carMoved} m`).join('; '));
+check(carBump.length > 0 && carBump.every((r) => r.inside === 0), 'walking into a car of the traffic never leaves you inside its body');
+check(carBump.length > 0 && carBump.every((r) => r.walked > 1 && r.carMoved > 2), 'you walk off and the car drives on: no deadlock at the bumper');
+
 // the bus: calls at the stop (pulls over, doors open and shut, drives on)
 // and its long body never sweeps over a static collider on the way round
 console.log('→ bus');

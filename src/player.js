@@ -208,6 +208,12 @@ export class Player {
 
     // movement with collisions solved separately on the two axes
     const r = PLAYER.radius;
+    // stepped out of the way when a car has come up onto you
+    const out = this.world.escapeVehicles?.(this.position.x, this.position.z, r);
+    if (out) {
+      this.position.x = out.x;
+      this.position.z = out.z;
+    }
     let nx = this.position.x + this.velocity.x * dt;
     if (!this.world.collides(nx, this.position.z, r)) this.position.x = nx;
     else this.velocity.x *= 0.2;
