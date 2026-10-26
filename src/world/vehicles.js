@@ -52,6 +52,26 @@ export function colorize(geo, hex) {
 
 export const plain = (geo) => (geo.index ? geo.toNonIndexed() : geo);
 
+/**
+ * Ways out for a circle of radius r caught inside an oriented body (centre
+ * cx, cz, half width hw, half length hl): the four nearest spots just clear
+ * of it, nearest first (out through the closest side first).
+ */
+export function escapesFromBox(cx, cz, heading, hw, hl, x, z, r) {
+  const s = Math.sin(heading);
+  const c = Math.cos(heading);
+  const lx = (x - cx) * c - (z - cz) * s;
+  const lz = (x - cx) * s + (z - cz) * c;
+  const m = r + 0.04;
+  const outs = [
+    [hw + m, lz, hw - lx],
+    [-hw - m, lz, hw + lx],
+    [lx, hl + m, hl - lz],
+    [lx, -hl - m, hl + lz],
+  ].sort((a, b) => a[2] - b[2]);
+  return outs.map(([ox, oz]) => ({ x: cx + ox * c + oz * s, z: cz - ox * s + oz * c }));
+}
+
 export function box(w, h, d, x, y, z) {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(x, y, z);
@@ -363,6 +383,11 @@ export class Car {
   /** Narrow phase for World.collides: circle against the oriented body. */
   overlapsCircle(x, z, r) {
     return this.distanceTo(x, z) < r;
+  }
+
+  /** Spots just clear of the body for a circle caught on it, nearest first. */
+  escapes(x, z, r) {
+    return escapesFromBox(this.x, this.z, this.heading, WIDTH / 2, LENGTH / 2, x, z, r);
   }
 
   /** True when the car's footprint at (x, z, heading) hits anything. */
