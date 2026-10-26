@@ -36,6 +36,12 @@ const PULL_OUT = [-1, -24]; // starts / is back in lane this far past it
 const DOORS_OPEN = [0.8, 2.0]; // folding open, from the moment it stops
 const DOORS_SHUT = [8.0, 9.2]; // folding shut
 const DWELL = 10.4; // pulls out
+/** The bus's other stops (the avenue's is by the kiosk): near which point of
+ * its loop. ул. Школьная's south kerb, ул. Строителей's west one. */
+const BUS_STOPS = [
+  { name: 'School street', ru: 'ШКОЛЬНАЯ УЛИЦА', x: -60, z: -154.8 },
+  { name: 'Builders street', ru: 'УЛИЦА СТРОИТЕЛЕЙ', x: -172.8, z: -70 },
+];
 
 /** The cars: loop direction (1 = avenue southbound first) and start share. */
 const FLEET = [
@@ -138,29 +144,63 @@ export function buildTraffic(ctx) {
   });
   world.trafficCars = cars.map((t) => t.car);
 
-  // the bus stop: the bus halts with the shelter between its two doors
+  // the bus stops: the bus halts with the shelter between its two doors. The
+  // first is the avenue's, by the kiosk; the shelters of the others stand
+  // where the route bends round the far side of the block (busstops.js)
   const busT = cars.find((t) => t.bus);
-  const stopZ = (world.points.busStop?.z ?? 24) + 2;
-  let stopS = 0;
-  {
+  const nearestS = (x, z) => {
     const p = busT.path;
     let best = Infinity;
+    let at = 0;
     for (let i = 0; i < p.count; i++) {
-      const d = Math.abs(p.x[i] - LANE) + Math.abs(p.z[i] - stopZ);
+      const d = Math.abs(p.x[i] - x) + Math.abs(p.z[i] - z);
       if (d < best) {
         best = d;
-        stopS = p.s[i];
+        at = p.s[i];
       }
     }
-  }
+    return at;
+  };
+  const avenue = world.points.busStop;
+  const stops = [{ name: 'Microdistrict', ru: 'МИКРОРАЙОН', x: LANE, z: (avenue?.z ?? 24) + 2 }, ...BUS_STOPS].map((stop) => ({ ...stop, s: nearestS(stop.x, stop.z) }));
   world.bus = busT.car;
-  busT.stopS = stopS;
+  busT.stopS = stops[0].s;
+  busT.stops = stops;
+  // the kerb side of each stop and the shelter's place on it (for busstops.js)
+  world.busStops = stops.map((stop) => {
+    const i = indexAt(busT.path, stop.s);
+    const h = busT.path.heading[i];
+    const out = PULL_OVER + BUS.width / 2 + 2.15;
+    // centred on the doors, 2.1 m ahead of the halted bus's middle
+    const x = busT.path.x[i] - Math.cos(h) * out + Math.sin(h) * 2.1;
+    const z = busT.path.z[i] + Math.sin(h) * out + Math.cos(h) * 2.1;
+    return { name: stop.name, ru: stop.ru, s: stop.s, heading: h, x, z };
+  });
 
-  /** Signed path distance from s to the bus stop, in (-len/2, len/2]. */
+  /** Signed path distance from s to the nearest bus stop, in (-len/2, len/2]. */
   const toStop = (s) => {
     const len = busT.path.length;
-    const d = (((stopS - s) % len) + len) % len;
-    return d > len / 2 ? d - len : d;
+    let best = Infinity;
+    for (const stop of stops) {
+      const d = (((stop.s - s) % len) + len) % len;
+      const q = d > len / 2 ? d - len : d;
+      if (Math.abs(q) < Math.abs(best)) best = q;
+    }
+    return best;
+  };
+  /** The stop the bus is at or coming up to. */
+  const stopAhead = (s) => {
+    const len = busT.path.length;
+    let best = null;
+    let bestD = Infinity;
+    for (const stop of stops) {
+      const d = (((stop.s - s + 1) % len) + len) % len;
+      if (d < bestD) {
+        bestD = d;
+        best = stop;
+      }
+    }
+    return best;
   };
   const ease = (x) => x * x * (3 - 2 * x);
   /**
@@ -252,6 +292,13 @@ export function buildTraffic(ctx) {
   world.traffic = {
     cars,
     paths,
+    stops,
+    /** The bus's call: 'run' | 'dwell' | 'leave', how long it has stood, and
+     * the stop it stands at (dwelling) or is heading for. */
+    busState() {
+      const b = busT.bus;
+      return { state: b.state, t: b.t, stop: stopAhead(busT.s) };
+    },
     /**
      * keepClear: [{ x, z }] people the drivers must not run over (the
      * player, or the camera on the title screen). lights: 0..1 street-lamp

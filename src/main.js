@@ -22,6 +22,7 @@ import { Snowmen } from './snowmen.js';
 import { Bread, PRICE } from './bread.js';
 import { Badges } from './badges.js';
 import { Swings } from './swings.js';
+import { BusRide } from './busride.js';
 import { Soda } from './soda.js';
 import { Phone } from './phone.js';
 import { Angels } from './angels.js';
@@ -504,6 +505,17 @@ async function boot() {
       if (seat) swings.sit(seat);
     },
   });
+  // the bus: E by an open door at a stop gets you on, E at a stop gets you off
+  const busRide = new BusRide({ world, player, camera, sound });
+  world.interactables.push({
+    id: 'bus',
+    x: 0,
+    z: 0,
+    radius: busRide.reach,
+    distanceTo: (x, z) => (state.interior || driving.active || state.smoking || swings.active || angels.active || carpet.hanging ? Infinity : busRide.distanceTo(x, z)),
+    prompt: () => 'E — get on the bus (route 31)',
+    onUse: () => busRide.board(),
+  });
   // a snow angel: look up at the sky on open snow and E lies you back in it
   const angels = new Angels({ world, player, sound });
   world.interactables.push({
@@ -782,7 +794,7 @@ async function boot() {
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = !state.smoking && !swings.active && !angels.active && !carpet.hanging && !iceSlide.active;
+    player.enabled = !state.smoking && !swings.active && !busRide.active && !angels.active && !carpet.hanging && !iceSlide.active;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
@@ -791,6 +803,7 @@ async function boot() {
   function toTitle() {
     if (state.smoking) endSmoke(false);
     swings.getOff();
+    busRide.getOff(true);
     angels.cancel();
     carpet.cancel();
     kettle.cancel();
@@ -997,6 +1010,8 @@ async function boot() {
     let text = null;
     if (driving.active) {
       text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
+    } else if (busRide.active) {
+      text = busRide.prompt;
     } else {
       const it = state.smoking || swings.active || angels.active || carpet.hanging || iceSlide.active ? null : nearestInteractable();
       text = it && !state.transitioning ? it.prompt() : null;
@@ -1038,6 +1053,15 @@ async function boot() {
     if (driving.active && state.mode === 'playing') {
       if (event.code === 'KeyE' && !event.repeat) leaveCar();
       if (event.code === 'KeyV' && !event.repeat) driving.toggleView();
+      if (event.code === 'KeyM' && !event.repeat) toggleMap();
+      if (event.code === 'Escape') {
+        pause();
+        player.releaseLock();
+      }
+      return;
+    }
+    if (busRide.active && state.mode === 'playing') {
+      if (event.code === 'KeyE' && !event.repeat) busRide.getOff();
       if (event.code === 'KeyM' && !event.repeat) toggleMap();
       if (event.code === 'Escape') {
         pause();
@@ -1139,7 +1163,7 @@ async function boot() {
   // handy for inspecting the scene from the browser console
   perf.breakdown = perf.breakdown.bind(perf, scene, camera, world.group);
   window.__perf = perf;
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, switches, newYear, leafPiles, puddles, bread, soda, phone, badges, swings, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, snowballs, throwSnowball, snowmen, angels, puck, carpet, target, mail, hopscotch, pebbles, kettle, iceSlide, icicles, television, doodles, switches, newYear, leafPiles, puddles, bread, soda, phone, badges, swings, busRide, map, toggleMap, photo, togglePhoto, driving, windowViews, dynres, changeFloor, setFloor };
 
   /* --------------------------------------------------- ambience */
 
@@ -1276,7 +1300,7 @@ async function boot() {
       camera.updateProjectionMatrix();
     } else if (state.mode === 'playing') {
       if (driving.active) driving.update(dt, player.enabled ? player.keys : {});
-      else player.update(dt);
+      else if (!busRide.active) player.update(dt);
       swings.update(dt, player.keys);
       angels.update(dt);
       carpet.update(dt, player.keys);
@@ -1311,8 +1335,10 @@ async function boot() {
     world.update(dt, state.elapsed);
     world.people?.update(dt, state.elapsed, viewCam?.position ?? player.position, env.temperature);
     // drivers stop for the player on foot (on the title screen, the camera)
-    const onFoot = state.mode === 'title' ? camera.position : !state.interior && !driving.active ? player.position : null;
+    const onFoot = state.mode === 'title' ? camera.position : !state.interior && !driving.active && !busRide.active ? player.position : null;
     world.traffic?.update(dt, { keepClear: onFoot ? [onFoot] : [], lights: env.cur.lamp });
+    // a passenger's seat goes where the traffic has just moved the bus
+    if (state.mode === 'playing') busRide.update();
     // the stray dog takes an interest in the player on foot
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
