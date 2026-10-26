@@ -303,10 +303,37 @@ export function buildProps(ctx) {
     const w = 3.8;
     const h = 2.8;
     const d = 2.8;
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb9c0c2, roughness: 0.7, metalness: 0.25 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bodyMat);
-    body.position.set(x, h / 2 + 0.2, z);
+    // painted sheet steel, the green-blue of the street pavilions; the
+    // front wall is built round the window opening so the glazing sits in
+    // a reveal, with the lit inside of the kiosk set back behind the glass
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x5f8079, roughness: 0.62, metalness: 0.3 });
+    const REVEAL = 0.22;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d - REVEAL), bodyMat);
+    body.position.set(x, h / 2 + 0.2, z + REVEAL / 2);
     ctx.place(body);
+    {
+      const fz = z - d / 2 + REVEAL / 2;
+      const winW = 2.8;
+      const winY0 = 1.25;
+      const winY1 = 2.45;
+      const side = (w - winW) / 2;
+      for (const [bw, bh, bx, by] of [
+        [w, winY0 - 0.2, x, 0.2 + (winY0 - 0.2) / 2], // under the window
+        [w, h + 0.2 - winY1, x, winY1 + (h + 0.2 - winY1) / 2], // over it
+        [side, winY1 - winY0, x - winW / 2 - side / 2, (winY0 + winY1) / 2],
+        [side, winY1 - winY0, x + winW / 2 + side / 2, (winY0 + winY1) / 2],
+      ]) {
+        const part = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, REVEAL), bodyMat);
+        part.position.set(bx, by, fz);
+        ctx.place(part);
+      }
+      // ribs pressed into the sheet under the window
+      for (let i = 0; i < 9; i++) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.05, winY0 - 0.35, 0.03), bodyMat);
+        rib.position.set(x - w / 2 + 0.3 + i * ((w - 0.6) / 8), 0.2 + (winY0 - 0.2) / 2, z - d / 2 - 0.015);
+        ctx.place(rib);
+      }
+    }
     ctx.addBoxCollider(x, z, w, d, 0.2);
     const base = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.4, d + 0.4), M.concreteDark);
     base.position.set(x, 0.2, z);
@@ -332,28 +359,53 @@ export function buildProps(ctx) {
     sign.position.set(x, h + 0.35, z - d / 2 - 0.04);
     ctx.place(sign);
 
-    // warm window
-    const windowMat = new THREE.MeshBasicMaterial({ color: 0x3a3226 });
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.05), windowMat);
+    // the window: the lit inside of the kiosk behind the glass, shelves of
+    // jars, bottles and tins, the loaves on the counter and the saleswoman
+    // in her white cap; after hours the same shelves, dim, and a card
+    const openTex = kioskInterior(true);
+    const shutTex = kioskInterior(false);
+    const windowMat = new THREE.MeshBasicMaterial({ map: openTex, color: 0x3a3226 });
+    // the inside, at the back of the reveal (the body's front face)
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 1.2), windowMat);
     win.rotation.y = Math.PI;
-    win.position.set(x, 1.85, z - d / 2 - 0.06);
+    win.position.set(x, 1.85, z - d / 2 + 0.215);
     group.add(win);
-    const winFrame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.2, 0.08), M.metal);
-    winFrame.position.set(x, 1.85, z - d / 2 - 0.02);
-    ctx.place(winFrame);
+    // the glazing in its frame, flush with the wall: a faint pane that
+    // catches the sky, so the shelves read as behind glass
+    const pane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.8, 1.2),
+      new THREE.MeshPhysicalMaterial({ color: 0xc8d4dc, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.16, depthWrite: false }),
+    );
+    pane.rotation.y = Math.PI;
+    pane.position.set(x, 1.85, z - d / 2 + 0.02);
+    group.add(pane);
+    for (const [fw, fh, fx, fy] of [
+      [2.9, 0.07, x, 2.44],
+      [2.9, 0.07, x, 1.26],
+      [0.06, 1.2, x - 1.43, 1.85],
+      [0.06, 1.2, x + 1.43, 1.85],
+      [0.05, 1.2, x - 0.47, 1.85],
+      [0.05, 1.2, x + 0.47, 1.85],
+    ]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.06), M.metal);
+      bar.position.set(fx, fy, z - d / 2 + 0.03);
+      ctx.place(bar);
+    }
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.1, 0.42), M.metal);
     shelf.position.set(x, 1.2, z - d / 2 - 0.18);
     ctx.place(shelf);
 
-    const kLight = new THREE.PointLight(0xffc98a, 0, 10, 2);
-    kLight.position.set(x, 1.9, z - d / 2 - 0.8);
+    // the light falls out of the window onto the snow in front, not back
+    // onto the kiosk's own wall
+    const kLight = new THREE.PointLight(0xffc98a, 0, 9, 2);
+    kLight.position.set(x, 1.5, z - d / 2 - 1.6);
     kLight.layers.set(OUTDOOR_LIGHT_LAYER);
     group.add(kLight);
     const kGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: glowTex, color: 0xffcf94, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })
     );
-    kGlow.scale.set(3.6, 3.6, 1);
-    kGlow.position.set(x, 1.85, z - d / 2 - 0.5);
+    kGlow.scale.set(2.2, 1.4, 1);
+    kGlow.position.set(x, 1.85, z - d / 2 - 0.25);
     group.add(kGlow);
 
     const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 0.16, d + 0.5), M.metal);
@@ -379,12 +431,12 @@ export function buildProps(ctx) {
       c.font = 'bold 26px Arial, sans-serif';
       c.fillText('8:00 — 20:00', W / 2, H * 0.72);
     });
-    const hours = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), new THREE.MeshStandardMaterial({ map: hoursTex, roughness: 0.8 }));
+    const hours = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.35), new THREE.MeshStandardMaterial({ map: hoursTex, roughness: 0.8 }));
     hours.rotation.y = Math.PI;
-    hours.position.set(x - 1.5, 1.9, z - d / 2 - 0.08);
+    hours.position.set(x - 1.15, 0.8, z - d / 2 - 0.04);
     group.add(hours);
 
-    world.kiosk = { windowMat, light: kLight, glow: kGlow, glowBase: 0.5 };
+    world.kiosk = { windowMat, light: kLight, glow: kGlow, glowBase: 0.5, openTex, shutTex };
     world.points.radio = new THREE.Vector3(x, 1.8, z - d / 2 - 0.6);
     // where you stand to be served, just off the step
     world.points.counter = new THREE.Vector3(x, 0, z - d / 2 - 1.05);
@@ -1118,4 +1170,155 @@ export function buildProps(ctx) {
   ctx.addZone('Улица Заводская', 'Zavodskaya street', 9, 100, 116, 140);
   ctx.addZone('Двор дома № 2', 'Courtyard of building 2', 14, 92, 140, 172);
   ctx.addZone('Северный микрорайон', 'Northern district', -WORLD.bounds, WORLD.bounds, -WORLD.bounds, WORLD.boundsNorth);
+}
+
+/** What the kiosk window shows: the back wall under a fluorescent tube,
+ * three shelves of goods, bread on the counter, the saleswoman (open) or a
+ * ЗАКРЫТО card (shut), the frame, the serving hatch and frost on the glass. */
+function kioskInterior(open) {
+  return makeSignTexture(512, 208, (c, W, H) => {
+    const rng = new Rng(3131);
+    // the back wall, brightest under the tube
+    const wall = c.createLinearGradient(0, 0, 0, H);
+    wall.addColorStop(0, '#f4ead0');
+    wall.addColorStop(0.5, '#d8c7a0');
+    wall.addColorStop(1, '#8f7b5a');
+    c.fillStyle = wall;
+    c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(255,255,240,0.9)';
+    c.fillRect(W * 0.12, 6, W * 0.76, 5);
+    // the saleswoman, behind the shelf goods but in front of the wall
+    if (open) {
+      const px = W * 0.62;
+      c.fillStyle = '#e8e4da'; // white coat
+      c.beginPath();
+      c.moveTo(px - 46, H);
+      c.quadraticCurveTo(px - 44, H * 0.5, px, H * 0.47);
+      c.quadraticCurveTo(px + 44, H * 0.5, px + 46, H);
+      c.fill();
+      c.fillStyle = '#c99a7c'; // face
+      c.beginPath();
+      c.ellipse(px, H * 0.36, 15, 19, 0, 0, TAU);
+      c.fill();
+      c.fillStyle = '#6b4a34'; // hair
+      c.beginPath();
+      c.ellipse(px, H * 0.3, 18, 13, 0, Math.PI, TAU);
+      c.fill();
+      c.fillStyle = '#ffffff'; // the cap
+      c.fillRect(px - 15, H * 0.2, 30, 9);
+    }
+    // shelves with their goods
+    const shelves = [H * 0.3, H * 0.52, H * 0.74];
+    shelves.forEach((y, row) => {
+      let x = 8;
+      while (x < W - 16) {
+        const kind = rng.int(0, 4);
+        if (open && x > W * 0.62 - 50 && x < W * 0.62 + 40 && row > 0) {
+          x += 12;
+          continue; // she stands there
+        }
+        if (kind === 0) {
+          // a jar of pickles or jam with a tin lid
+          const w = rng.float(14, 20);
+          const h = rng.float(20, 28);
+          c.fillStyle = rng.pick(['#5d7a3a', '#8a2e2a', '#c27d2a', '#6c8a4a']);
+          c.fillRect(x, y - h, w, h);
+          c.fillStyle = '#b9bcbc';
+          c.fillRect(x - 1, y - h - 4, w + 2, 4);
+          x += w + 3;
+        } else if (kind === 1) {
+          // bottles: kefir with foil caps, lemonade, a dark one
+          const n = rng.int(2, 4);
+          for (let i = 0; i < n; i++) {
+            const h = rng.float(30, 40);
+            c.fillStyle = rng.pick(['#3f6b42', '#5b3a22', '#e9ecef', '#2f5a3c']);
+            c.fillRect(x, y - h, 9, h);
+            c.fillRect(x + 2.5, y - h - 8, 4, 8);
+            c.fillStyle = rng.pick(['#d6d9db', '#3a8a4a', '#c7a63a']);
+            c.fillRect(x + 2, y - h - 10, 5, 3);
+            x += 11;
+          }
+          x += 3;
+        } else if (kind === 2) {
+          // a stack of tins
+          const w = 13;
+          const label = rng.pick(['#c8a94a', '#9c3a2a', '#3d5f8a', '#d9d4c4']);
+          for (let i = 0; i < rng.int(1, 3); i++) {
+            c.fillStyle = '#a9adad';
+            c.fillRect(x, y - (i + 1) * 13, w, 12);
+            c.fillStyle = label;
+            c.fillRect(x, y - (i + 1) * 13 + 3, w, 6);
+          }
+          x += w + 3;
+        } else if (kind === 3) {
+          // packets: tea, matches, biscuits
+          const w = rng.float(14, 22);
+          const h = rng.float(16, 24);
+          c.fillStyle = rng.pick(['#d8b23a', '#b73a2a', '#3a6a9a', '#e3d9b8']);
+          c.fillRect(x, y - h, w, h);
+          c.fillStyle = 'rgba(40,30,20,0.4)';
+          c.fillRect(x + 2, y - h * 0.6, w - 4, 3);
+          x += w + 2;
+        } else {
+          x += rng.float(6, 14);
+        }
+      }
+      // the plank and its price cards
+      c.fillStyle = '#5a4430';
+      c.fillRect(0, y, W, 5);
+      for (let i = 0; i < 6; i++) {
+        const cx = rng.float(10, W - 30);
+        c.fillStyle = '#f5f2e6';
+        c.fillRect(cx, y + 5, 18, 9);
+        c.fillStyle = '#7a1d18';
+        c.fillRect(cx + 3, y + 8, 12, 2);
+      }
+    });
+    // the counter, with loaves and round rye bread
+    c.fillStyle = '#6e5a42';
+    c.fillRect(0, H * 0.86, W, H * 0.14);
+    for (let x = 30; x < W - 40; x += rng.float(36, 60)) {
+      c.fillStyle = rng.chance(0.6) ? '#c8873e' : '#4a3020';
+      c.beginPath();
+      c.ellipse(x, H * 0.86, rng.float(14, 20), rng.float(6, 9), 0, Math.PI, TAU);
+      c.fill();
+    }
+    if (!open) {
+      // after hours: the tube off, a card hung on the glass
+      c.fillStyle = 'rgba(20,24,30,0.55)';
+      c.fillRect(0, 0, W, H);
+      c.fillStyle = '#f2ecd8';
+      c.fillRect(W * 0.38, H * 0.36, W * 0.24, H * 0.22);
+      c.strokeStyle = '#2b2a27';
+      c.lineWidth = 3;
+      c.strokeRect(W * 0.38 + 4, H * 0.36 + 4, W * 0.24 - 8, H * 0.22 - 8);
+      c.fillStyle = '#a8231c';
+      c.font = 'bold 26px Arial, sans-serif';
+      c.fillText('ЗАКРЫТО', W / 2, H * 0.47);
+    }
+    // mullions, and the little serving hatch at counter height
+    c.fillStyle = '#3d4246';
+    for (const fx of [0, W / 3, (2 * W) / 3, W]) c.fillRect(fx - 4, 0, 8, H);
+    c.strokeStyle = '#3d4246';
+    c.lineWidth = 5;
+    c.strokeRect(W * 0.42, H * 0.62, W * 0.16, H * 0.3);
+    // frost creeping up from the bottom of the glass
+    const frost = c.createLinearGradient(0, H, 0, H * 0.7);
+    frost.addColorStop(0, 'rgba(225,235,245,0.75)');
+    frost.addColorStop(1, 'rgba(225,235,245,0)');
+    c.fillStyle = frost;
+    c.fillRect(0, H * 0.7, W, H * 0.3);
+    c.strokeStyle = 'rgba(240,246,252,0.5)';
+    c.lineWidth = 1;
+    for (let i = 0; i < 90; i++) {
+      const fx = rng.float(0, W);
+      const fy = H - rng.float(0, H * 0.22);
+      const a = rng.float(-2.4, -0.7);
+      const l = rng.float(4, 16);
+      c.beginPath();
+      c.moveTo(fx, fy);
+      c.lineTo(fx + Math.cos(a) * l, fy + Math.sin(a) * l);
+      c.stroke();
+    }
+  });
 }
