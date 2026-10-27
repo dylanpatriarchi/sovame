@@ -292,6 +292,12 @@ export function buildProps(ctx) {
     board.rotation.y = Math.PI / 2;
     ctx.place(board);
 
+    // the shelter's glass wind-screen on the road side, its bench and back
+    // posts (late: the scatter around the avenue stays as it always was)
+    ctx.addLateColliderRect(cx - 1.22, cx - 1.08, cz - 2.58, cz + 2.58);
+    ctx.addLateColliderRect(cx + 0.5, cx + 1.24, cz - 2.2, cz + 2.2);
+    for (const dz of [-2.5, 2.5]) ctx.addLateColliderRect(cx + 1.05, cx + 1.25, cz + dz - 0.1, cz + dz + 0.1);
+
     world.points.busStop = new THREE.Vector3(cx, 0, cz);
     ctx.addZone('Автобусная остановка', 'Bus stop', 6, 14, 18, 32);
   }
@@ -705,6 +711,19 @@ export function buildProps(ctx) {
     g.rotation.y = ry;
     group.add(g);
     ctx.addBoxCollider(x, z, 2.0, 0.7, 0.1);
+    // that box only fits a bench square to the axes: one turned any other
+    // way is covered by a row of small squares along its seat as well
+    if (Math.abs(Math.sin(ry)) > 0.01) {
+      const c = Math.cos(ry);
+      const sn = Math.sin(ry);
+      for (let k = -2; k <= 2; k++) {
+        const lx = k * 0.42;
+        const lz = -0.03;
+        const px = x + lx * c + lz * sn;
+        const pz = z - lx * sn + lz * c;
+        ctx.addLateColliderRect(px - 0.34, px + 0.34, pz - 0.34, pz + 0.34);
+      }
+    }
   };
   makeBench(-27, -16, 0);
   makeBench(-52, -36, Math.PI);
