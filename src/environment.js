@@ -581,6 +581,7 @@ export class Environment {
       this.world.westDetails.visible = camera.position.x < -64;
       this.world.southDetails.visible = camera.position.z < -60;
       this.world.highwayDetails.visible = camera.position.x > 60;
+      this.world.eastDetails.visible = camera.position.x > 60;
     }
     // only lamps near the camera borrow a real PointLight from the pool,
     // nearest first; the rest rely on the glow

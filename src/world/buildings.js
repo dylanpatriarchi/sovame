@@ -5,6 +5,7 @@ import { Rng, TAU, makeCanvas, starPath } from '../util.js';
 import { makeSignTexture, canvasTexture } from '../textures.js';
 import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 import { highwayRange } from './highway.js';
+import { nearEastSector } from './east.js';
 import { WORLD } from '../config.js';
 
 export const FLOOR_H = 3.0;
@@ -893,7 +894,7 @@ export function buildBuildings(ctx) {
   // made all the same)
   for (const mesh of skylineBoxes) {
     const { x, z } = mesh.position;
-    if (x > 100 && highwayRange(x, z) < 90) mesh.removeFromParent();
+    if (x > 100 && (highwayRange(x, z) < 90 || nearEastSector(x, z, 45))) mesh.removeFromParent();
   }
   // industrial sites
   const factory = (x, z, h = 44) => {
