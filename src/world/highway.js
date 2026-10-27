@@ -14,6 +14,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng, TAU } from '../util.js';
 import { WORLD } from '../config.js';
 import { makeSignTexture } from '../textures.js';
+import { LANE_X, nearEastSector } from './east.js';
 
 /** Where the road runs (x, z): out of the cross street, east into the steppe. */
 const CONTROL = [
@@ -156,7 +157,7 @@ export function steppeGroves() {
   const centres = [];
   for (let k = 0; k < 240 && centres.length < 48; k++) {
     const p = at(rng.float(60, LINE.length - 30), rng.sign() * rng.float(32, 170));
-    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || highwayDistance(p.x, p.z) < 30 || Math.hypot(p.x - RING.x, p.z - RING.z) < 80) continue;
+    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || nearEastSector(p.x, p.z, 20) || highwayDistance(p.x, p.z) < 30 || Math.hypot(p.x - RING.x, p.z - RING.z) < 80) continue;
     if (centres.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 60)) continue;
     centres.push(p);
   }
@@ -168,7 +169,7 @@ export function steppeGroves() {
       const r = spread * Math.sqrt(rng.float(0, 1));
       const x = c.x + Math.cos(a) * r;
       const z = c.z + Math.sin(a) * r;
-      if (highwayDistance(x, z) < 24 || !clearOfInteriors(x, z) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 2.2)) continue;
+      if (highwayDistance(x, z) < 24 || !clearOfInteriors(x, z) || nearEastSector(x, z) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 2.2)) continue;
       trees.push({ x, z });
     }
   }
@@ -301,9 +302,16 @@ export function buildHighway(ctx) {
     side < 0
       ? [[-11.5, -0.02], [-10, 0.32], [-8.6, 0.55], [-7.5, 0.36], [-SHOULDER - 0.2, 0.0]]
       : [[SHOULDER + 0.2, 0.0], [7.5, 0.36], [8.6, 0.55], [10, 0.32], [11.5, -0.02]];
+  // the right-hand verge opens where ул. Таёжная turns off into the private sector
+  let gap0 = first;
+  while (gap0 < END && LINE.x[gap0] < LANE_X - 9) gap0++;
+  let gap1 = gap0;
+  while (gap1 < END && LINE.x[gap1] < LANE_X + 9) gap1++;
+  const verges = (side, prof) =>
+    side < 0 ? [profileStrip(LINE, prof, first, END, 4, 4)] : [profileStrip(LINE, prof, first, gap0, 4, 4), profileStrip(LINE, prof, gap1, END, 4, 4)];
   const banks = [];
   for (const side of [-1, 1]) {
-    banks.push(profileStrip(LINE, bank(side), first, END, 4, 4));
+    banks.push(...verges(side, bank(side)));
     banks.push(profileStrip(ring, bank(side), 0, ring.n - 1, 4, 4, true));
   }
   add(new THREE.Mesh(mergeGeometries(banks, false), M.snow), { season: 'winter', receive: true });
@@ -311,7 +319,7 @@ export function buildHighway(ctx) {
   const verge = (side) => (side < 0 ? [[-11, 0.0], [-9, 0.14], [-7.2, 0.0]] : [[7.2, 0.0], [9, 0.14], [11, 0.0]]);
   const grass = [];
   for (const side of [-1, 1]) {
-    grass.push(profileStrip(LINE, verge(side), first, END, 4, 4));
+    grass.push(...verges(side, verge(side)));
     grass.push(profileStrip(ring, verge(side), 0, ring.n - 1, 4, 4, true));
   }
   add(new THREE.Mesh(mergeGeometries(grass, false), grassMat), { season: 'autumn' });
@@ -332,7 +340,10 @@ export function buildHighway(ctx) {
   const postSpots = [];
   for (let s = 10; s < LINE.length - 4; s += 50) {
     if (LINE.x[Math.round(s / STEP)] < START_X) continue;
-    for (const side of [-1, 1]) postSpots.push(at(s, side * 7.8));
+    for (const side of [-1, 1]) {
+      const p = at(s, side * 7.8);
+      if (side < 0 || Math.abs(p.x - LANE_X) > 10) postSpots.push(p);
+    }
   }
   const posts = new THREE.InstancedMesh(postGeo, M.concreteWhite, postSpots.length);
   const bands = new THREE.InstancedMesh(bandGeo, new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.7 }), postSpots.length);
@@ -401,7 +412,8 @@ export function buildHighway(ctx) {
   }
   const pylonGeo = mergeGeometries(pylonParts);
   const pylons = [];
-  for (let s = 80; s < LINE.length - 40; s += 230) pylons.push(at(s, 58));
+  // (from past the private sector on)
+  for (let s = 80; s < LINE.length - 40; s += 230) if (at(s, 58).x > 250) pylons.push(at(s, 58));
   const pylonMesh = new THREE.InstancedMesh(pylonGeo, steel, pylons.length);
   pylons.forEach((p, i) => {
     dummy.position.set(p.x, 0, p.z);
@@ -444,7 +456,7 @@ export function buildHighway(ctx) {
   const stacks = [];
   for (let k = 0; k < 200 && stacks.length < 70; k++) {
     const p = at(rng.float(40, LINE.length - 40), rng.sign() * rng.float(22, 150));
-    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || highwayDistance(p.x, p.z) < 20 || stacks.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 14)) continue;
+    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || nearEastSector(p.x, p.z, 14) || highwayDistance(p.x, p.z) < 20 || stacks.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 14)) continue;
     stacks.push({ x: p.x, z: p.z, s: rng.float(0.75, 1.15), yaw: rng.float(0, TAU) });
   }
   const hayMat = new THREE.MeshStandardMaterial({ color: 0x9a8455, roughness: 1, flatShading: true, side: THREE.DoubleSide });

@@ -978,6 +978,61 @@ check(Object.values(highway.walls).every(Boolean), 'the gate in the east fence i
 check(highway.reached && highway.topKmh > 95 && highway.worst < 6, 'a car driven out along the highway reaches the roundabout at the far end, at highway speed');
 check(highway.verge < 7.2 && highway.out, 'driving off the road, the car stops at the verge');
 
+/* ========================================================== private sector */
+// ул. Таёжная turns off the highway into the private sector: you can walk
+// or drive up the lane, through a gate into a yard, but not through the
+// houses, the fences or out into the steppe behind them
+console.log('→ private sector');
+const sector = await page.evaluate(async () => {
+  const { EAST } = await import('/src/world/east.js');
+  const g = window.__game;
+  const w = g.world;
+  const P = EAST.plots[0];
+  const local = (x, z) => {
+    const v = new g.camera.position.constructor(x, 0, z).applyMatrix4(P.matrix);
+    return [v.x, v.z];
+  };
+  const free = (x, z) => !w.collides(x, z, 0.4);
+  const walls = {
+    mouth: free(EAST.laneX, 62),
+    lane: free(EAST.laneX, 150) && free(150, EAST.laneZ),
+    gate: free(...local(P.gx, 0.3)),
+    yard: free(...local(P.gx, 4)),
+    house: !free(...local(P.hx, 5.7)),
+    picket: !free(...local(P.gx + 3, 0.3)),
+    field: !free(EAST.laneX - 8, 66),
+    behind: !free(EAST.sector.x1 + 3, 120),
+  };
+  // drive in from the highway up the lane
+  const car = w.cars[0];
+  const keep = { x: car.x, z: car.z, heading: car.heading, px: g.player.position.x, pz: g.player.position.z };
+  car.x = EAST.laneX + 1.4;
+  car.z = 50.5;
+  car.heading = 0;
+  car.vx = car.vz = car.speed = 0;
+  car.updateCollider();
+  g.driving.enter(car);
+  let off = 0;
+  for (let t = 0; t < 14 && car.z < 112; t += 0.05) {
+    let dh = Math.atan2(EAST.laneX + 1.4 - car.x, 12) - car.heading;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    g.driving.update(0.05, { forward: car.speed < 9, left: dh > 0.03, right: dh < -0.03 });
+    if (car.z > 76) off = Math.max(off, Math.abs(car.x - EAST.laneX));
+  }
+  const reached = car.z;
+  car.vx = car.vz = car.speed = 0;
+  g.driving.exit();
+  car.x = keep.x;
+  car.z = keep.z;
+  car.heading = keep.heading;
+  car.updateCollider();
+  g.player.teleport(keep.px, keep.pz, 0);
+  return { walls, reached, off, zone: w.zoneAt(EAST.laneX, 120)?.name, lamps: w.lamps.length };
+});
+console.log(`  ${JSON.stringify(sector.walls)}; driven up the lane to z ${sector.reached.toFixed(0)}, at most ${sector.off.toFixed(1)} m off its middle; zone ${sector.zone}`);
+check(Object.values(sector.walls).every(Boolean), 'the private sector: the lane and the yards are open, houses, fences and the steppe behind are not');
+check(sector.reached > 110 && sector.off < 2.5 && sector.zone === 'Частный сектор', 'a car turns off the highway and drives up ул. Таёжная');
+
 /* ================================================================ snowballs */
 // a snowball thrown at a wall leaves a splat on its face, one thrown at a
 // passer-by makes them flinch, one lobbed up comes down on the ground

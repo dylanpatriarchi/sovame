@@ -9,6 +9,7 @@ import { Rng, TAU, DEG, lerp, clamp } from '../util.js';
 import { WORLD } from '../config.js';
 import { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } from './terrain.js';
 import { highwayDistance, steppeGroves } from './highway.js';
+import { eastBlocked, eastTrees } from './east.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -615,6 +616,9 @@ export function buildVegetation(ctx) {
   // and where the steppe highway leaves through the east fence
   for (const b of belt) if (highwayDistance(b.x, b.z) < 14) b.dead = true;
   for (const s of spruces) if (highwayDistance(s.x, s.z) < 14) s.dead = true;
+  // and on the lanes, houses and fences of the private sector off it
+  for (const b of belt) if (eastBlocked(b.x, b.z)) b.dead = true;
+  for (const s of spruces) if (eastBlocked(s.x, s.z)) s.dead = true;
   const southLists = scatterSouthTrees((x, z, r) => soft(x, z) && soft(x + 0.7, z) && soft(x - 0.7, z) && soft(x, z + 0.7) && soft(x, z - 0.7) && okPlace(x, z, r));
   const southBirch = southLists.birch;
   const southPoplar = southLists.poplar;
@@ -868,7 +872,8 @@ export function buildVegetation(ctx) {
     const groveRng = new Rng(25426);
     const pool = variants.birch;
     const parts = { wood: [], foliage: [], dead: [], snow: [] };
-    for (const item of steppeGroves()) {
+    // (the private sector's birches come last: the groves' draws hold)
+    for (const item of [...steppeGroves(), ...eastTrees()]) {
       const variant = pool[groveRng.int(0, pool.length - 1)];
       const yaw = groveRng.float(0, TAU);
       dummy.position.set(item.x, 0, item.z);

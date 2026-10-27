@@ -49,7 +49,7 @@ function geometryVersion(geometry) {
  * a short report ({ sources, batches, kept }).
  */
 export function batchStatic(world) {
-  const containers = [world.group, world.farDetails, world.westDetails, world.southDetails, world.highwayDetails].filter(Boolean);
+  const containers = [world.group, world.farDetails, world.westDetails, world.southDetails, world.highwayDetails, world.eastDetails].filter(Boolean);
   const containerSet = new Set(containers);
   const seasonOf = new Map();
   for (const o of world.winterOnly) seasonOf.set(o, 'winter');

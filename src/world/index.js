@@ -21,6 +21,7 @@ import { buildDog } from './dog.js';
 import { buildPigeons } from './pigeons.js';
 import { buildCats } from './cats.js';
 import { buildHighway, openRoad, highwaySurface } from './highway.js';
+import { buildEast, inEastSector } from './east.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -45,6 +46,10 @@ export class World {
     this.highwayDetails = new THREE.Group();
     this.highwayDetails.name = 'highway-details';
     this.group.add(this.highwayDetails);
+    // and the private sector on ул. Таёжная, off the highway
+    this.eastDetails = new THREE.Group();
+    this.eastDetails.name = 'east-details';
+    this.group.add(this.eastDetails);
     this.rng = new Rng(20260119);
     this.colliders = [];
     // the world as it stood before the northern expansion: colliders and
@@ -111,6 +116,7 @@ export class World {
           buildVegetation(this.ctx);
           buildBusStops(this.ctx);
           buildHighway(this.ctx);
+          buildEast(this.ctx);
         },
       ],
       [
@@ -128,6 +134,8 @@ export class World {
       stages[i][1]();
     }
     this.colliders.push(...this.lateColliders);
+    // the private sector opens with its fences up (the scatter never walked there)
+    this.eastOpen = true;
     // the parked cars' historic footprints only shaped the scatter passes:
     // from now on each car's own (moving) collider stands for it
     this.colliders = this.colliders.filter((c) => !c.buildOnly);
@@ -338,9 +346,10 @@ export class World {
   collides(x, z, r) {
     // interiors sit far outside the district: their own walls bound the
     // player there, the world edge only applies outdoors
-    // past the east edge only the highway's corridor is open ground
+    // past the east edge only the highway's corridor and the private sector
+    // off it are open ground
     if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) {
-      if (x <= WORLD.bounds || !openRoad(x, z, r)) return true;
+      if (x <= WORLD.bounds || !(openRoad(x, z, r) || (this.eastOpen && inEastSector(x, z, r)))) return true;
     }
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
