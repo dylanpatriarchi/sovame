@@ -907,6 +907,77 @@ if (ride) {
   check(false, 'the bus can be ridden');
 }
 
+/* ========================================================== steppe highway */
+// the cross street goes out through a gate in the east fence and on as a
+// trunk road into the steppe: a car driven along it reaches the roundabout
+// at the far end, faster than in town, and cannot leave the road
+console.log('→ steppe highway');
+const highway = await page.evaluate(async () => {
+  const { HIGHWAY, highwayDistance } = await import('/src/world/highway.js');
+  const g = window.__game;
+  const w = g.world;
+  const L = HIGHWAY.line;
+  const mid = HIGHWAY.at(L.length / 2, 1.9);
+  const walls = {
+    gate: !w.collides(105, 44, 0.4),
+    fence: w.collides(104, 30, 0.4),
+    road: !w.collides(mid.x, mid.z, 0.4) && w.surfaceAt(mid.x, mid.z) === 'asphalt',
+    field: w.collides(mid.x - mid.tz * 14, mid.z + mid.tx * 14, 0.4),
+    station: !w.collides((HIGHWAY.pad.x0 + HIGHWAY.pad.x1) / 2 - 12, (HIGHWAY.pad.z0 + HIGHWAY.pad.z1) / 2 + 9, 0.4),
+  };
+  const car = w.cars[0];
+  const keep = { x: car.x, z: car.z, heading: car.heading, px: g.player.position.x, pz: g.player.position.z };
+  car.x = 92;
+  car.z = 46.5;
+  car.heading = Math.PI / 2;
+  car.vx = car.vz = car.speed = 0;
+  car.updateCollider();
+  g.driving.enter(car);
+  // an autopilot: the nearest point of the road, aim 18 m on in the right lane
+  let top = 0;
+  let worst = 0;
+  let s = 0;
+  let t = 0;
+  for (; t < 200 && s < L.length - 30; t += 0.05) {
+    let best = 0;
+    let bd = Infinity;
+    for (let i = 0; i < L.n; i += 2) {
+      const d = (L.x[i] - car.x) ** 2 + (L.z[i] - car.z) ** 2;
+      if (d < bd) [bd, best] = [d, i];
+    }
+    s = L.s[best];
+    const aim = HIGHWAY.at(s + 18, 1.9);
+    let dh = Math.atan2(aim.x - car.x, aim.z - car.z) - car.heading;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    g.driving.update(0.05, { forward: true, left: dh > 0.03, right: dh < -0.03 });
+    top = Math.max(top, car.speed);
+    if (car.x > 120) worst = Math.max(worst, highwayDistance(car.x, car.z));
+  }
+  const reached = s >= L.length - 30;
+  const time = t;
+  // and straight off the road into the field: the verge stops it
+  const p = HIGHWAY.at(L.length / 3, 2);
+  car.x = p.x;
+  car.z = p.z;
+  car.heading = p.heading + 1.2;
+  car.vx = car.vz = car.speed = 0;
+  for (let k = 0; k < 200; k++) g.driving.update(0.05, { forward: true });
+  const verge = highwayDistance(car.x, car.z);
+  // put the car back where it was parked
+  car.vx = car.vz = car.speed = 0;
+  g.driving.exit();
+  car.x = keep.x;
+  car.z = keep.z;
+  car.heading = keep.heading;
+  car.updateCollider();
+  g.player.teleport(keep.px, keep.pz, 0);
+  return { walls, reached, time, topKmh: top * 3.6, worst, verge, out: !g.driving.active };
+});
+console.log(`  ${JSON.stringify(highway.walls)}; to the roundabout: ${highway.reached} in ${highway.time.toFixed(0)} s, top ${highway.topKmh.toFixed(0)} km/h, at most ${highway.worst.toFixed(1)} m off the centre line; off the road it stops ${highway.verge.toFixed(1)} m out`);
+check(Object.values(highway.walls).every(Boolean), 'the gate in the east fence is open, the steppe off the road is not');
+check(highway.reached && highway.topKmh > 95 && highway.worst < 6, 'a car driven out along the highway reaches the roundabout at the far end, at highway speed');
+check(highway.verge < 7.2 && highway.out, 'driving off the road, the car stops at the verge');
+
 /* ================================================================ snowballs */
 // a snowball thrown at a wall leaves a splat on its face, one thrown at a
 // passer-by makes them flinch, one lobbed up comes down on the ground

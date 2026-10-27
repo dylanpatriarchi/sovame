@@ -543,16 +543,22 @@ export class Environment {
     // stars and moon
     this.starMat.opacity = c.stars;
     this.moonMat.opacity = c.moon * 0.9;
-    this.moon.position.set(this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, this.sunDir.z * -780);
+    // the sky dome, the stars and the moon travel with the camera: out on the
+    // steppe highway it goes further from the district than their radius
+    const ox = camera ? camera.position.x : 0;
+    const oz = camera ? camera.position.z : 0;
+    this.sky.position.set(ox, 0, oz);
+    this.stars.position.set(ox, 0, oz);
+    this.moon.position.set(ox + this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, oz + this.sunDir.z * -780);
 
     // clouds
     for (const cloud of this.clouds) {
       cloud.sprite.position.x += this.wind.x * cloud.speed * dt * 1.2;
       cloud.sprite.position.z += this.wind.z * cloud.speed * dt * 1.2;
-      if (cloud.sprite.position.x > 760) cloud.sprite.position.x = -760;
-      if (cloud.sprite.position.x < -760) cloud.sprite.position.x = 760;
-      if (cloud.sprite.position.z > 760) cloud.sprite.position.z = -760;
-      if (cloud.sprite.position.z < -760) cloud.sprite.position.z = 760;
+      if (cloud.sprite.position.x > ox + 760) cloud.sprite.position.x -= 1520;
+      if (cloud.sprite.position.x < ox - 760) cloud.sprite.position.x += 1520;
+      if (cloud.sprite.position.z > oz + 760) cloud.sprite.position.z -= 1520;
+      if (cloud.sprite.position.z < oz - 760) cloud.sprite.position.z += 1520;
       cloud.sprite.material.opacity = c.cloudOpacity;
       cloud.sprite.material.color.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.55);
     }
@@ -574,6 +580,7 @@ export class Environment {
       this.world.farDetails.visible = camera.position.z > 48;
       this.world.westDetails.visible = camera.position.x < -64;
       this.world.southDetails.visible = camera.position.z < -60;
+      this.world.highwayDetails.visible = camera.position.x > 60;
     }
     // only lamps near the camera borrow a real PointLight from the pool,
     // nearest first; the rest rely on the glow

@@ -23,6 +23,9 @@ export const DRIVER_EYE = new THREE.Vector3(0.36, 1.14, -0.08);
 /** Physical constants of the model (SI, per second). */
 const CAR = {
   maxSpeed: 23, // ~83 km/h
+  // out on the steppe highway: a longer top end and less held back by the air
+  highwaySpeed: 38,
+  highwayDrag: 0.0016,
   reverseSpeed: 5,
   accel: 5,
   brake: 9,
@@ -433,12 +436,15 @@ export class Car {
     let vLat = this.vx * rx + this.vz * rz;
     const surface = this.world.surfaceAt(this.x, this.z);
     const grip = (GRIP[surface] ?? 0.6) * (this.world.season === 'winter' ? 0.85 : 1);
+    const open = this.world.onHighway?.(this.x, this.z) ?? false;
+    const top = open ? CAR.highwaySpeed : CAR.maxSpeed;
+    const drag = open ? CAR.highwayDrag : CAR.drag;
 
     // engine, brakes, reverse
     let a = 0;
     if (input.throttle) {
       if (vLong < -0.4) a = CAR.brake;
-      else a = CAR.accel * clamp(1 - (vLong / CAR.maxSpeed) ** 2, 0, 1) * (0.55 + 0.45 * grip);
+      else a = CAR.accel * clamp(1 - (vLong / top) ** 2, 0, 1) * (0.55 + 0.45 * grip);
     } else if (input.brake) {
       if (vLong > 0.4) a = -CAR.brake * (0.5 + 0.5 * grip);
       else a = -CAR.accel * 0.7 * clamp(1 + vLong / CAR.reverseSpeed, 0, 1);
@@ -447,7 +453,7 @@ export class Car {
     // rolling resistance and air drag, never flipping the sign
     // off the throttle the engine holds the car back (engine braking)
     const engineBrake = input.throttle || input.brake ? 0 : 1.1;
-    const resist = (CAR.rolling + engineBrake + CAR.drag * vLong * vLong + (input.handbrake ? 5 * grip : 0)) * dt;
+    const resist = (CAR.rolling + engineBrake + drag * vLong * vLong + (input.handbrake ? 5 * grip : 0)) * dt;
     vLong = Math.abs(vLong) <= resist ? 0 : vLong - Math.sign(vLong) * resist;
     this.throttle = damp(this.throttle, input.throttle ? 1 : 0, 6, dt);
 

@@ -4,6 +4,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng, TAU, makeCanvas, starPath } from '../util.js';
 import { makeSignTexture, canvasTexture } from '../textures.js';
 import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
+import { highwayRange } from './highway.js';
+import { WORLD } from '../config.js';
 
 export const FLOOR_H = 3.0;
 const CELL_W = 3.4;
@@ -649,7 +651,7 @@ export function buildBuildings(ctx) {
 
   /* ---------------------------------------------------- fences */
   const fenceMat = M.concreteWhite;
-  const panelFence = (x0, z0, x1, z1) => {
+  const panelFence = (x0, z0, x1, z1, gap = null) => {
     const dx = x1 - x0;
     const dz = z1 - z0;
     const len = Math.hypot(dx, dz);
@@ -659,6 +661,8 @@ export function buildBuildings(ctx) {
       const t = (i + 0.5) / panels;
       const px = x0 + dx * t;
       const pz = z0 + dz * t;
+      // (a run along z with a gate cut in it: no panels, posts or snow there)
+      if (gap && pz > gap[0] - 1.3 && pz < gap[1] + 1.3) continue;
       const panel = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.3, 0.32), fenceMat);
       panel.position.set(px, 1.15, pz);
       panel.rotation.y = -angle;
@@ -675,7 +679,15 @@ export function buildBuildings(ctx) {
         world.group.add(ctx.seasonable('winter', snow));
       }
     }
-    ctx.addColliderRect(Math.min(x0, x1) - 0.3, Math.max(x0, x1) + 0.3, Math.min(z0, z1) - 0.3, Math.max(z0, z1) + 0.3);
+    const rect = { x0: Math.min(x0, x1) - 0.3, x1: Math.max(x0, x1) + 0.3, z0: Math.min(z0, z1) - 0.3, z1: Math.max(z0, z1) + 0.3 };
+    ctx.addColliderRect(rect.x0, rect.x1, rect.z0, rect.z1);
+    if (gap) {
+      // the whole run still shapes the seeded scatter; once the world is
+      // built only the two stretches either side of the gate stand
+      ctx.world.colliders[ctx.world.colliders.length - 1].buildOnly = true;
+      ctx.addLateColliderRect(rect.x0, rect.x1, rect.z0, gap[0]);
+      ctx.addLateColliderRect(rect.x0, rect.x1, gap[1], rect.z1);
+    }
   };
   // kindergarten
   panelFence(11, -17.4, 31, -17.4);
@@ -694,7 +706,8 @@ export function buildBuildings(ctx) {
   ctx.addLegacyGhostRect(-104.3, -103.7, -70.3, -13.7);
   ctx.addLegacyGhostRect(-104.3, -103.7, 13.7, 70.3);
   panelFence(104, -70, 104, -14);
-  panelFence(104, 14, 104, 70);
+  // the cross street goes out through a gate in it, on to the steppe highway
+  panelFence(104, 14, 104, 70, [WORLD.crossroadZ - 7, WORLD.crossroadZ + 7]);
   // the old north edge (z = 104) opened up: the avenue now runs on to the
   // second cluster. New limits sit at the expanded edges; unlike the
   // historic runs these bake panels, posts and snow into one mesh per
@@ -874,6 +887,13 @@ export function buildBuildings(ctx) {
       mesh.position.x = Math.cos(a) * r;
       mesh.position.z = Math.sin(a) * r;
     }
+  }
+  // the steppe highway runs out east through the ring: boxes standing on or
+  // near the road would wall it in, so they are left out (their draws are
+  // made all the same)
+  for (const mesh of skylineBoxes) {
+    const { x, z } = mesh.position;
+    if (x > 100 && highwayRange(x, z) < 90) mesh.removeFromParent();
   }
   // industrial sites
   const factory = (x, z, h = 44) => {

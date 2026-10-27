@@ -367,9 +367,13 @@ export class Badges {
     const ray = new THREE.Raycaster();
     const down = new THREE.Vector3(0, -1, 0);
     this.world.group.updateMatrixWorld(true);
+    // (the steppe out on the highway lies under the sealed interiors: a
+    // badge on a landing must not fall through to it)
+    const steppe = new Set();
+    this.world.highwayDetails?.traverse((o) => steppe.add(o));
     const solid = [];
     this.world.group.traverse((o) => {
-      if (o.isMesh && !o.isInstancedMesh && !o.material?.transparent && o.visible && !this.group.children.includes(o.parent)) solid.push(o);
+      if (o.isMesh && !o.isInstancedMesh && !o.material?.transparent && o.visible && !steppe.has(o) && !this.group.children.includes(o.parent)) solid.push(o);
     });
     for (const it of this.items) {
       const top = it.spot.top ?? 3;

@@ -20,6 +20,7 @@ import { buildBusStops } from './busstops.js';
 import { buildDog } from './dog.js';
 import { buildPigeons } from './pigeons.js';
 import { buildCats } from './cats.js';
+import { buildHighway, openRoad, highwaySurface } from './highway.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -40,6 +41,10 @@ export class World {
     this.southDetails = new THREE.Group();
     this.southDetails.name = 'far-south-details';
     this.group.add(this.southDetails);
+    // and the steppe highway, out past the east fence
+    this.highwayDetails = new THREE.Group();
+    this.highwayDetails.name = 'highway-details';
+    this.group.add(this.highwayDetails);
     this.rng = new Rng(20260119);
     this.colliders = [];
     // the world as it stood before the northern expansion: colliders and
@@ -105,6 +110,7 @@ export class World {
         () => {
           buildVegetation(this.ctx);
           buildBusStops(this.ctx);
+          buildHighway(this.ctx);
         },
       ],
       [
@@ -298,6 +304,7 @@ export class World {
   }
 
   surfaceAt(x, z) {
+    if (x > WORLD.bounds) return highwaySurface(x, z);
     let type = 'snow';
     for (const r of this.surfaceRects) {
       if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) type = r.type;
@@ -331,7 +338,10 @@ export class World {
   collides(x, z, r) {
     // interiors sit far outside the district: their own walls bound the
     // player there, the world edge only applies outdoors
-    if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) return true;
+    // past the east edge only the highway's corridor is open ground
+    if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) {
+      if (x <= WORLD.bounds || !openRoad(x, z, r)) return true;
+    }
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
@@ -354,6 +364,11 @@ export class World {
       for (const spot of c.car.escapes(x, z, r)) if (!this.collides(spot.x, spot.z, r)) return spot;
     }
     return null;
+  }
+
+  /** Whether the point is out on the steppe highway (open road, higher speeds). */
+  onHighway(x, z) {
+    return x > WORLD.bounds + 4 && openRoad(x, z);
   }
 
   /** Same check against the pre-expansion district (legacy scatter passes). */
