@@ -16,6 +16,7 @@ import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
 import { batchStatic } from './batch.js';
 import { buildTraffic } from './traffic.js';
+import { buildBusStops } from './busstops.js';
 import { buildDog } from './dog.js';
 import { buildPigeons } from './pigeons.js';
 import { buildCats } from './cats.js';
@@ -98,7 +99,13 @@ export class World {
       // routes are validated lazily on the first update, once the trees
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
-      ['Trees, bushes and crows', () => buildVegetation(this.ctx)],
+      [
+        'Trees, bushes and crows',
+        () => {
+          buildVegetation(this.ctx);
+          buildBusStops(this.ctx);
+        },
+      ],
       [
         'Warm stairwells and flats',
         () => {

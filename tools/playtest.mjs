@@ -807,7 +807,9 @@ const bus = await page.evaluate(() => {
   let prev = bt.bus.state;
   for (let i = 0; i < 20 * 260 && !left; i++) {
     T.update(0.05, { lights: 0 });
-    const fresh = bt.bus.state === 'dwell' && prev !== 'dwell';
+    // (the calls at the far stops of the route are not this one)
+    const atAvenue = Math.hypot(b.x - 4.5, b.z - (stop?.z ?? 24) - 2) < 8;
+    const fresh = bt.bus.state === 'dwell' && prev !== 'dwell' && atAvenue;
     prev = bt.bus.state;
     if (fresh && !called) hiss = 0;
     if (b.hiss) {
@@ -841,6 +843,68 @@ if (bus) {
   check(bus.hits.length === 0, `the bus body stays clear of static colliders${bus.hits.length ? ' — ' + JSON.stringify(bus.hits.slice(0, 6)) : ''}`);
 } else {
   check(false, 'the bus runs with the traffic');
+}
+
+// riding the bus: on at the avenue stop by an open door, along to the next
+// stop in the seat, off on the kerb there
+console.log('→ bus ride');
+const ride = await page.evaluate(() => {
+  const g = window.__game;
+  const T = g.world.traffic;
+  const R = g.busRide;
+  const b = g.world.bus;
+  const P = g.player;
+  if (!T || !R || !b) return null;
+  const keep = { x: P.position.x, z: P.position.z };
+  // the bus at the avenue with its doors open
+  for (let i = 0; i < 20000; i++) {
+    T.update(0.05, { lights: 0 });
+    const st = T.busState();
+    if (st.state === 'dwell' && st.stop.name === T.stops[0].name && b.doors > 0.95) break;
+  }
+  const door = b.toWorld(new P.position.constructor(-2.0, 0, -0.3));
+  P.teleport(door.x, door.z, 0);
+  const near = R.distanceTo(P.position.x, P.position.z);
+  const shut = (() => {
+    // nobody gets on away from a stop: the doors are shut
+    const doors = b.doors;
+    b.doors = 0;
+    const d = R.distanceTo(P.position.x, P.position.z);
+    b.doors = doors;
+    return Number.isFinite(d) ? d : -1;
+  })();
+  const on = R.board();
+  let offEarly = null;
+  let seatInBus = true;
+  let next = null;
+  let off = null;
+  for (let i = 0; i < 20000 && !off; i++) {
+    T.update(0.05, { lights: 0 });
+    R.update();
+    if (i % 40 === 0) seatInBus &&= b.distanceTo(P.position.x, P.position.z) === 0 && R.active;
+    const st = T.busState();
+    if (st.state === 'run') {
+      next = st.stop.name;
+      // under way: E does nothing
+      if (offEarly === null && b.speed > 3) offEarly = R.getOff();
+    }
+    if (st.state === 'dwell' && st.stop.name !== T.stops[0].name && R.open) {
+      const prompt = R.prompt;
+      const ok = R.getOff();
+      off = { stop: st.stop.name, prompt, ok, free: !g.world.collides(P.position.x, P.position.z, 0.3), outside: b.distanceTo(P.position.x, P.position.z) > 0.3, enabled: P.enabled };
+    }
+  }
+  P.teleport(keep.x, keep.z, 0);
+  return { near, shut, on, offEarly, seatInBus, next, off, stops: T.stops.map((s) => s.name) };
+});
+if (ride) {
+  console.log(`  stops ${ride.stops.join(' → ')}; by the door ${ride.near.toFixed(2)} m (doors shut: ${ride.shut}); on: ${ride.on}, off before the next stop: ${ride.offEarly}; next stop "${ride.next}"; off at ${JSON.stringify(ride.off)}`);
+  check(ride.stops.length >= 3, 'the bus calls at three stops round its route');
+  check(ride.on && ride.near < 1 && ride.shut === -1, 'E by an open door at a stop gets you on (and not with the doors shut)');
+  check(ride.offEarly === false && ride.seatInBus, 'you ride in your seat inside the bus, and cannot get off between stops');
+  check(!!ride.off?.ok && ride.off.free && ride.off.outside && ride.off.enabled && ride.off.prompt?.includes('get off') && ride.off.stop === ride.next, 'at the next stop E gets you off on the kerb, free to walk');
+} else {
+  check(false, 'the bus can be ridden');
 }
 
 /* ================================================================ snowballs */
