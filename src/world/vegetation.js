@@ -8,6 +8,7 @@ import { scatterSouthTrees } from './south.js';
 import { Rng, TAU, DEG, lerp, clamp } from '../util.js';
 import { WORLD } from '../config.js';
 import { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } from './terrain.js';
+import { highwayDistance, steppeGroves } from './highway.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -611,6 +612,9 @@ export function buildVegetation(ctx) {
   for (const s of spruces) {
     if (s.x > -240 && s.x < 112 && s.z < -100) s.dead = true;
   }
+  // and where the steppe highway leaves through the east fence
+  for (const b of belt) if (highwayDistance(b.x, b.z) < 14) b.dead = true;
+  for (const s of spruces) if (highwayDistance(s.x, s.z) < 14) s.dead = true;
   const southLists = scatterSouthTrees((x, z, r) => soft(x, z) && soft(x + 0.7, z) && soft(x - 0.7, z) && soft(x, z + 0.7) && soft(x, z - 0.7) && okPlace(x, z, r));
   const southBirch = southLists.birch;
   const southPoplar = southLists.poplar;
@@ -855,6 +859,41 @@ export function buildVegetation(ctx) {
     snow.castShadow = true;
     snow.receiveShadow = true;
     group.add(ctx.seasonable('winter', snow));
+  }
+
+  /* ------------------------------------------- birch groves in the steppe
+   * Out along the highway, with their own seed; one mesh per layer in the
+   * highway's detail group, hidden while the camera is in the district. */
+  {
+    const groveRng = new Rng(25426);
+    const pool = variants.birch;
+    const parts = { wood: [], foliage: [], dead: [], snow: [] };
+    for (const item of steppeGroves()) {
+      const variant = pool[groveRng.int(0, pool.length - 1)];
+      const yaw = groveRng.float(0, TAU);
+      dummy.position.set(item.x, 0, item.z);
+      dummy.rotation.set(groveRng.float(-0.05, 0.05), yaw, groveRng.float(-0.05, 0.05));
+      const sc = groveRng.float(0.85, 1.35);
+      dummy.scale.set(sc, sc * groveRng.float(0.92, 1.12), sc);
+      dummy.updateMatrix();
+      parts.wood.push(variant.wood.clone().applyMatrix4(dummy.matrix));
+      if (variant.foliage) parts.foliage.push(variant.foliage.clone().applyMatrix4(dummy.matrix));
+      if (variant.dead) parts.dead.push(variant.dead.clone().applyMatrix4(dummy.matrix));
+      if (variant.snow) parts.snow.push(variant.snow.clone().rotateY(2.6 - yaw).applyMatrix4(dummy.matrix));
+    }
+    dummy.scale.set(1, 1, 1);
+    const layer = (list, mat, name, season, cast = true) => {
+      if (!list.length) return;
+      const mesh = new THREE.Mesh(mergeGeometries(list, false), mat);
+      mesh.name = name;
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      world.highwayDetails.add(season ? ctx.seasonable(season, mesh) : mesh);
+    };
+    layer(parts.wood, birchMat, 'trees:steppe');
+    layer(parts.foliage, crownMat, 'trees:steppe-foliage', 'autumn');
+    layer(parts.dead, crownMat, 'trees:steppe-marcescence', 'winter', false);
+    layer(parts.snow, treeSnowMat, 'trees:steppe-snow', 'winter');
   }
 
   /* ---------------------------------------------- spruces */
