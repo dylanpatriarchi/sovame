@@ -10,6 +10,7 @@ import { WORLD } from '../config.js';
 import { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } from './terrain.js';
 import { highwayDistance, steppeGroves } from './highway.js';
 import { eastBlocked, eastTrees } from './east.js';
+import { onEdgeRoad } from './edges.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -619,6 +620,9 @@ export function buildVegetation(ctx) {
   // and on the lanes, houses and fences of the private sector off it
   for (const b of belt) if (eastBlocked(b.x, b.z)) b.dead = true;
   for (const s of spruces) if (eastBlocked(s.x, s.z)) s.dead = true;
+  // and on the streets that run on past the fences
+  for (const b of belt) if (onEdgeRoad(b.x, b.z)) b.dead = true;
+  for (const s of spruces) if (onEdgeRoad(s.x, s.z)) s.dead = true;
   const southLists = scatterSouthTrees((x, z, r) => soft(x, z) && soft(x + 0.7, z) && soft(x - 0.7, z) && soft(x, z + 0.7) && soft(x, z - 0.7) && okPlace(x, z, r));
   const southBirch = southLists.birch;
   const southPoplar = southLists.poplar;

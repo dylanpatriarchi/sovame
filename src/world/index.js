@@ -22,6 +22,7 @@ import { buildPigeons } from './pigeons.js';
 import { buildCats } from './cats.js';
 import { buildHighway, openRoad, highwaySurface } from './highway.js';
 import { buildEast, inEastSector } from './east.js';
+import { buildEdges } from './edges.js';
 import { buildYardDogs } from './yarddogs.js';
 
 export class World {
@@ -96,7 +97,13 @@ export class World {
           addFacadeLift(this);
         },
       ],
-      ['Roads, snow and paths', () => buildTerrain(this.ctx)],
+      [
+        'Roads, snow and paths',
+        () => {
+          buildTerrain(this.ctx);
+          buildEdges(this.ctx);
+        },
+      ],
       [
         'District props',
         () => {

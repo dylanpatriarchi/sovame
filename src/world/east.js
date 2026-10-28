@@ -22,11 +22,14 @@ const LANE_HALF = 3;
 /** Where Таёжная leaves the highway, up to the sector fence. */
 const MOUTH = { x0: LANE_X - LANE_HALF, x1: LANE_X + LANE_HALF, z0: 50, z1: SECTOR.z0 + 3 };
 const EDGE = 0.4; // how far inside the perimeter fence you can walk
+/** Where Zavodskaya runs on through the district fence (x = 104) into Кедровая. */
+const LINK = { x0: 100, x1: SECTOR.x0 + 2, z0: LANE_Z - LANE_HALF, z1: LANE_Z + LANE_HALF };
 
 /** Whether a circle of radius r stands on the sector's open ground. */
 export function inEastSector(x, z, r = 0) {
   if (x - r >= SECTOR.x0 + EDGE && x + r <= SECTOR.x1 - EDGE && z - r >= SECTOR.z0 + EDGE && z + r <= SECTOR.z1 - EDGE) return true;
-  return x - r >= MOUTH.x0 && x + r <= MOUTH.x1 && z - r >= MOUTH.z0 && z + r <= MOUTH.z1;
+  if (x - r >= MOUTH.x0 && x + r <= MOUTH.x1 && z - r >= MOUTH.z0 && z + r <= MOUTH.z1) return true;
+  return x - r >= LINK.x0 && x + r <= LINK.x1 && z - r >= LINK.z0 + 0.3 && z + r <= LINK.z1 - 0.3;
 }
 
 /** The sector and a margin around it (the steppe keeps its groves and haystacks out). */
@@ -148,6 +151,7 @@ export function eastTrees() {
 /** Whether a tree of the district's woodland belt stands in the way of the
  * sector (on a lane, a building, a fence or out in the lane's mouth). */
 export function eastBlocked(x, z) {
+  if (x > LINK.x0 - 2 && x < LINK.x1 && z > LINK.z0 - 2 && z < LINK.z1 + 2) return true;
   if (!nearEastSector(x, z, 2)) return false;
   if (x > MOUTH.x0 - 2 && x < MOUTH.x1 + 2 && z > MOUTH.z0 - 6 && z < MOUTH.z1 + 2) return true;
   // the perimeter fence and the lanes
@@ -494,10 +498,13 @@ export function buildEast(ctx) {
   const laneZ0 = MOUTH.z0 + 3.6;
   const laneZ1 = SECTOR.z1 - 2;
   parts.add(lane, box(LANE_HALF * 2, 0.02, laneZ1 - laneZ0, 4).translate(LANE_X, 0.03, (laneZ0 + laneZ1) / 2), { cast: false });
-  parts.add(lane, box(SECTOR.x1 - SECTOR.x0 - 4, 0.02, LANE_HALF * 2, 4).translate((SECTOR.x0 + SECTOR.x1) / 2, 0.032, LANE_Z), { cast: false });
+  // Кедровая runs out west through the fences to the end of Zavodskaya
+  const kx0 = LINK.x0;
+  const kx1 = SECTOR.x1 - 2;
+  parts.add(lane, box(kx1 - kx0, 0.02, LANE_HALF * 2, 4).translate((kx0 + kx1) / 2, 0.032, LANE_Z), { cast: false });
   for (const s of [-0.95, 0.95]) {
     parts.add(rut, box(0.5, 0.02, laneZ1 - laneZ0, 3).translate(LANE_X + s, 0.036, (laneZ0 + laneZ1) / 2), { cast: false });
-    parts.add(rut, box(SECTOR.x1 - SECTOR.x0 - 4, 0.02, 0.5, 3).translate((SECTOR.x0 + SECTOR.x1) / 2, 0.038, LANE_Z + s), { cast: false });
+    parts.add(rut, box(kx1 - kx0, 0.02, 0.5, 3).translate((kx0 + kx1) / 2, 0.038, LANE_Z + s), { cast: false });
   }
 
   /* ---- the perimeter fence, open where the lane comes in */
@@ -514,8 +521,10 @@ export function buildEast(ctx) {
   run(fx0, fz0, MOUTH.x0 - 0.6, fz0);
   run(MOUTH.x1 + 0.6, fz0, fx1, fz0);
   run(fx0, fz1, fx1, fz1);
-  run(fx0, fz0, fx0, fz1);
+  run(fx0, fz0, fx0, LINK.z0 - 0.6);
+  run(fx0, LINK.z1 + 0.6, fx0, fz1);
   run(fx1, fz0, fx1, fz1);
+  for (const z of [LINK.z0 - 0.6, LINK.z1 + 0.6]) parts.add(M.woodDark, box(0.24, 2.6, 0.24).translate(fx0, 1.3, z));
   // gate posts at the lane, with a name board across the top
   for (const x of [MOUTH.x0 - 0.6, MOUTH.x1 + 0.6]) parts.add(M.woodDark, box(0.24, 2.6, 0.24).translate(x, 1.3, fz0));
 
@@ -710,4 +719,4 @@ export function buildEast(ctx) {
 }
 
 /** For the tools and the playtest: the sector, its lanes and plots. */
-export const EAST = { sector: SECTOR, mouth: MOUTH, laneX: LANE_X, laneZ: LANE_Z, plots: PLOTS };
+export const EAST = { sector: SECTOR, mouth: MOUTH, link: LINK, laneX: LANE_X, laneZ: LANE_Z, plots: PLOTS };
