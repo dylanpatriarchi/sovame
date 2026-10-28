@@ -15,6 +15,7 @@ import { Rng, TAU } from '../util.js';
 import { WORLD } from '../config.js';
 import { makeSignTexture } from '../textures.js';
 import { LANE_X, nearEastSector } from './east.js';
+import { SEA, SPUR, nearPort } from './port.js';
 
 /** Where the road runs (x, z): out of the cross street, east into the steppe. */
 const CONTROL = [
@@ -157,7 +158,7 @@ export function steppeGroves() {
   const centres = [];
   for (let k = 0; k < 240 && centres.length < 48; k++) {
     const p = at(rng.float(60, LINE.length - 30), rng.sign() * rng.float(32, 170));
-    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || nearEastSector(p.x, p.z, 20) || highwayDistance(p.x, p.z) < 30 || Math.hypot(p.x - RING.x, p.z - RING.z) < 80) continue;
+    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || nearEastSector(p.x, p.z, 20) || nearPort(p.x, p.z, 24) || highwayDistance(p.x, p.z) < 30 || Math.hypot(p.x - RING.x, p.z - RING.z) < 80) continue;
     if (centres.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 60)) continue;
     centres.push(p);
   }
@@ -259,11 +260,14 @@ export function buildHighway(ctx) {
   while (first < END && LINE.x[first] < START_X) first++;
 
   /* ---- the steppe beyond the district's ground plane */
-  const steppe = new THREE.Mesh(new THREE.PlaneGeometry(2400, 1200), world.materials.ground);
-  steppe.geometry.rotateX(-Math.PI / 2);
-  steppe.geometry.attributes.uv.array.forEach((v, k, arr) => (arr[k] = v * (k % 2 ? 30 : 60)));
-  steppe.position.set(1340, -0.03, 0);
-  add(steppe);
+  // (x 140..2540, z -600..600, but for the sea in the north-east corner: port.js)
+  for (const [x0, x1, z0, z1] of [[140, SEA.x0, -600, 600], [SEA.x0, 2540, -600, SEA.z0 - 5]]) {
+    const steppe = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), world.materials.ground);
+    steppe.geometry.rotateX(-Math.PI / 2);
+    steppe.geometry.attributes.uv.array.forEach((v, k, arr) => (arr[k] = v * (k % 2 ? (z1 - z0) / 40 : (x1 - x0) / 40)));
+    steppe.position.set((x0 + x1) / 2, -0.03, (z0 + z1) / 2);
+    add(steppe);
+  }
 
   /* ---- asphalt, shoulders, markings */
   const roadMat = world.roadMats[1];
@@ -309,10 +313,32 @@ export function buildHighway(ctx) {
   while (gap1 < END && LINE.x[gap1] < LANE_X + 9) gap1++;
   const verges = (side, prof) =>
     side < 0 ? [profileStrip(LINE, prof, first, END, 4, 4)] : [profileStrip(LINE, prof, first, gap0, 4, 4), profileStrip(LINE, prof, gap1, END, 4, 4)];
+  // round the roundabout the outer verge opens where the highway comes in,
+  // at the petrol station and at the spur north to the port
+  const gaps = [[Math.atan2(LINE.z[END] - RING.z, LINE.x[END] - RING.x), 0.42], [0, 0.6], [Math.atan2(SPUR.z0 + 20 - RING.z, SPUR.x - RING.x), 0.42]];
+  const ringVerge = (side, prof) => {
+    if (side < 0) return [profileStrip(ring, prof, 0, ring.n - 1, 4, 4, true)];
+    const a0 = Math.atan2(LINE.z[END] - RING.z, LINE.x[END] - RING.x);
+    const open = (i) => {
+      const a = a0 - (i / ring.n) * TAU;
+      return !gaps.some(([g, half]) => Math.abs(Math.atan2(Math.sin(a - g), Math.cos(a - g))) < half);
+    };
+    const out = [];
+    let i0 = -1;
+    for (let i = 0; i <= ring.n; i++) {
+      const ok = i < ring.n && open(i);
+      if (ok && i0 < 0) i0 = i;
+      if (!ok && i0 >= 0) {
+        if (i - 1 > i0) out.push(profileStrip(ring, prof, i0, i - 1, 4, 4));
+        i0 = -1;
+      }
+    }
+    return out;
+  };
   const banks = [];
   for (const side of [-1, 1]) {
     banks.push(...verges(side, bank(side)));
-    banks.push(profileStrip(ring, bank(side), 0, ring.n - 1, 4, 4, true));
+    banks.push(...ringVerge(side, bank(side)));
   }
   add(new THREE.Mesh(mergeGeometries(banks, false), M.snow), { season: 'winter', receive: true });
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x8c7b55, roughness: 1 });
@@ -320,7 +346,7 @@ export function buildHighway(ctx) {
   const grass = [];
   for (const side of [-1, 1]) {
     grass.push(...verges(side, verge(side)));
-    grass.push(profileStrip(ring, verge(side), 0, ring.n - 1, 4, 4, true));
+    grass.push(...ringVerge(side, verge(side)));
   }
   add(new THREE.Mesh(mergeGeometries(grass, false), grassMat), { season: 'autumn' });
 
@@ -456,7 +482,7 @@ export function buildHighway(ctx) {
   const stacks = [];
   for (let k = 0; k < 200 && stacks.length < 70; k++) {
     const p = at(rng.float(40, LINE.length - 40), rng.sign() * rng.float(22, 150));
-    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || nearEastSector(p.x, p.z, 14) || highwayDistance(p.x, p.z) < 20 || stacks.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 14)) continue;
+    if (p.x < 150 || !clearOfInteriors(p.x, p.z) || nearEastSector(p.x, p.z, 14) || nearPort(p.x, p.z, 16) || highwayDistance(p.x, p.z) < 20 || stacks.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 14)) continue;
     stacks.push({ x: p.x, z: p.z, s: rng.float(0.75, 1.15), yaw: rng.float(0, TAU) });
   }
   const hayMat = new THREE.MeshStandardMaterial({ color: 0x9a8455, roughness: 1, flatShading: true, side: THREE.DoubleSide });
