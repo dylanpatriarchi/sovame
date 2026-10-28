@@ -75,7 +75,7 @@ export class BusRide {
     const player = this.player;
     let spot = null;
     for (const door of [DOOR_SPOTS[1], DOOR_SPOTS[0]]) {
-      for (const out of [0, 0.5, 1.0]) {
+      for (const out of [0, 0.5, 1.0, 1.6, 2.2]) {
         const p = bus.toWorld(_v.set(door.x - out, 0, door.z), new THREE.Vector3());
         if (!this.world.collides(p.x, p.z, 0.35)) {
           spot = p;
