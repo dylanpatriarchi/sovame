@@ -1051,6 +1051,55 @@ console.log(`  ${edges.gates} gates, open: ${JSON.stringify(edges.shut)}; Zavods
 check(edges.gates >= 5 && edges.shut.length === 0, 'every street that meets the boundary fence ends at a shut gate');
 check(edges.open && edges.fence, 'Zavodskaya runs on through the fence into ул. Кедровая, and the fence either side still stands');
 
+// the sea port at the end of the highway: the spur, the apron and the
+// breakwater are open ground, the sea, the warehouses and the fence are not,
+// and a car drives up the spur through the gate
+console.log('→ sea port');
+const port = await page.evaluate(() => {
+  const g = window.__game;
+  const w = g.world;
+  const { spur, yard, mole } = w.port;
+  const free = (x, z) => !w.collides(x, z, 0.4);
+  const walls = {
+    spur: free(spur.x, 150),
+    gate: free(spur.x, yard.z0),
+    apron: free(spur.x, 340),
+    quay: free(2240, yard.z1 - 0.9),
+    mole: free((mole.x0 + mole.x1) / 2, 440),
+    sea: !free(2240, yard.z1 + 3),
+    fence: !free(yard.x0 - 1, 340) && !free(spur.x - 12, yard.z0),
+    shed: !free(yard.x0 + 30, 323),
+    field: !free(spur.x + 20, 200),
+  };
+  const car = w.cars[0];
+  const keep = { x: car.x, z: car.z, heading: car.heading, px: g.player.position.x, pz: g.player.position.z };
+  car.x = spur.x - 1.9;
+  car.z = 100;
+  car.heading = 0;
+  car.vx = car.vz = car.speed = 0;
+  car.updateCollider();
+  g.driving.enter(car);
+  let off = 0;
+  for (let t = 0; t < 30 && car.z < yard.z0 + 12; t += 0.05) {
+    let dh = Math.atan2(spur.x - 1.9 - car.x, 12) - car.heading;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    g.driving.update(0.05, { forward: car.speed < 12, left: dh > 0.03, right: dh < -0.03 });
+    off = Math.max(off, Math.abs(car.x - spur.x));
+  }
+  const reached = car.z;
+  car.vx = car.vz = car.speed = 0;
+  g.driving.exit();
+  car.x = keep.x;
+  car.z = keep.z;
+  car.heading = keep.heading;
+  car.updateCollider();
+  g.player.teleport(keep.px, keep.pz, 0);
+  return { walls, reached, off, zone: w.zoneAt(2300, 360)?.name, cranes: w.port.cranes.length };
+});
+console.log(`  ${JSON.stringify(port.walls)}; driven up the spur to z ${port.reached.toFixed(0)}, at most ${port.off.toFixed(1)} m off its middle; zone ${port.zone}, ${port.cranes} cranes`);
+check(Object.values(port.walls).every(Boolean), 'the sea port: spur, apron, quay and breakwater are open; the sea, the fence, the warehouses and the fields are not');
+check(port.reached > 305 && port.off < 3.5 && port.zone === 'Морской порт' && port.cranes === 3, 'a car drives from the roundabout up the spur through the port gate');
+
 // the chained yard dogs: up to the end of the chain barking at someone in
 // the lane, never past the chain or through a fence, then back to lie down
 console.log('→ yard dogs');

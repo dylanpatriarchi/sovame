@@ -23,6 +23,7 @@ import { buildCats } from './cats.js';
 import { buildHighway, openRoad, highwaySurface } from './highway.js';
 import { buildEast, inEastSector } from './east.js';
 import { buildEdges } from './edges.js';
+import { buildPort, openPort, portSurface } from './port.js';
 import { buildYardDogs } from './yarddogs.js';
 
 export class World {
@@ -49,6 +50,9 @@ export class World {
     this.highwayDetails.name = 'highway-details';
     this.group.add(this.highwayDetails);
     // and the private sector on ул. Таёжная, off the highway
+    this.portDetails = new THREE.Group();
+    this.portDetails.name = 'port-details';
+    this.group.add(this.portDetails);
     this.eastDetails = new THREE.Group();
     this.eastDetails.name = 'east-details';
     this.group.add(this.eastDetails);
@@ -124,6 +128,7 @@ export class World {
           buildVegetation(this.ctx);
           buildBusStops(this.ctx);
           buildHighway(this.ctx);
+          buildPort(this.ctx);
           buildEast(this.ctx);
           buildYardDogs(this.ctx);
         },
@@ -321,7 +326,7 @@ export class World {
   }
 
   surfaceAt(x, z) {
-    if (x > WORLD.bounds) return highwaySurface(x, z);
+    if (x > WORLD.bounds) return portSurface(x, z) ?? highwaySurface(x, z);
     let type = 'snow';
     for (const r of this.surfaceRects) {
       if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) type = r.type;
@@ -358,7 +363,7 @@ export class World {
     // past the east edge only the highway's corridor and the private sector
     // off it are open ground
     if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) {
-      if (x <= WORLD.bounds || !(openRoad(x, z, r) || (this.eastOpen && inEastSector(x, z, r)))) return true;
+      if (x <= WORLD.bounds || !(openRoad(x, z, r) || openPort(x, z, r) || (this.eastOpen && inEastSector(x, z, r)))) return true;
     }
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
@@ -386,7 +391,7 @@ export class World {
 
   /** Whether the point is out on the steppe highway (open road, higher speeds). */
   onHighway(x, z) {
-    return x > WORLD.bounds + 4 && openRoad(x, z);
+    return x > WORLD.bounds + 4 && (openRoad(x, z) || openPort(x, z));
   }
 
   /** Same check against the pre-expansion district (legacy scatter passes). */

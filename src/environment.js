@@ -582,6 +582,8 @@ export class Environment {
       this.world.southDetails.visible = camera.position.z < -60;
       this.world.highwayDetails.visible = camera.position.x > 60;
       this.world.eastDetails.visible = camera.position.x > 60;
+      // (the port stands at the far end of the highway)
+      this.world.portDetails.visible = camera.position.x > 1500;
     }
     // only lamps near the camera borrow a real PointLight from the pool,
     // nearest first; the rest rely on the glow
