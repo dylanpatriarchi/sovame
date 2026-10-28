@@ -1018,6 +1018,73 @@ export function makeCorrugatedTexture(size = 256) {
   return toTexture(canvas);
 }
 
+/**
+ * One ПО-2 concrete fence panel: a smooth frame around a lattice of raised
+ * rhombi, lit from the upper left, with rain streaks running down from the
+ * top and grime splashed up from the ground. Maps once onto a panel face.
+ */
+export function makeFencePanelTexture(w = 256, h = 256) {
+  const rng = new Rng(2302);
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#c9c8c2';
+  ctx.fillRect(0, 0, w, h);
+  const fx = w * 0.07;
+  const fy = h * 0.08;
+  const cols = 6;
+  const rows = 5;
+  const cw = (w - 2 * fx) / cols;
+  const ch = (h - 2 * fy) / rows;
+  const tri = (ax, ay, bx, by, cx, cy, fill) => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(cx, cy);
+    ctx.closePath();
+    ctx.fill();
+  };
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x0 = fx + c * cw;
+      const y0 = fy + r * ch;
+      const mx = x0 + cw / 2;
+      const my = y0 + ch / 2;
+      // four facets of the pyramid: the two facing up-left catch the light
+      tri(x0, my, mx, y0, mx, my, '#dcdbd5');
+      tri(mx, y0, x0 + cw, my, mx, my, '#cfcec8');
+      tri(x0 + cw, my, mx, y0 + ch, mx, my, '#a3a29b');
+      tri(mx, y0 + ch, x0, my, mx, my, '#b4b3ac');
+    }
+  }
+  // the frame's own edge: a lit top, a shadowed bottom
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(0, 0, w, 3);
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillRect(0, h - 3, w, 3);
+  // rain streaks from the top edge
+  for (let i = 0; i < 26; i++) {
+    const x = rng.float(0, w);
+    const len = rng.float(h * 0.15, h * 0.7);
+    const g = ctx.createLinearGradient(0, 0, 0, len);
+    g.addColorStop(0, `rgba(70,66,58,${rng.float(0.12, 0.3)})`);
+    g.addColorStop(1, 'rgba(70,66,58,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, rng.float(1.5, 6), len);
+  }
+  // grime splashed up from the ground
+  const grime = ctx.createLinearGradient(0, h, 0, h * 0.72);
+  grime.addColorStop(0, 'rgba(78,72,62,0.45)');
+  grime.addColorStop(1, 'rgba(78,72,62,0)');
+  ctx.fillStyle = grime;
+  ctx.fillRect(0, h * 0.72, w, h * 0.28);
+  for (let i = 0; i < 1400; i++) {
+    ctx.fillStyle = `rgba(${rng.int(60, 120)},${rng.int(60, 116)},${rng.int(54, 108)},${rng.float(0.05, 0.2)})`;
+    ctx.fillRect(rng.float(0, w), rng.float(0, h), rng.float(1, 2.5), rng.float(1, 2.5));
+  }
+  return toTexture(canvas);
+}
+
 /** Birch bark: white with black streaks. */
 export function makeBirchTexture(size = 128) {
   const rng = new Rng(66);
