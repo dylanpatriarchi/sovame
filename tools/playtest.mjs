@@ -1033,6 +1033,40 @@ console.log(`  ${JSON.stringify(sector.walls)}; driven up the lane to z ${sector
 check(Object.values(sector.walls).every(Boolean), 'the private sector: the lane and the yards are open, houses, fences and the steppe behind are not');
 check(sector.reached > 110 && sector.off < 2.5 && sector.zone === 'Частный сектор', 'a car turns off the highway and drives up ул. Таёжная');
 
+// the chained yard dogs: up to the end of the chain barking at someone in
+// the lane, never past the chain or through a fence, then back to lie down
+console.log('→ yard dogs');
+const yard = await page.evaluate(() => {
+  const w = window.__game.world;
+  const out = [];
+  for (const dog of w.yardDogs ?? []) {
+    const home = { x: dog.position.x, z: dog.position.z };
+    // someone stands in the lane, 6 m out in front of the stake
+    const dx = Math.sin(dog.home.yaw);
+    const dz = Math.cos(dog.home.yaw);
+    const who = { x: dog.stake.x + dx * 6.5, z: dog.stake.z + dz * 6.5 };
+    let barks = 0;
+    let far = 0;
+    let blocked = 0;
+    let closest = Infinity;
+    for (let t = 0; t < 6; t += 1 / 30) {
+      dog.update(1 / 30, [who]);
+      if (dog.voice) barks++;
+      dog.voice = null;
+      far = Math.max(far, Math.hypot(dog.position.x - dog.stake.x, dog.position.z - dog.stake.z));
+      if (w.collides(dog.position.x, dog.position.z, 0.2)) blocked++;
+      closest = Math.min(closest, Math.hypot(dog.position.x - who.x, dog.position.z - who.z));
+    }
+    const state = dog.state;
+    for (let t = 0; t < 14; t += 1 / 30) dog.update(1 / 30, []);
+    out.push({ barks, far, blocked, closest, state, back: Math.hypot(dog.position.x - home.x, dog.position.z - home.z), rest: dog.state });
+  }
+  return out;
+});
+console.log(`  ${yard.map((d) => `${d.barks} barks, ${d.far.toFixed(1)} m out, ${d.closest.toFixed(1)} m from them, back ${d.back.toFixed(2)} m (${d.rest})`).join('; ')}`);
+check(yard.length === 4 && yard.every((d) => d.barks >= 3 && d.state === 'alert' && d.closest < 4.5), 'the yard dogs run out on their chains and bark at someone in the lane');
+check(yard.every((d) => d.far <= 4.2 && d.blocked === 0 && d.back < 0.3 && d.rest === 'rest'), 'a yard dog stays on its chain and inside its fence, then goes back to lie down');
+
 /* ================================================================ snowballs */
 // a snowball thrown at a wall leaves a splat on its face, one thrown at a
 // passer-by makes them flinch, one lobbed up comes down on the ground

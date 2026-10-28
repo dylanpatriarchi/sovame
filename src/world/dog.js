@@ -19,9 +19,9 @@ const RUN = 5.5;
 const WALK = 1.1;
 const RADIUS = 0.3;
 
-const BONES = ['body', 'head', 'tail', 'legFL', 'legFR', 'legBL', 'legBR'];
+export const BONES = ['body', 'head', 'tail', 'legFL', 'legFR', 'legBL', 'legBR'];
 /** Pivot of each bone (body-relative), the body pivot at the withers. */
-const PIVOTS = {
+export const PIVOTS = {
   body: [0, 0.46, 0],
   head: [0, 0.6, 0.27],
   tail: [0, 0.55, -0.31],
@@ -31,7 +31,7 @@ const PIVOTS = {
   legBR: [-0.085, 0.42, -0.22],
 };
 
-function dogGeometry() {
+export function dogGeometry() {
   const pieces = [];
   const part = (bone, hex, w, h, d, x, y, z, rx = 0) => {
     const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
