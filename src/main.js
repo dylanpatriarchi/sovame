@@ -1224,6 +1224,13 @@ async function boot() {
       const h = heard(dog.position.x, dog.position.z);
       sound.bark(h.dist * (state.interior ? 3 : 1), h.pan, kind, times);
     }
+    // the yard dogs of the private sector
+    for (const yd of world.yardDogs ?? []) {
+      if (!yd.voice) continue;
+      const h = heard(yd.position.x, yd.position.z);
+      sound.bark(h.dist * (state.interior ? 3 : 1), h.pan, yd.voice.kind, yd.voice.times);
+      yd.voice = null;
+    }
     // pigeons clattering up, or cooing on the ground
     const pigeons = world.pigeons;
     if (pigeons?.voice.length) {
@@ -1342,6 +1349,12 @@ async function boot() {
     // the stray dog takes an interest in the player on foot
     world.dog?.update(dt, { player: state.mode === 'playing' ? onFoot : null, cars: world.trafficCars ?? [], indoors: !!state.interior });
     world.pigeons?.update(dt, { player: state.mode === 'playing' ? onFoot : null });
+    // the chained dogs of the private sector bark at whoever comes up the lane
+    if (world.yardDogs && world.eastDetails.visible) {
+      const who = [];
+      if (state.mode === 'playing' && !state.interior) who.push(driving.active ? driving.car : player.position);
+      for (const dog of world.yardDogs) dog.update(dt, who);
+    }
     badges.update(dt);
     const onRink = state.mode === 'playing' && !state.interior && !driving.active;
     puck.update(dt, { player: onRink ? { x: player.position.x, y: player.position.y, z: player.position.z, vx: player.velocity.x, vz: player.velocity.z } : null });

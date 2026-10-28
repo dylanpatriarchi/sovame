@@ -22,6 +22,7 @@ import { buildPigeons } from './pigeons.js';
 import { buildCats } from './cats.js';
 import { buildHighway, openRoad, highwaySurface } from './highway.js';
 import { buildEast, inEastSector } from './east.js';
+import { buildYardDogs } from './yarddogs.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -117,6 +118,7 @@ export class World {
           buildBusStops(this.ctx);
           buildHighway(this.ctx);
           buildEast(this.ctx);
+          buildYardDogs(this.ctx);
         },
       ],
       [
