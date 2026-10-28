@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, makeCanvas, starPath } from '../util.js';
-import { makeSignTexture, canvasTexture } from '../textures.js';
+import { makeSignTexture, canvasTexture, makeFencePanelTexture } from '../textures.js';
 import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 import { highwayRange } from './highway.js';
 import { EAST, nearEastSector } from './east.js';
@@ -652,7 +652,8 @@ export function buildBuildings(ctx) {
   }
 
   /* ---------------------------------------------------- fences */
-  const fenceMat = M.concreteWhite;
+  // ПО-2 panels: the rhombus relief maps once onto each panel face
+  const fenceMat = new THREE.MeshStandardMaterial({ map: makeFencePanelTexture(), roughness: 0.92 });
   const panelFence = (x0, z0, x1, z1, gap = null) => {
     const dx = x1 - x0;
     const dz = z1 - z0;
