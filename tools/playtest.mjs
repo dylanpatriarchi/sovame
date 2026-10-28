@@ -92,8 +92,8 @@ const LEGS = [
       [-7.0, 60],
       [-7.0, 100],
       [-7.0, 140],
-      [-7.0, 179],
-      [7.0, 179],
+      [-7.0, 174], // up to the north gate (edges.js)
+      [7.0, 174],
       [7.0, 132],
     ],
   },
@@ -1032,6 +1032,24 @@ const sector = await page.evaluate(async () => {
 console.log(`  ${JSON.stringify(sector.walls)}; driven up the lane to z ${sector.reached.toFixed(0)}, at most ${sector.off.toFixed(1)} m off its middle; zone ${sector.zone}`);
 check(Object.values(sector.walls).every(Boolean), 'the private sector: the lane and the yards are open, houses, fences and the steppe behind are not');
 check(sector.reached > 110 && sector.off < 2.5 && sector.zone === 'Частный сектор', 'a car turns off the highway and drives up ул. Таёжная');
+
+// the district's edges: each street that meets the fence ends at a shut
+// gate; Zavodskaya alone runs on through it into ул. Кедровая
+console.log('→ world edges');
+const edges = await page.evaluate(async () => {
+  const { EDGE_GATES } = await import('/src/world/edges.js');
+  const { EAST } = await import('/src/world/east.js');
+  const w = window.__game.world;
+  const free = (x, z) => !w.collides(x, z, 0.4);
+  const shut = EDGE_GATES.filter((g) => free(g.x, g.z)).map((g) => g.name);
+  let open = true;
+  for (let x = 96; x <= 116; x += 0.5) open &&= free(x, EAST.laneZ);
+  const fence = !free(104, EAST.laneZ - 6) && !free(104, EAST.laneZ + 6);
+  return { gates: EDGE_GATES.length, shut, open, fence };
+});
+console.log(`  ${edges.gates} gates, open: ${JSON.stringify(edges.shut)}; Zavodskaya to Кедровая ${edges.open ? 'walkable' : 'blocked'}, fence beside it ${edges.fence ? 'up' : 'down'}`);
+check(edges.gates >= 5 && edges.shut.length === 0, 'every street that meets the boundary fence ends at a shut gate');
+check(edges.open && edges.fence, 'Zavodskaya runs on through the fence into ул. Кедровая, and the fence either side still stands');
 
 // the chained yard dogs: up to the end of the chain barking at someone in
 // the lane, never past the chain or through a fence, then back to lie down

@@ -5,7 +5,8 @@ import { Rng, TAU, makeCanvas, starPath } from '../util.js';
 import { makeSignTexture, canvasTexture } from '../textures.js';
 import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 import { highwayRange } from './highway.js';
-import { nearEastSector } from './east.js';
+import { EAST, nearEastSector } from './east.js';
+import { EDGE_GATES, onEdgeRoad } from './edges.js';
 import { WORLD } from '../config.js';
 
 export const FLOOR_H = 3.0;
@@ -713,33 +714,46 @@ export function buildBuildings(ctx) {
   // second cluster. New limits sit at the expanded edges; unlike the
   // historic runs these bake panels, posts and snow into one mesh per
   // material, so the extra ~240 m of fence costs a handful of draw calls.
-  const panelFenceMerged = (x0, z0, x1, z1) => {
-    const dx = x1 - x0;
-    const dz = z1 - z0;
-    const len = Math.hypot(dx, dz);
-    const panels = Math.max(1, Math.round(len / 2.6));
-    const angle = Math.atan2(dz, dx);
+  // `gaps` ([from, to] along the run) are left open for the gates of
+  // edges.js; `open` gaps can be walked through once the world is built (the
+  // scatter still saw the whole fence: it stays a build-only collider).
+  const panelFenceMerged = (x0, z0, x1, z1, { gaps = [], open = false } = {}) => {
+    const alongX = z0 === z1;
+    const a0 = alongX ? Math.min(x0, x1) : Math.min(z0, z1);
+    const a1 = alongX ? Math.max(x0, x1) : Math.max(z0, z1);
+    const at = (a) => (alongX ? [a, z0] : [x0, a]);
+    const angle = alongX ? 0 : Math.PI / 2;
+    const segments = [];
+    let from = a0;
+    for (const [g0, g1] of [...gaps].sort((p, q) => p[0] - q[0])) {
+      segments.push([from, g0]);
+      from = g1;
+    }
+    segments.push([from, a1]);
     const panelParts = [];
     const postParts = [];
     const snowParts = [];
-    for (let i = 0; i < panels; i++) {
-      const t = (i + 0.5) / panels;
-      const px = x0 + dx * t;
-      const pz = z0 + dz * t;
-      const panel = new THREE.BoxGeometry(2.5, 2.3, 0.32);
-      panel.rotateY(-angle);
-      panel.translate(px, 1.15, pz);
-      panelParts.push(panel);
-      const t2 = (i + 1) / panels;
-      const post = new THREE.BoxGeometry(0.34, 2.7, 0.34);
-      post.rotateY(-angle);
-      post.translate(x0 + dx * t2, 1.35, z0 + dz * t2);
-      postParts.push(post);
-      if (i % 2 === 0) {
-        const snow = new THREE.BoxGeometry(2.55, 0.1, 0.36);
-        snow.rotateY(-angle);
-        snow.translate(px, 2.35, pz);
-        snowParts.push(snow);
+    for (const [s0, s1] of segments) {
+      const len = s1 - s0;
+      const panels = Math.max(1, Math.round(len / 2.6));
+      const step = len / panels;
+      for (let i = 0; i <= panels; i++) {
+        const post = new THREE.BoxGeometry(0.34, 2.7, 0.34);
+        post.rotateY(-angle);
+        post.translate(at(s0 + step * i)[0], 1.35, at(s0 + step * i)[1]);
+        postParts.push(post);
+        if (i === panels) break;
+        const [px, pz] = at(s0 + step * (i + 0.5));
+        const panel = new THREE.BoxGeometry(step - 0.1, 2.3, 0.32);
+        panel.rotateY(-angle);
+        panel.translate(px, 1.15, pz);
+        panelParts.push(panel);
+        if (i % 2 === 0) {
+          const snow = new THREE.BoxGeometry(step - 0.05, 0.1, 0.36);
+          snow.rotateY(-angle);
+          snow.translate(px, 2.35, pz);
+          snowParts.push(snow);
+        }
       }
     }
     const bake = (parts, material, season = null) => {
@@ -752,17 +766,40 @@ export function buildBuildings(ctx) {
     bake(postParts, M.concreteDark);
     bake(snowParts, M.snow, 'winter');
     ctx.addColliderRect(Math.min(x0, x1) - 0.3, Math.max(x0, x1) + 0.3, Math.min(z0, z1) - 0.3, Math.max(z0, z1) + 0.3, true);
+    if (open) {
+      world.colliders.at(-1).buildOnly = true;
+      for (const [s0, s1] of segments) {
+        const [ax, az] = at(s0);
+        const [bx, bz] = at(s1);
+        ctx.addLateColliderRect(ax - 0.3, bx + 0.3, az - 0.3, bz + 0.3);
+      }
+    }
   };
+  // where a street meets one of these fences, a gate (edges.js) stands in it
+  const gateGap = (along, fence) => EDGE_GATES.filter((g) => g.along === along && (along === 'x' ? g.z : g.x) === fence).map((g) => {
+    const c = along === 'x' ? g.x : g.z;
+    return [c - g.half - 1.2, c + g.half + 1.2];
+  });
   panelFenceMerged(-80, 176, -14, 176);
   panelFenceMerged(14, 176, 80, 176);
+  // the avenue's own gap is closed by its gate now: short runs either side
+  // of it, up only once the world is built (the scatter never had them)
+  {
+    const before = world.colliders.length;
+    panelFenceMerged(-14, 176, -7.2, 176);
+    panelFenceMerged(7.2, 176, 14, 176);
+    world.colliders.splice(before);
+    ctx.addLateColliderRect(-14.3, 14.3, 175.7, 176.3);
+  }
   // the western cluster's limits: its own edge, and the south and north
   // lines carried on westward
-  panelFenceMerged(-236, -196, -236, 176);
+  panelFenceMerged(-236, -196, -236, 176, { gaps: gateGap('z', -236) });
   // the southern quarter's limits: its own edge and the east line carried down
   panelFenceMerged(-236, -196, 104, -196);
-  panelFenceMerged(104, -196, 104, -70);
-  panelFenceMerged(-236, 176, -80, 176);
-  panelFenceMerged(104, 70, 104, 176);
+  panelFenceMerged(104, -196, 104, -70, { gaps: gateGap('z', 104) });
+  panelFenceMerged(-236, 176, -80, 176, { gaps: gateGap('x', 176) });
+  // Zavodskaya runs on through it into the private sector's ул. Кедровая
+  panelFenceMerged(104, 70, 104, 176, { gaps: [[EAST.link.z0 - 0.4, EAST.link.z1 + 0.4]], open: true });
   // ghosts of the removed z = 104 fence runs: the historic scatter passes
   // still see them, the player does not
   ctx.addLegacyGhostRect(-70.3, -13.7, 103.7, 104.3);
@@ -809,30 +846,86 @@ export function buildBuildings(ctx) {
 
   /* ---------------------------------------------------- distant skyline */
   const distantMat = new THREE.MeshStandardMaterial({ color: 0x3b434e, roughness: 1 });
-  // distant windows texture
-  const winCanvas = makeCanvas(256, 256);
-  const wctx = winCanvas.getContext('2d');
-  wctx.fillStyle = '#000';
-  wctx.fillRect(0, 0, 256, 256);
-  const wrng = new Rng(4242);
-  for (let y = 6; y < 256; y += 12) {
-    for (let xx = 4; xx < 256; xx += 10) {
-      if (wrng.chance(0.35)) {
-        wctx.fillStyle = wrng.chance(0.7) ? 'rgba(255,183,94,0.95)' : 'rgba(190,215,255,0.8)';
-        wctx.fillRect(xx, y, 5, 7);
+  // the far blocks are panel blocks too: a facade of storey-high panels
+  // (8 bays x 10 floors a tile), dark windows by day, a scatter of them lit
+  // at night, mapped at real size on every face
+  const BAY = 3.4;
+  const STOREY = 2.8;
+  const TILE_W = BAY * 8;
+  const TILE_H = STOREY * 10;
+  const facadeCanvas = makeCanvas(512, 512);
+  const litCanvas = makeCanvas(512, 512);
+  {
+    const fc = facadeCanvas.getContext('2d');
+    const lc = litCanvas.getContext('2d');
+    fc.fillStyle = '#8d9296';
+    fc.fillRect(0, 0, 512, 512);
+    lc.fillStyle = '#000';
+    lc.fillRect(0, 0, 512, 512);
+    const wrng = new Rng(4242);
+    const bw = 512 / 8;
+    const fh = 512 / 10;
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 8; col++) {
+        const x = col * bw;
+        const y = row * fh;
+        // each panel a shade of its own, and the seams between them
+        const k = wrng.int(-10, 10);
+        fc.fillStyle = `rgb(${141 + k},${146 + k},${150 + k})`;
+        fc.fillRect(x + 1, y + 1, bw - 2, fh - 2);
+        fc.fillStyle = '#5d6266';
+        fc.fillRect(x, y, bw, 1.5);
+        fc.fillRect(x, y, 1.5, fh);
+        // the window: two panes in a frame; every fourth bay a balcony slab
+        const wx = x + bw * 0.22;
+        const wy = y + fh * 0.24;
+        const ww = bw * 0.56;
+        const wh = fh * 0.5;
+        fc.fillStyle = '#23292f';
+        fc.fillRect(wx, wy, ww, wh);
+        fc.fillStyle = '#6c7378';
+        fc.fillRect(wx + ww / 2 - 1, wy, 2, wh);
+        if (col % 4 === 1) {
+          fc.fillStyle = '#767b7f';
+          fc.fillRect(x + bw * 0.1, y + fh * 0.76, bw * 0.8, fh * 0.12);
+        }
+        if (wrng.chance(0.24)) {
+          const warm = wrng.chance(0.75);
+          lc.fillStyle = warm ? `rgb(255,${170 + wrng.int(0, 40)},${90 + wrng.int(0, 30)})` : 'rgb(185,210,255)';
+          lc.fillRect(wx + 1, wy + 1, ww - 2, wh - 2);
+          fc.fillStyle = warm ? '#7a6248' : '#5b6670';
+          fc.fillRect(wx + 1, wy + 1, ww - 2, wh - 2);
+        }
       }
     }
   }
-  const winTex = canvasTexture(winCanvas);
-  winTex.repeat.set(3, 6);
+  const facadeTex = canvasTexture(facadeCanvas);
+  const litTex = canvasTexture(litCanvas);
+  const distantFacadeMat = new THREE.MeshStandardMaterial({ map: facadeTex, color: 0x9aa0a6, roughness: 1 });
   const distantLitMat = new THREE.MeshStandardMaterial({
-    color: 0x3b434e,
-    emissiveMap: winTex,
+    map: facadeTex,
+    color: 0x9aa0a6,
+    emissiveMap: litTex,
     emissive: new THREE.Color(0xffffff),
     emissiveIntensity: 0.5,
     roughness: 1,
   });
   world.windowMats.push(distantLitMat);
+  /** A box with its facades mapped at real size, starting at a whole bay. */
+  const towerGeo = (w, h, d, shift) => {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const uv = geo.attributes.uv;
+    // faces in BoxGeometry order: +x, -x, +y, -y, +z, -z (4 vertices each)
+    const sizes = [[d, h], [d, h], null, null, [w, h], [w, h]];
+    sizes.forEach((size, f) => {
+      // (the roof takes one plain spot of a panel: one material, one draw)
+      for (let v = f * 4; v < f * 4 + 4; v++) {
+        if (size) uv.setXY(v, shift + (uv.getX(v) * size[0]) / TILE_W, (uv.getY(v) * size[1]) / TILE_H);
+        else uv.setXY(v, 0.06, 0.985);
+      }
+    });
+    return geo;
+  };
 
   const ring = new Rng(777);
   const skylineBoxes = [];
@@ -843,10 +936,11 @@ export function buildBuildings(ctx) {
     const z = Math.sin(a) * r;
     const w = ring.float(14, 44);
     const d = ring.float(12, 26);
-    const h = ring.float(12, 42);
+    // (whole storeys, plus the parapet)
+    const h = Math.max(4, Math.round(ring.float(12, 42) / STOREY)) * STOREY + 0.6;
     const lit = ring.chance(0.65);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), lit ? distantLitMat : distantMat);
-    mesh.position.set(x, h / 2 - 1, z);
+    const mesh = new THREE.Mesh(towerGeo(w, h, d, (i % 8) / 8), lit ? distantLitMat : distantFacadeMat);
+    mesh.position.set(x, h / 2, z);
     mesh.rotation.y = ring.float(0, TAU) * 0.2;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
@@ -861,7 +955,8 @@ export function buildBuildings(ctx) {
     const { x, z } = mesh.position;
     if (Math.abs(x) < 132 && z > 96 && z < 206) {
       const a = Math.atan2(z, x);
-      const r = 215 + (i % 7) * 9;
+      // (well back from the north fence, z = 176: up close a box reads as one)
+      const r = 265 + (i % 7) * 10;
       mesh.position.x = Math.cos(a) * r;
       mesh.position.z = Math.sin(a) * r;
     }
@@ -895,6 +990,8 @@ export function buildBuildings(ctx) {
   for (const mesh of skylineBoxes) {
     const { x, z } = mesh.position;
     if (x > 100 && (highwayRange(x, z) < 90 || nearEastSector(x, z, 45))) mesh.removeFromParent();
+    // nor on the streets that run on past the fences (edges.js)
+    else if (onEdgeRoad(x, z, 30)) mesh.removeFromParent();
   }
   // industrial sites
   const factory = (x, z, h = 44) => {
