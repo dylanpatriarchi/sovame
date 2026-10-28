@@ -50,6 +50,67 @@ const SKY_FRAG = /* glsl */ `
   }
 `;
 
+/* The overcast: one wide disc of procedural stratus high over the camera,
+ * drifting with the wind and thinning out towards the horizon, where the sky
+ * dome's own gradient takes over. */
+const CLOUD_RADIUS = 1300;
+const CLOUD_WHITE = new THREE.Color(0xffffff);
+const CLOUD_VERT = /* glsl */ `
+  varying vec2 vXZ;
+  varying vec2 vLocal;
+  varying float vR;
+  uniform vec2 uOffset;
+  void main() {
+    vLocal = position.xy;
+    vXZ = position.xy + uOffset;
+    vR = length(position.xy) / ${CLOUD_RADIUS.toFixed(1)};
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const CLOUD_FRAG = /* glsl */ `
+  varying vec2 vXZ;
+  varying vec2 vLocal;
+  varying float vR;
+  uniform vec3 uColor;
+  uniform vec3 uShade;
+  uniform vec3 uSunColor;
+  uniform vec2 uSunXZ;
+  uniform float uSunGlow;
+  uniform float uOpacity;
+  uniform float uCover;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+      v += a * noise(p);
+      p = p * 2.03 + vec2(17.3, 9.1);
+      a *= 0.5;
+    }
+    return v;
+  }
+  void main() {
+    vec2 p = vXZ * 0.0032;
+    float n = fbm(p);
+    float detail = fbm(p * 3.1 + 4.7);
+    float cover = smoothstep(uCover - 0.18, uCover + 0.16, n);
+    // heavier, darker bellies where the layer is thickest
+    vec3 col = mix(uColor, uShade, smoothstep(0.5, 0.85, n) * 0.6 + detail * 0.15);
+    // the side facing a low sun catches its light
+    col += uSunColor * uSunGlow * 0.35 * max(dot(normalize(vLocal + 0.001), uSunXZ), 0.0) * (1.0 - cover * 0.5);
+    float fade = 1.0 - smoothstep(0.45, 1.0, vR);
+    gl_FragColor = vec4(col, cover * fade * uOpacity);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
 class Weather {
   constructor(scene, kind, count, size, opts = {}) {
     this.kind = kind;
@@ -355,19 +416,31 @@ export class Environment {
   }
 
   buildClouds() {
-    this.clouds = [];
-    const tex = makeSmokeTexture(256);
-    const rng = new Rng(606);
-    for (let i = 0; i < 14; i++) {
-      const mat = new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, fog: false });
-      const sprite = new THREE.Sprite(mat);
-      const s = rng.float(180, 420);
-      sprite.scale.set(s, s * rng.float(0.35, 0.55), 1);
-      sprite.position.set(rng.float(-700, 700), rng.float(130, 220), rng.float(-700, 700));
-      sprite.renderOrder = -7;
-      this.scene.add(sprite);
-      this.clouds.push({ sprite, speed: rng.float(0.4, 1.1) });
-    }
+    this.cloudOffset = new THREE.Vector2();
+    this.cloudMat = new THREE.ShaderMaterial({
+      vertexShader: CLOUD_VERT,
+      fragmentShader: CLOUD_FRAG,
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uOffset: { value: new THREE.Vector2() },
+        uColor: { value: new THREE.Color() },
+        uShade: { value: new THREE.Color() },
+        uSunColor: { value: this.cur.sunColor },
+        uSunXZ: { value: new THREE.Vector2(0, 1) },
+        uSunGlow: { value: 0 },
+        uOpacity: { value: 0.6 },
+        uCover: { value: 0.5 },
+      },
+    });
+    // the disc lies in its own xy plane, turned to face the ground
+    this.clouds = new THREE.Mesh(new THREE.CircleGeometry(CLOUD_RADIUS, 64), this.cloudMat);
+    this.clouds.rotation.x = Math.PI / 2;
+    this.clouds.frustumCulled = false;
+    this.clouds.renderOrder = -7;
+    this.scene.add(this.clouds);
   }
 
   buildMist() {
@@ -551,17 +624,20 @@ export class Environment {
     this.stars.position.set(ox, 0, oz);
     this.moon.position.set(ox + this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, oz + this.sunDir.z * -780);
 
-    // clouds
-    for (const cloud of this.clouds) {
-      cloud.sprite.position.x += this.wind.x * cloud.speed * dt * 1.2;
-      cloud.sprite.position.z += this.wind.z * cloud.speed * dt * 1.2;
-      if (cloud.sprite.position.x > ox + 760) cloud.sprite.position.x -= 1520;
-      if (cloud.sprite.position.x < ox - 760) cloud.sprite.position.x += 1520;
-      if (cloud.sprite.position.z > oz + 760) cloud.sprite.position.z -= 1520;
-      if (cloud.sprite.position.z < oz - 760) cloud.sprite.position.z += 1520;
-      cloud.sprite.material.opacity = c.cloudOpacity;
-      cloud.sprite.material.color.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.55);
-    }
+    // clouds: the layer rides over the camera, its pattern drifting with the wind
+    this.clouds.position.set(ox, 210, oz);
+    this.cloudOffset.x += this.wind.x * dt * 1.6;
+    this.cloudOffset.y += this.wind.z * dt * 1.6;
+    // (turned a quarter about x, the disc's local y runs along world z; the
+    // pattern is sampled upwind so that it travels with the wind)
+    this.cloudMat.uniforms.uOffset.value.set(ox - this.cloudOffset.x, oz - this.cloudOffset.y);
+    const cu = this.cloudMat.uniforms;
+    cu.uOpacity.value = c.cloudOpacity;
+    cu.uColor.value.copy(c.horizon).lerp(CLOUD_WHITE, 0.45 - c.stars * 0.2);
+    cu.uShade.value.copy(c.zenith).lerp(c.horizon, 0.4);
+    cu.uSunGlow.value = c.sunGlow;
+    cu.uSunXZ.value.set(this.sunDir.x, this.sunDir.z).normalize();
+    cu.uCover.value = 0.48 - c.stars * 0.04;
 
     // drifting ground mist: density follows the fog preset and season
     const seasonFog = SEASONS[this.season].fogMul;
