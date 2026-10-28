@@ -196,6 +196,53 @@ function logTexture() {
   return canvasTexture(c);
 }
 
+/** Clapboard siding (обшивка вагонкой): narrow horizontal boards, painted. */
+function clapboardTexture() {
+  const c = makeCanvas(256, 256);
+  const g = c.getContext('2d');
+  const rng = new Rng(41761);
+  g.fillStyle = '#ececec';
+  g.fillRect(0, 0, 256, 256);
+  // 16 boards a tile (1.6 m): a shadow under each lap, flaking paint here and there
+  for (let k = 0; k < 16; k++) {
+    const y = k * 16;
+    const grad = g.createLinearGradient(0, y, 0, y + 16);
+    grad.addColorStop(0, 'rgba(255,255,255,0.18)');
+    grad.addColorStop(0.8, 'rgba(0,0,0,0.04)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.42)');
+    g.fillStyle = grad;
+    g.fillRect(0, y, 256, 16);
+    for (let n = 0; n < 3; n++) {
+      g.fillStyle = `rgba(96,78,58,${rng.float(0.25, 0.55)})`;
+      g.fillRect(rng.float(0, 250), y + rng.float(2, 12), rng.float(3, 16), rng.float(1, 3));
+    }
+  }
+  return canvasTexture(c);
+}
+
+/** Lace for the lower half of a window (тюль): white, with holes in it. */
+function laceTexture() {
+  const c = makeCanvas(64, 64);
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, 64, 64);
+  g.globalCompositeOperation = 'destination-out';
+  for (let y = 4; y < 64; y += 8) {
+    for (let x = (y / 8) % 2 ? 4 : 0; x < 64; x += 8) {
+      g.beginPath();
+      g.arc(x, y, 2.4, 0, TAU);
+      g.fill();
+    }
+  }
+  // a scalloped hem at the top
+  for (let x = 4; x < 64; x += 8) {
+    g.beginPath();
+    g.arc(x, 0, 4, 0, TAU);
+    g.fill();
+  }
+  return canvasTexture(c);
+}
+
 function plankTexture() {
   const c = makeCanvas(256, 256);
   const g = c.getContext('2d');
@@ -356,6 +403,21 @@ export function buildEast(ctx) {
   const film = new THREE.MeshStandardMaterial({ color: 0xdfe8e4, roughness: 0.4, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
 
   const chimneys = [];
+  // the Soviet village: most houses clad in painted boards, the TV aerials,
+  // the yellow gas main along the fences, the power poles and their wires
+  const deco = new Rng(41762);
+  const clapTex = clapboardTexture();
+  const clads = [0x6f9a68, 0x5d86b4, 0xc9a85a, 0x8cb9a8, 0x9c6b8e, 0xb7c46f].map((color) => std({ map: clapTex, color, roughness: 0.8 }));
+  const whiteTrim = std({ color: 0xf0ede4, roughness: 0.7 });
+  // (lit from behind at night, like the glass)
+  const lace = std({ map: laceTexture(), color: 0xf4f2ec, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, emissive: 0xc9a77c, emissiveIntensity: 0.6 });
+  world.windowMats.push(lace);
+  const gasPipe = std({ color: 0xd9b230, roughness: 0.55, metalness: 0.3 });
+  const aerial = std({ color: 0x8c9093, roughness: 0.5, metalness: 0.6 });
+  const starRed = std({ color: 0xb3241d, roughness: 0.5 });
+  const poleWood = std({ color: 0x4e4134, roughness: 0.95 });
+  const poles = [];
+  const drops = [];
 
   /* ---- the plots */
   for (const p of PLOTS) {
@@ -368,6 +430,7 @@ export function buildEast(ctx) {
     const shutter = rng.pick(paints.filter((c) => c !== trim));
     const glass = rng.chance(0.72) ? glassLit : glassDark;
     const picket = rng.chance(0.5) ? M.wood : rng.pick(paints);
+    const clad = deco.chance(0.7) ? deco.pick(clads) : null;
 
     /* the izba: log walls on a low plinth, its gable to the street */
     const hz0 = 2.2;
@@ -376,15 +439,17 @@ export function buildEast(ctx) {
     const BASE = 0.5;
     const TOP = 3.5;
     put(M.concreteDark, box(6.6, BASE, 7.2, 1), hx, BASE / 2, hzc);
-    put(logMat, box(6.4, TOP - BASE, 7, 2.1), hx, (TOP + BASE) / 2, hzc);
-    // the crossed log ends standing out at the corners
-    for (const sx of [-1, 1]) for (const sz of [hz0, hz1]) put(M.woodDark, box(0.34, TOP - BASE, 0.34, 1), hx + sx * 3.25, (TOP + BASE) / 2, sz + (sz === hz0 ? -0.05 : 0.05));
+    put(clad ?? logMat, box(6.4, TOP - BASE, 7, 1.6), hx, (TOP + BASE) / 2, hzc);
+    // the crossed log ends standing out at the corners, or the corner boards
+    // over the siding, painted white
+    for (const sx of [-1, 1]) for (const sz of [hz0, hz1]) put(clad ? whiteTrim : M.woodDark, box(clad ? 0.2 : 0.34, TOP - BASE, clad ? 0.2 : 0.34, 1), hx + sx * (clad ? 3.2 : 3.25), (TOP + BASE) / 2, sz + (sz === hz0 ? -0.02 : 0.02));
+    if (clad) for (const z of [hz0 - 0.03, hz1 + 0.03]) put(whiteTrim, box(6.5, 0.16, 0.06), hx, TOP - 0.1, z);
     // gables (boards) and the roof
     const RISE = 2.3;
     const RUN = 3.7;
     const DROP = 0.26; // the roof sits this much lower, so the eaves close over the walls
     const gable = [[-3.2, 0], [3.2, 0], [3.2, 0.03], [0, RISE - DROP - 0.08], [-3.2, 0.03]];
-    for (const z of [hz0 + 0.04, hz1 - 0.04]) put(shedPlank, slab(gable, 0.12, 1.6), hx, TOP, z);
+    for (const z of [hz0 + 0.04, hz1 - 0.04]) put(clad ?? shedPlank, slab(gable, 0.12, 1.6), hx, TOP, z);
     const pitch = Math.atan2(RISE, RUN);
     const sw = Math.hypot(RISE, RUN);
     for (const s of [-1, 1]) {
@@ -401,8 +466,9 @@ export function buildEast(ctx) {
     /* windows: three to the street, two on the far side, one by the porch */
     const windowAt = (x, z, nx, nz) => {
       const ry = Math.atan2(nx, nz);
-      const w = (mat, geo, lx, ly, lz) => put(mat, geo.translate(lx, ly, lz).rotateY(ry), x, 1.95, z);
+      const w = (mat, geo, lx, ly, lz, opts) => put(mat, geo.translate(lx, ly, lz).rotateY(ry), x, 1.95, z, 0, opts);
       w(glass, new THREE.PlaneGeometry(0.8, 1.15), 0, 0, 0.03);
+      if (glass === glassLit) w(lace, new THREE.PlaneGeometry(0.78, 0.6), 0, -0.26, 0.036, { cast: false });
       w(trim, box(0.05, 1.15, 0.04), 0, 0, 0.05);
       w(trim, box(0.8, 0.05, 0.04), 0, 0.18, 0.05);
       for (const sx of [-1, 1]) {
@@ -491,7 +557,117 @@ export function buildEast(ctx) {
     put(lane, box(1.1, 0.02, 7.0, 3), gx, 0.02, 3.8, 0, { cast: false });
     put(lane, box(Math.abs(px - gx) + 0.2, 0.02, 1.1, 3), (gx + px) / 2, 0.021, 7.3, 0, { cast: false });
 
+    /* the TV aerial on the street gable: a mast and its "fishbone" */
+    if (deco.chance(0.85)) {
+      const ay = TOP + RISE - DROP;
+      const az = hz0 + 0.9;
+      put(aerial, new THREE.CylinderGeometry(0.03, 0.04, 3.2, 5), hx, ay + 1.6, az);
+      put(aerial, box(0.03, 0.03, 2.0), hx, ay + 2.9, az + 0.3);
+      for (let k = 0; k < 6; k++) put(aerial, box(1.3 - k * 0.14, 0.025, 0.025), hx, ay + 2.9, az - 0.6 + k * 0.32);
+      // the cable down the gable
+      put(M.woodDark, box(0.02, ay + 1.6 - 2.2, 0.02), hx + 0.12, (ay + 1.6 + 2.2) / 2 - 0.4, hz0 - 0.06, 0, { cast: false });
+    }
+
+    /* the gas main along the fence, up and over the gate, a branch to the house */
+    {
+      const PY = 2.05;
+      const PZ = -0.4;
+      const g0 = gx - 1.05;
+      const g1 = gx + 1.05;
+      const runs = [[-W2, Math.min(g0, g1)], [Math.max(g0, g1), W2]];
+      for (const [a, b] of runs) put(gasPipe, new THREE.CylinderGeometry(0.045, 0.045, b - a, 6).rotateZ(Math.PI / 2), (a + b) / 2, PY, PZ, 0, { cast: false });
+      for (const x of [g0, g1]) put(gasPipe, new THREE.CylinderGeometry(0.045, 0.045, 1.5, 6), x, PY + 0.75, PZ, 0, { cast: false });
+      put(gasPipe, new THREE.CylinderGeometry(0.045, 0.045, g1 - g0, 6).rotateZ(Math.PI / 2), gx, PY + 1.5, PZ, 0, { cast: false });
+      // its supports
+      for (let x = -W2 + 1.2; x < W2; x += 3.2) if (Math.abs(x - gx) > 3.2) put(gasPipe, box(0.07, PY, 0.07), x, PY / 2, PZ - 0.08);
+      // the branch into the yard and down the house wall, with its tap
+      const bx = hx + m * 2.4;
+      put(gasPipe, new THREE.CylinderGeometry(0.03, 0.03, hz0 - PZ, 6).rotateX(Math.PI / 2), bx, PY, (hz0 + PZ) / 2, 0, { cast: false });
+      put(gasPipe, new THREE.CylinderGeometry(0.03, 0.03, PY - 0.9, 6), bx, (PY + 0.9) / 2, hz0 - 0.05, 0, { cast: false });
+      put(starRed, box(0.16, 0.1, 0.1), bx, 1.25, hz0 - 0.08, 0, { cast: false });
+    }
+
+    /* a bench outside the gate */
+    if (deco.chance(0.55)) {
+      const bx = gx + m * 2.0;
+      put(M.wood, box(1.7, 0.06, 0.36), bx, 0.48, -0.55);
+      put(M.wood, box(1.7, 0.2, 0.04), bx, 0.72, -0.37);
+      for (const dx of [-0.65, 0.65]) put(M.woodDark, box(0.08, 0.46, 0.32), bx + dx, 0.23, -0.55);
+      put(M.snow, box(1.6, 0.05, 0.3), bx, 0.53, -0.55, 0, { season: 'winter', cast: false });
+      const r = worldRect(matrix, [bx - 0.9, bx + 0.9, -0.75, -0.3]);
+      ctx.addLateColliderRect(r[0], r[1], r[2], r[3]);
+    }
+
+    /* the red star of a veteran's household, on the fence by the gate */
+    if (deco.chance(0.25)) {
+      const pts = [];
+      for (let k = 0; k < 10; k++) {
+        const a = Math.PI / 2 + (k * Math.PI) / 5;
+        const r = k % 2 ? 0.07 : 0.17;
+        pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+      }
+      put(starRed, slab(pts, 0.03), gx + m * 1.25, 1.2, 0.27, Math.PI, { cast: false });
+    }
+
+    /* the power pole at the plot's corner, and the drop to the gable */
+    {
+      const lx = m * (W2 - 1.2);
+      const v = new THREE.Vector3(lx, 0, -0.9).applyMatrix4(matrix);
+      if (!LAMPS.some(([x, z]) => Math.hypot(x - v.x, z - v.z) < 3)) {
+        put(poleWood, new THREE.CylinderGeometry(0.11, 0.15, 7, 7), lx, 3.5, -0.9);
+        put(poleWood, box(0.1, 0.1, 1.2), lx, 6.7, -0.9);
+        for (const dz of [-0.5, 0.5]) put(M.concreteWhite, new THREE.CylinderGeometry(0.05, 0.06, 0.14, 6), lx, 6.82, -0.9 + dz, 0, { cast: false });
+        const r = worldRect(matrix, [lx - 0.2, lx + 0.2, -1.1, -0.7]);
+        ctx.addLateColliderRect(r[0], r[1], r[2], r[3]);
+        const top = new THREE.Vector3(lx, 6.85, -0.9).applyMatrix4(matrix);
+        poles.push({ top, p, along: lx });
+        // the insulator on the gable, and the drop to it
+        put(M.concreteWhite, box(0.08, 0.08, 0.3), hx, TOP + 0.5, hz0 - 0.15, 0, { cast: false });
+        drops.push([top.clone(), new THREE.Vector3(hx, TOP + 0.5, hz0 - 0.3).applyMatrix4(matrix)]);
+      }
+    }
+
     for (const r of p.rects) ctx.addLateColliderRect(r[0], r[1], r[2], r[3]);
+  }
+
+  /* ---- the wires: pole to pole along each row of plots, and the drops */
+  {
+    const wires = [];
+    const sag = (a, b, s) => {
+      for (let k = 0; k < 10; k++) {
+        const t0 = k / 10;
+        const t1 = (k + 1) / 10;
+        const p0 = a.clone().lerp(b, t0);
+        const p1 = a.clone().lerp(b, t1);
+        p0.y -= Math.sin(t0 * Math.PI) * s;
+        p1.y -= Math.sin(t1 * Math.PI) * s;
+        wires.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+      }
+    };
+    // poles of plots facing the same street on the same side line up
+    const rows = new Map();
+    for (const q of poles) {
+      const n = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), q.p.theta);
+      const key = `${q.p.theta.toFixed(2)}:${Math.round(q.top.x * n.x + q.top.z * n.z)}`;
+      if (!rows.has(key)) rows.set(key, []);
+      rows.get(key).push(q);
+    }
+    for (const row of rows.values()) {
+      const t = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), row[0].p.theta);
+      row.sort((a, b) => a.top.dot(t) - b.top.dot(t));
+      for (let i = 0; i + 1 < row.length; i++) {
+        const a = row[i].top;
+        const b = row[i + 1].top;
+        if (a.distanceTo(b) > 40) continue;
+        // two wires, one on each end of the cross-arm
+        const n = new THREE.Vector3(-t.z, 0, t.x);
+        for (const o of [-0.5, 0.5]) sag(a.clone().addScaledVector(n, o), b.clone().addScaledVector(n, o), 0.45);
+      }
+    }
+    for (const [a, b] of drops) sag(a, b, 0.25);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
+    group.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x26282a, transparent: true, opacity: 0.8 })));
   }
 
   /* ---- the lanes: packed snow with two ruts */
