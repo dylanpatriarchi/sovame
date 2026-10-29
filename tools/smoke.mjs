@@ -471,10 +471,10 @@ const expansion = await page.evaluate(() => {
     courtyardPathFree: !w.collides(-30, 133, 0.36), // new courtyard spine
     eastArmFree: !w.collides(50, 128, 0.36), // Zavodskaya street
     newBuildingBlocked: w.collides(-30, 151, 0.36), // inside B10
-    northFenceBlocked: w.collides(50, 175.8, 0.36), // new boundary fence
-    beyondNorthBlocked: w.collides(0, 181, 0.36), // past the new north edge
-    beyondEastBlocked: w.collides(109, 0, 0.36), // east edge unchanged
-    beyondSouthBlocked: w.collides(0, -201, 0.36), // past ул. Школьная and the south fence
+    northStreetFree: !w.collides(0, 200, 0.36), // the avenue runs on past the old north edge
+    beyondEastFree: !w.collides(120, 0, 0.36), // out on to the steppe
+    beyondSouthFree: !w.collides(2, -220, 0.36), // past ул. Школьная
+    limitBlocked: w.collides(0, 333, 0.36) && w.collides(0, -333, 0.36), // the end of the ground
     oldSouthEdgeFree: !w.collides(0, -110, 0.36), // the avenue runs on south
     schoolStreetFree: !w.collides(-100, -152, 0.36), // ул. Школьная
     westStreetSouthFree: !w.collides(-170, -130, 0.36), // ул. Строителей to the junction
