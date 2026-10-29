@@ -9,7 +9,8 @@ import { Rng, TAU, DEG, lerp, clamp } from '../util.js';
 import { WORLD } from '../config.js';
 import { PARKING_LOT, PARKING_NORTH, WALK_PATHS, NEW_WALK_PATHS } from './terrain.js';
 import { highwayDistance, steppeGroves } from './highway.js';
-import { eastBlocked, eastTrees } from './east.js';
+import { eastBlocked, eastTrees, nearEastSector } from './east.js';
+import { nearPort } from './port.js';
 import { onEdgeRoad } from './edges.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -1108,4 +1109,320 @@ export function buildVegetation(ctx) {
     group.add(ctx.seasonable('autumn', mkBush(new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), [0.8, 1.4])));
     group.add(ctx.seasonable('winter', mkBush(new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.9 }), [0.75, 1.25], bushSnowGeo)));
   }
+
+  plantOuterSteppe(ctx, { variants, birchMat, crownMat, treeSnowMat, spruceGeo: spruceMesh.geometry, spruceMat: spruceMesh.material, spruceSnowGeo: snowMesh.geometry, bushGeo, bushSnowGeo });
+}
+
+/* ------------------------------------------------------------ outer steppe
+ * The open ground past the district's old edges, out to WORLD.limit and a
+ * little beyond: birch copses (колки) with willow scrub at their skirts,
+ * dark clumps of spruce, lone birches, dry grass poking through the snow,
+ * frozen ponds ringed with reeds, haystacks, and a ragged forest line past
+ * the limit where the ground runs out. Its own seed: nothing else shifts. */
+function grassTuftGeometry(rng, blades, height) {
+  const parts = [];
+  for (let i = 0; i < blades; i++) {
+    const h = height * rng.float(0.55, 1);
+    const w = rng.float(0.025, 0.05);
+    const blade = new THREE.BufferGeometry();
+    blade.setAttribute('position', new THREE.Float32BufferAttribute([-w, 0, 0, w, 0, 0, rng.float(-0.04, 0.04), h, 0], 3));
+    blade.computeVertexNormals();
+    blade.rotateX(rng.float(0.1, 0.45));
+    blade.rotateY(rng.float(0, TAU));
+    blade.translate(rng.float(-0.12, 0.12), 0, rng.float(-0.12, 0.12));
+    parts.push(blade);
+  }
+  return mergeGeometries(parts, false);
+}
+
+function plantOuterSteppe(ctx, kit) {
+  const { world, materials: M, textures: T } = ctx;
+  const rng = new Rng(73137);
+  const dummy = new THREE.Object3D();
+  const EDGE = 347; // the ground plane ends at 350
+  const outside = (x, z, m) => x < -WORLD.boundsWest - m || x > WORLD.bounds + m || z < -WORLD.boundsSouth - m || z > WORLD.boundsNorth + m;
+  // everything standing out there already (blocks, poles, the factory)
+  const solid = [...world.colliders, ...world.lateColliders].filter((c) => c.maxX > WORLD.bounds - 12 || c.minX < -WORLD.boundsWest + 12 || c.maxZ > WORLD.boundsNorth - 12 || c.minZ < -WORLD.boundsSouth + 12);
+  const hard = (x, z) => {
+    const s = world.surfaceAt(x, z);
+    return s === 'asphalt' || s === 'stone';
+  };
+  const ok = (x, z, r) => {
+    if (Math.max(Math.abs(x), Math.abs(z)) > EDGE || !outside(x, z, 6 + r)) return false;
+    if (onEdgeRoad(x, z, 6 + r) || nearEastSector(x, z, 16 + r) || nearPort(x, z, 18 + r) || highwayDistance(x, z) < 26 + r) return false;
+    if (world.heightAt(x, z) > 0.05 || hard(x, z)) return false;
+    return !solid.some((c) => x > c.minX - r && x < c.maxX + r && z > c.minZ - r && z < c.maxZ + r);
+  };
+  const birches = [];
+  const spruces = [];
+  const bushes = [];
+  const tufts = [];
+  const reeds = [];
+  const ponds = [];
+  const stacks = [];
+  const spaced = (list, x, z, d) => !list.some((t) => Math.abs(t.x - x) < d && Math.abs(t.z - z) < d && Math.hypot(t.x - x, t.z - z) < d);
+  const inPond = (x, z, m) => ponds.some((p) => Math.hypot((x - p.x) / (p.rx + m), (z - p.z) / (p.rz + m)) < 1);
+  const randomPoint = () => [rng.float(-EDGE, EDGE), rng.float(-EDGE, EDGE)];
+
+  // frozen ponds first: the trees keep off them
+  for (let k = 0; k < 400 && ponds.length < 7; k++) {
+    const [x, z] = randomPoint();
+    const rx = rng.float(7, 15);
+    const rz = rx * rng.float(0.55, 0.9);
+    if (!ok(x, z, rx + 6) || Math.max(Math.abs(x), Math.abs(z)) > WORLD.limit - rx - 4 || !spaced(ponds, x, z, 80)) continue;
+    ponds.push({ x, z, rx, rz });
+  }
+  // birch copses with willow scrub around their skirts
+  const copses = [];
+  for (let k = 0; k < 900 && copses.length < 44; k++) {
+    const [x, z] = randomPoint();
+    if (!ok(x, z, 8) || inPond(x, z, 12) || !spaced(copses, x, z, 36)) continue;
+    copses.push({ x, z, spread: rng.float(7, 17), squash: rng.float(0.5, 1), turn: rng.float(0, TAU) });
+  }
+  const clusterPoint = (c, reach) => {
+    const a = rng.float(0, TAU);
+    const r = reach * Math.sqrt(rng.float(0, 1));
+    const lx = Math.cos(a) * r;
+    const lz = Math.sin(a) * r * c.squash;
+    return [c.x + lx * Math.cos(c.turn) - lz * Math.sin(c.turn), c.z + lx * Math.sin(c.turn) + lz * Math.cos(c.turn)];
+  };
+  for (const c of copses) {
+    const count = rng.int(8, 24);
+    for (let i = 0; i < count; i++) {
+      const [x, z] = clusterPoint(c, c.spread);
+      if (ok(x, z, 1.2) && !inPond(x, z, 3) && spaced(birches, x, z, 2.3)) birches.push({ x, z });
+    }
+    const scrub = rng.int(4, 11);
+    for (let i = 0; i < scrub; i++) {
+      const [x, z] = clusterPoint(c, c.spread + 6);
+      if (ok(x, z, 0.8) && !inPond(x, z, 2) && spaced(birches, x, z, 1.6)) bushes.push({ x, z });
+    }
+  }
+  // clumps of spruce
+  const clumps = [];
+  for (let k = 0; k < 600 && clumps.length < 18; k++) {
+    const [x, z] = randomPoint();
+    if (!ok(x, z, 6) || inPond(x, z, 10) || !spaced(copses, x, z, 26) || !spaced(clumps, x, z, 40)) continue;
+    clumps.push({ x, z, spread: rng.float(4, 10), squash: rng.float(0.6, 1), turn: rng.float(0, TAU) });
+  }
+  for (const c of clumps) {
+    const count = rng.int(3, 11);
+    for (let i = 0; i < count; i++) {
+      const [x, z] = clusterPoint(c, c.spread);
+      if (ok(x, z, 1.6) && spaced(spruces, x, z, 3.2)) spruces.push({ x, z });
+    }
+  }
+  // lone birches and scrub out in the open
+  for (let k = 0; k < 400 && birches.length < 560; k++) {
+    const [x, z] = randomPoint();
+    if (ok(x, z, 1.5) && !inPond(x, z, 4) && spaced(birches, x, z, 8)) birches.push({ x, z });
+  }
+  for (let k = 0; k < 700; k++) {
+    const [x, z] = randomPoint();
+    if (ok(x, z, 0.8) && !inPond(x, z, 2) && spaced(birches, x, z, 1.8)) bushes.push({ x, z });
+  }
+  // the forest line past the limit, where the ground runs out
+  for (let k = 0; k < 1400; k++) {
+    const side = rng.int(0, 3);
+    const along = rng.float(-EDGE, EDGE);
+    const depth = rng.float(WORLD.limit + 5, EDGE);
+    const x = side === 0 ? along : side === 1 ? along : side === 2 ? depth : -depth;
+    const z = side === 0 ? depth : side === 1 ? -depth : along;
+    // thicker in some stretches than others
+    if (Math.sin(along * 0.031 + side * 1.7) + Math.sin(along * 0.077 + side) < -0.6) continue;
+    if (!ok(x, z, 1.4)) continue;
+    if (rng.chance(0.62)) {
+      if (spaced(spruces, x, z, 3.4)) spruces.push({ x, z });
+    } else if (spaced(birches, x, z, 2.4)) birches.push({ x, z });
+  }
+  // haystacks, a few to a field
+  for (let k = 0; k < 300 && stacks.length < 14; k++) {
+    const [x, z] = randomPoint();
+    if (Math.max(Math.abs(x), Math.abs(z)) > WORLD.limit - 6 || !ok(x, z, 4) || inPond(x, z, 6) || !spaced(birches, x, z, 7) || !spaced(spruces, x, z, 7) || !spaced(stacks, x, z, 30)) continue;
+    stacks.push({ x, z });
+    for (let i = rng.int(0, 3); i > 0; i--) {
+      const sx = x + rng.float(-9, 9);
+      const sz = z + rng.float(-9, 9);
+      if (ok(sx, sz, 4) && !inPond(sx, sz, 6) && spaced(stacks, sx, sz, 4.5) && spaced(birches, sx, sz, 5)) stacks.push({ x: sx, z: sz });
+    }
+  }
+  // dry grass: thick around the copses and the ponds, thin in the open
+  const tuftNear = (cx, cz, reach) => {
+    const a = rng.float(0, TAU);
+    const r = reach * Math.sqrt(rng.float(0, 1));
+    return [cx + Math.cos(a) * r, cz + Math.sin(a) * r];
+  };
+  for (const c of copses) {
+    for (let i = 0; i < 70; i++) {
+      const [x, z] = tuftNear(c.x, c.z, c.spread + 12);
+      if (ok(x, z, 0.3) && !inPond(x, z, 0.5)) tufts.push({ x, z });
+    }
+  }
+  for (const p of ponds) {
+    const n = Math.round((p.rx + p.rz) * 3.2);
+    for (let i = 0; i < n; i++) {
+      const a = rng.float(0, TAU);
+      const m = rng.float(-0.6, 2.2);
+      reeds.push({ x: p.x + Math.cos(a) * (p.rx + m), z: p.z + Math.sin(a) * (p.rz + m) });
+    }
+  }
+  // and in ragged patches across the open fields
+  for (let k = 0; k < 1300; k++) {
+    const [px, pz] = randomPoint();
+    if (!ok(px, pz, 2)) continue;
+    for (let i = rng.int(3, 10); i > 0; i--) {
+      const [x, z] = tuftNear(px, pz, 3.5);
+      if (ok(x, z, 0.3) && !inPond(x, z, 0.5)) tufts.push({ x, z });
+    }
+  }
+
+  /* meshes: one per layer per sector, so the frustum drops what's behind */
+  const SECTORS = 12;
+  const sectorOf = (x, z) => Math.floor(((Math.atan2(z, x) + Math.PI) / TAU) * SECTORS) % SECTORS;
+  const bySector = (list) => {
+    const out = Array.from({ length: SECTORS }, () => []);
+    for (const item of list) out[sectorOf(item.x, item.z)].push(item);
+    return out.filter((l) => l.length);
+  };
+  const add = (mesh, season = null, cast = true) => {
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    world.group.add(season ? ctx.seasonable(season, mesh) : mesh);
+  };
+  const instanced = (geo, mat, list, place, season = null, cast = true) => {
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((item, i) => {
+      place(item, i);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    add(mesh, season, cast);
+    return mesh;
+  };
+
+  // birches, merged from the variants like the groves
+  const pool = kit.variants.birch;
+  for (const list of bySector(birches)) {
+    const parts = { wood: [], foliage: [], dead: [], snow: [] };
+    for (const b of list) {
+      const variant = pool[rng.int(0, pool.length - 1)];
+      const yaw = rng.float(0, TAU);
+      dummy.position.set(b.x, 0, b.z);
+      dummy.rotation.set(rng.float(-0.05, 0.05), yaw, rng.float(-0.05, 0.05));
+      const sc = rng.float(0.8, 1.35);
+      dummy.scale.set(sc, sc * rng.float(0.92, 1.12), sc);
+      dummy.updateMatrix();
+      parts.wood.push(variant.wood.clone().applyMatrix4(dummy.matrix));
+      if (variant.foliage) parts.foliage.push(variant.foliage.clone().applyMatrix4(dummy.matrix));
+      if (variant.dead) parts.dead.push(variant.dead.clone().applyMatrix4(dummy.matrix));
+      if (variant.snow) parts.snow.push(variant.snow.clone().rotateY(2.6 - yaw).applyMatrix4(dummy.matrix));
+      if (Math.max(Math.abs(b.x), Math.abs(b.z)) < WORLD.limit + 1) ctx.addLateColliderRect(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3);
+    }
+    const layer = (geos, mat, name, season, cast = true) => {
+      if (!geos.length) return;
+      const mesh = new THREE.Mesh(mergeGeometries(geos, false), mat);
+      mesh.name = name;
+      add(mesh, season, cast);
+    };
+    layer(parts.wood, kit.birchMat, 'trees:outer');
+    layer(parts.foliage, kit.crownMat, 'trees:outer-foliage', 'autumn');
+    layer(parts.dead, kit.crownMat, 'trees:outer-marcescence', 'winter', false);
+    layer(parts.snow, kit.treeSnowMat, 'trees:outer-snow', 'winter');
+  }
+  dummy.scale.set(1, 1, 1);
+
+  for (const list of bySector(spruces)) {
+    const mesh = instanced(kit.spruceGeo, kit.spruceMat, list, (s) => {
+      dummy.position.set(s.x, 0, s.z);
+      dummy.rotation.set(rng.float(-0.03, 0.03), rng.float(0, TAU), rng.float(-0.03, 0.03));
+      const sc = rng.float(0.8, 1.45);
+      dummy.scale.set(sc, sc * rng.float(0.9, 1.2), sc);
+    });
+    mesh.name = 'trees:outer-spruce';
+    const snow = new THREE.InstancedMesh(kit.spruceSnowGeo, M.snow, list.length);
+    snow.instanceMatrix = mesh.instanceMatrix;
+    snow.computeBoundingSphere();
+    add(snow, 'winter');
+    for (const s of list) if (Math.max(Math.abs(s.x), Math.abs(s.z)) < WORLD.limit + 1) ctx.addLateColliderRect(s.x - 0.6, s.x + 0.6, s.z - 0.6, s.z + 0.6);
+  }
+
+  const bushAutumnMat = new THREE.MeshStandardMaterial({ color: 0x6b5634, roughness: 1, flatShading: true });
+  const bushWinterMat = new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.9 });
+  for (const list of bySector(bushes)) {
+    const scales = list.map(() => [rng.float(0.7, 1.5), rng.float(0.8, 1.2), rng.float(0, TAU)]);
+    const place = (geo, mat, season) =>
+      instanced(geo, mat, list, (b, i) => {
+        const [s, h, yaw] = scales[i];
+        dummy.position.set(b.x, 0, b.z);
+        dummy.rotation.set(0, yaw, 0);
+        dummy.scale.set(s, s * h, s);
+      }, season);
+    place(kit.bushGeo, bushAutumnMat, 'autumn');
+    place(kit.bushSnowGeo, bushWinterMat, 'winter');
+  }
+
+  // dry grass and reeds (shared blade meshes, no shadows to keep them cheap)
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0xa48c58, roughness: 1, side: THREE.DoubleSide });
+  const reedMat = new THREE.MeshStandardMaterial({ color: 0x8f7a4c, roughness: 1, side: THREE.DoubleSide });
+  const tuftGeo = grassTuftGeometry(new Rng(73138), 11, 0.75);
+  const reedGeo = grassTuftGeometry(new Rng(73139), 12, 1.9);
+  for (const list of bySector(tufts)) {
+    instanced(tuftGeo, grassMat, list, (t) => {
+      dummy.position.set(t.x, 0, t.z);
+      dummy.rotation.set(0, rng.float(0, TAU), 0);
+      const sc = rng.float(0.6, 1.5);
+      dummy.scale.set(sc, sc * rng.float(0.8, 1.3), sc);
+    }, null, false).name = 'grass:outer';
+  }
+  if (reeds.length) {
+    instanced(reedGeo, reedMat, reeds, (t) => {
+      dummy.position.set(t.x, 0, t.z);
+      dummy.rotation.set(0, rng.float(0, TAU), 0);
+      const sc = rng.float(0.7, 1.25);
+      dummy.scale.set(sc, sc * rng.float(0.85, 1.2), sc);
+    }, null, false).name = 'grass:reeds';
+  }
+  dummy.scale.set(1, 1, 1);
+
+  // the ponds: ice in winter, dark still water in autumn
+  const iceMat = new THREE.MeshStandardMaterial({ map: T.ice, roughness: 0.16, metalness: 0.25 });
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0x2c3b40, roughness: 0.06, metalness: 0.4 });
+  const shoreMat = new THREE.MeshStandardMaterial({ color: 0xeef3fa, roughness: 0.9 });
+  for (const p of ponds) {
+    const disc = new THREE.CircleGeometry(1, 40);
+    disc.rotateX(-Math.PI / 2);
+    disc.scale(p.rx, 1, p.rz);
+    disc.translate(p.x, 0.05, p.z);
+    add(new THREE.Mesh(disc, iceMat), 'winter', false);
+    add(new THREE.Mesh(disc.clone(), waterMat), 'autumn', false);
+    const rim = new THREE.RingGeometry(1, 1.14, 40);
+    rim.rotateX(-Math.PI / 2);
+    rim.scale(p.rx, 1, p.rz);
+    rim.translate(p.x, 0.06, p.z);
+    add(new THREE.Mesh(rim, shoreMat), 'winter', false);
+    ctx.addSurfaceRect(p.x - p.rx * 0.7, p.x + p.rx * 0.7, p.z - p.rz * 0.7, p.z + p.rz * 0.7, 'ice');
+  }
+
+  // haystacks: a squat rick under a rounded crown, snow on top in winter
+  if (stacks.length) {
+    const hayMat = new THREE.MeshStandardMaterial({ color: 0xa08852, roughness: 1, flatShading: true });
+    const rick = mergeGeometries([new THREE.CylinderGeometry(1.95, 2.05, 0.9, 12).translate(0, 0.45, 0), new THREE.SphereGeometry(1.95, 12, 7, 0, TAU, 0, Math.PI / 2).scale(1, 1.6, 1).translate(0, 0.9, 0)], false);
+    const cap = new THREE.SphereGeometry(2.0, 12, 5, 0, TAU, 0, Math.PI / 3.2).scale(1, 1.6, 1).translate(0, 0.94, 0);
+    const mesh = instanced(rick, hayMat, stacks, (s) => {
+      dummy.position.set(s.x, 0, s.z);
+      dummy.rotation.set(rng.float(-0.04, 0.04), rng.float(0, TAU), rng.float(-0.04, 0.04));
+      const sc = rng.float(0.85, 1.2);
+      dummy.scale.set(sc, sc * rng.float(0.9, 1.15), sc);
+    });
+    mesh.name = 'haystacks:outer';
+    const snow = new THREE.InstancedMesh(cap, M.snow, stacks.length);
+    snow.instanceMatrix = mesh.instanceMatrix;
+    snow.computeBoundingSphere();
+    add(snow, 'winter');
+    for (const s of stacks) ctx.addLateColliderRect(s.x - 2, s.x + 2, s.z - 2, s.z + 2);
+  }
+  dummy.scale.set(1, 1, 1);
+  world.outerNature = { birches: birches.length, spruces: spruces.length, bushes: bushes.length, tufts: tufts.length, reeds: reeds.length, ponds: ponds.length, stacks: stacks.length };
 }
