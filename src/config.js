@@ -16,6 +16,9 @@ export const WORLD = {
   /** ул. Школьная, the east–west street of the southern quarter (z). */
   southStreetZ: -152,
   groundSize: 700,
+  /** How far out you can walk, past the district's own edges (m, half side):
+   * the streets and blocks beyond them, short of the ground's end (350). */
+  limit: 330,
   roadHalfWidth: 6,
   sidewalkWidth: 3.2,
   crossroadZ: 44,

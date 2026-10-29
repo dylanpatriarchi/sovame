@@ -654,13 +654,13 @@ export function buildBuildings(ctx) {
   /* ---------------------------------------------------- fences */
   // ПО-2 panels: the rhombus relief maps once onto each panel face
   const fenceMat = new THREE.MeshStandardMaterial({ map: makeFencePanelTexture(), roughness: 0.92 });
-  const panelFence = (x0, z0, x1, z1, gap = null) => {
+  const panelFence = (x0, z0, x1, z1, gap = null, { ghost = false } = {}) => {
     const dx = x1 - x0;
     const dz = z1 - z0;
     const len = Math.hypot(dx, dz);
     const panels = Math.max(1, Math.round(len / 2.6));
     const angle = Math.atan2(dz, dx);
-    for (let i = 0; i < panels; i++) {
+    for (let i = 0; i < panels && !ghost; i++) {
       const t = (i + 0.5) / panels;
       const px = x0 + dx * t;
       const pz = z0 + dz * t;
@@ -684,7 +684,9 @@ export function buildBuildings(ctx) {
     }
     const rect = { x0: Math.min(x0, x1) - 0.3, x1: Math.max(x0, x1) + 0.3, z0: Math.min(z0, z1) - 0.3, z1: Math.max(z0, z1) + 0.3 };
     ctx.addColliderRect(rect.x0, rect.x1, rect.z0, rect.z1);
-    if (gap) {
+    // (a ghost: the seeded scatter still sees the run, nothing else does)
+    if (ghost) world.colliders.at(-1).buildOnly = true;
+    else if (gap) {
       // the whole run still shapes the seeded scatter; once the world is
       // built only the two stretches either side of the gate stand
       ctx.world.colliders[ctx.world.colliders.length - 1].buildOnly = true;
@@ -708,17 +710,18 @@ export function buildBuildings(ctx) {
   // as legacy ghosts so the historic scatter passes keep their placements
   ctx.addLegacyGhostRect(-104.3, -103.7, -70.3, -13.7);
   ctx.addLegacyGhostRect(-104.3, -103.7, 13.7, 70.3);
-  panelFence(104, -70, 104, -14);
-  // the cross street goes out through a gate in it, on to the steppe highway
-  panelFence(104, 14, 104, 70, [WORLD.crossroadZ - 7, WORLD.crossroadZ + 7]);
+  // the old east limit is gone as well: the district runs out on to the
+  // steppe. Ghosts, like every run of the outer limits below
+  panelFence(104, -70, 104, -14, null, { ghost: true });
+  panelFence(104, 14, 104, 70, [WORLD.crossroadZ - 7, WORLD.crossroadZ + 7], { ghost: true });
   // the old north edge (z = 104) opened up: the avenue now runs on to the
-  // second cluster. New limits sit at the expanded edges; unlike the
-  // historic runs these bake panels, posts and snow into one mesh per
-  // material, so the extra ~240 m of fence costs a handful of draw calls.
-  // `gaps` ([from, to] along the run) are left open for the gates of
-  // edges.js; `open` gaps can be walked through once the world is built (the
-  // scatter still saw the whole fence: it stays a build-only collider).
-  const panelFenceMerged = (x0, z0, x1, z1, { gaps = [], open = false } = {}) => {
+  // second cluster. The limits that then stood at the expanded edges are
+  // gone too, the streets running on past them (edges.js): by default a run
+  // is a ghost, its collider only shaping the seeded scatter as it always
+  // has. A standing run (ghost: false) bakes panels, posts and snow into one
+  // mesh per material; `gaps` ([from, to] along the run) are cut in its
+  // collider and `open` ones can be walked through once the world is built.
+  const panelFenceMerged = (x0, z0, x1, z1, { gaps = [], open = false, ghost = true } = {}) => {
     const alongX = z0 === z1;
     const a0 = alongX ? Math.min(x0, x1) : Math.min(z0, z1);
     const a1 = alongX ? Math.max(x0, x1) : Math.max(z0, z1);
@@ -763,11 +766,14 @@ export function buildBuildings(ctx) {
       merged.receiveShadow = true;
       world.group.add(season ? ctx.seasonable(season, merged) : merged);
     };
-    bake(panelParts, fenceMat);
-    bake(postParts, M.concreteDark);
-    bake(snowParts, M.snow, 'winter');
+    if (!ghost) {
+      bake(panelParts, fenceMat);
+      bake(postParts, M.concreteDark);
+      bake(snowParts, M.snow, 'winter');
+    }
     ctx.addColliderRect(Math.min(x0, x1) - 0.3, Math.max(x0, x1) + 0.3, Math.min(z0, z1) - 0.3, Math.max(z0, z1) + 0.3, true);
-    if (open) {
+    if (ghost) world.colliders.at(-1).buildOnly = true;
+    else if (open) {
       world.colliders.at(-1).buildOnly = true;
       for (const [s0, s1] of segments) {
         const [ax, az] = at(s0);
@@ -776,22 +782,13 @@ export function buildBuildings(ctx) {
       }
     }
   };
-  // where a street meets one of these fences, a gate (edges.js) stands in it
+  // where a street crossed one of these lines, the run had a gap
   const gateGap = (along, fence) => EDGE_GATES.filter((g) => g.along === along && (along === 'x' ? g.z : g.x) === fence).map((g) => {
     const c = along === 'x' ? g.x : g.z;
     return [c - g.half - 1.2, c + g.half + 1.2];
   });
   panelFenceMerged(-80, 176, -14, 176);
   panelFenceMerged(14, 176, 80, 176);
-  // the avenue's own gap is closed by its gate now: short runs either side
-  // of it, up only once the world is built (the scatter never had them)
-  {
-    const before = world.colliders.length;
-    panelFenceMerged(-14, 176, -7.2, 176);
-    panelFenceMerged(7.2, 176, 14, 176);
-    world.colliders.splice(before);
-    ctx.addLateColliderRect(-14.3, 14.3, 175.7, 176.3);
-  }
   // the western cluster's limits: its own edge, and the south and north
   // lines carried on westward
   panelFenceMerged(-236, -196, -236, 176, { gaps: gateGap('z', -236) });
@@ -999,6 +996,7 @@ export function buildBuildings(ctx) {
   // gate the town carries on into the haze instead of an empty plain
   const frontRng = new Rng(5150);
   const standing = skylineBoxes.filter((m) => m.parent);
+  const frontage = [];
   for (const g of EDGE_GATES) {
     const [dx, dz] = g.dir;
     // (sideways from the road)
@@ -1028,14 +1026,21 @@ export function buildBuildings(ctx) {
         mesh.castShadow = false;
         mesh.receiveShadow = false;
         world.group.add(mesh);
+        frontage.push(mesh);
       }
     }
+  }
+  // out there can be walked to now (WORLD.limit): every block stands solid
+  for (const mesh of [...standing, ...frontage]) {
+    const { width, depth } = mesh.geometry.parameters;
+    ctx.addLateOrientedBox(mesh.position.x, mesh.position.z, width + 0.2, depth + 0.2, mesh.rotation.y);
   }
   // industrial sites
   const factory = (x, z, h = 44) => {
     const body = new THREE.Mesh(new THREE.BoxGeometry(34, 16, 22), distantMat);
     body.position.set(x, 7, z);
     world.group.add(body);
+    ctx.addLateColliderRect(x - 17.1, x + 17.1, z - 11.1, z + 11.1);
     for (const dx of [-9, 9]) {
       const chim = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.2, h, 12), distantMat);
       chim.position.set(x + dx, h / 2 - 2, z);
@@ -1078,5 +1083,6 @@ export function buildBuildings(ctx) {
     // beyond the western cluster now (it used to stand where W7 is)
     tower.position.set(-272, 0, 150);
     world.group.add(tower);
+    ctx.addLateColliderRect(-275.4, -268.6, 146.6, 153.4);
   }
 }

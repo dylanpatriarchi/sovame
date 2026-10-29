@@ -50,27 +50,24 @@ const SKY_FRAG = /* glsl */ `
   }
 `;
 
-/* The overcast: one wide disc of procedural stratus high over the camera,
+/* The overcast: a layer of procedural stratus CLOUD_HEIGHT over the camera,
  * drifting with the wind and thinning out towards the horizon, where the sky
- * dome's own gradient takes over. */
+ * dome's own gradient takes over. It is painted on a dome just inside the sky
+ * (each view ray carried up to the layer), so like the sky it lies behind
+ * everything in the world, the stars and the moon showing through its gaps. */
+const CLOUD_HEIGHT = 210;
 const CLOUD_RADIUS = 1300;
 const CLOUD_WHITE = new THREE.Color(0xffffff);
 const CLOUD_VERT = /* glsl */ `
-  varying vec2 vXZ;
-  varying vec2 vLocal;
-  varying float vR;
-  uniform vec2 uOffset;
+  varying vec3 vDir;
   void main() {
-    vLocal = position.xy;
-    vXZ = position.xy + uOffset;
-    vR = length(position.xy) / ${CLOUD_RADIUS.toFixed(1)};
+    vDir = position;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 const CLOUD_FRAG = /* glsl */ `
-  varying vec2 vXZ;
-  varying vec2 vLocal;
-  varying float vR;
+  varying vec3 vDir;
+  uniform vec2 uOffset;
   uniform vec3 uColor;
   uniform vec3 uShade;
   uniform vec3 uSunColor;
@@ -96,6 +93,13 @@ const CLOUD_FRAG = /* glsl */ `
     return v;
   }
   void main() {
+    vec3 d = normalize(vDir);
+    if (d.y < 0.02) discard;
+    // where the view ray meets the layer
+    vec2 vLocal = d.xz * (${CLOUD_HEIGHT.toFixed(1)} / d.y);
+    float vR = length(vLocal) / ${CLOUD_RADIUS.toFixed(1)};
+    if (vR > 1.0) discard;
+    vec2 vXZ = vLocal + uOffset;
     vec2 p = vXZ * 0.0032;
     float n = fbm(p);
     float detail = fbm(p * 3.1 + 4.7);
@@ -423,7 +427,7 @@ export class Environment {
       transparent: true,
       depthWrite: false,
       fog: false,
-      side: THREE.DoubleSide,
+      side: THREE.BackSide,
       uniforms: {
         uOffset: { value: new THREE.Vector2() },
         uColor: { value: new THREE.Color() },
@@ -435,9 +439,8 @@ export class Environment {
         uCover: { value: 0.5 },
       },
     });
-    // the disc lies in its own xy plane, turned to face the ground
-    this.clouds = new THREE.Mesh(new THREE.CircleGeometry(CLOUD_RADIUS, 64), this.cloudMat);
-    this.clouds.rotation.x = Math.PI / 2;
+    // (just inside the sky dome; drawn after it and the stars, before the world)
+    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(860, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), this.cloudMat);
     this.clouds.frustumCulled = false;
     this.clouds.renderOrder = -7;
     this.scene.add(this.clouds);
@@ -625,11 +628,10 @@ export class Environment {
     this.moon.position.set(ox + this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, oz + this.sunDir.z * -780);
 
     // clouds: the layer rides over the camera, its pattern drifting with the wind
-    this.clouds.position.set(ox, 210, oz);
+    this.clouds.position.set(ox, camera ? camera.position.y : 0, oz);
     this.cloudOffset.x += this.wind.x * dt * 1.6;
     this.cloudOffset.y += this.wind.z * dt * 1.6;
-    // (turned a quarter about x, the disc's local y runs along world z; the
-    // pattern is sampled upwind so that it travels with the wind)
+    // (the pattern is sampled upwind so that it travels with the wind)
     this.cloudMat.uniforms.uOffset.value.set(ox - this.cloudOffset.x, oz - this.cloudOffset.y);
     const cu = this.cloudMat.uniforms;
     cu.uOpacity.value = c.cloudOpacity;

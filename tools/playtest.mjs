@@ -908,7 +908,7 @@ if (ride) {
 }
 
 /* ========================================================== steppe highway */
-// the cross street goes out through a gate in the east fence and on as a
+// the cross street goes out past the old east edge and on as a
 // trunk road into the steppe: a car driven along it reaches the roundabout
 // at the far end, faster than in town, and cannot leave the road
 console.log('→ steppe highway');
@@ -920,7 +920,6 @@ const highway = await page.evaluate(async () => {
   const mid = HIGHWAY.at(L.length / 2, 1.9);
   const walls = {
     gate: !w.collides(105, 44, 0.4),
-    fence: w.collides(104, 30, 0.4),
     road: !w.collides(mid.x, mid.z, 0.4) && w.surfaceAt(mid.x, mid.z) === 'asphalt',
     field: w.collides(mid.x - mid.tz * 14, mid.z + mid.tx * 14, 0.4),
     station: !w.collides((HIGHWAY.pad.x0 + HIGHWAY.pad.x1) / 2 - 12, (HIGHWAY.pad.z0 + HIGHWAY.pad.z1) / 2 + 9, 0.4),
@@ -974,14 +973,14 @@ const highway = await page.evaluate(async () => {
   return { walls, reached, time, topKmh: top * 3.6, worst, verge, out: !g.driving.active };
 });
 console.log(`  ${JSON.stringify(highway.walls)}; to the roundabout: ${highway.reached} in ${highway.time.toFixed(0)} s, top ${highway.topKmh.toFixed(0)} km/h, at most ${highway.worst.toFixed(1)} m off the centre line; off the road it stops ${highway.verge.toFixed(1)} m out`);
-check(Object.values(highway.walls).every(Boolean), 'the gate in the east fence is open, the steppe off the road is not');
+check(Object.values(highway.walls).every(Boolean), 'the cross street runs out on to the highway, the steppe far off the road is not open');
 check(highway.reached && highway.topKmh > 95 && highway.worst < 6, 'a car driven out along the highway reaches the roundabout at the far end, at highway speed');
 check(highway.verge < 7.2 && highway.out, 'driving off the road, the car stops at the verge');
 
 /* ========================================================== private sector */
 // ул. Таёжная turns off the highway into the private sector: you can walk
 // or drive up the lane, through a gate into a yard, but not through the
-// houses, the fences or out into the steppe behind them
+// houses, or out through the sector's perimeter fence
 console.log('→ private sector');
 const sector = await page.evaluate(async () => {
   const { EAST } = await import('/src/world/east.js');
@@ -1000,8 +999,7 @@ const sector = await page.evaluate(async () => {
     yard: free(...local(P.gx, 4)),
     house: !free(...local(P.hx, 5.7)),
     picket: !free(...local(P.gx + 3, 0.3)),
-    field: !free(EAST.laneX - 8, 66),
-    behind: !free(EAST.sector.x1 + 3, 120),
+    fence: !free(EAST.sector.x1 + 0.2, 120) && !free(150, EAST.sector.z1 + 0.2),
   };
   // drive in from the highway up the lane
   const car = w.cars[0];
@@ -1030,26 +1028,43 @@ const sector = await page.evaluate(async () => {
   return { walls, reached, off, zone: w.zoneAt(EAST.laneX, 120)?.name, lamps: w.lamps.length };
 });
 console.log(`  ${JSON.stringify(sector.walls)}; driven up the lane to z ${sector.reached.toFixed(0)}, at most ${sector.off.toFixed(1)} m off its middle; zone ${sector.zone}`);
-check(Object.values(sector.walls).every(Boolean), 'the private sector: the lane and the yards are open, houses, fences and the steppe behind are not');
+check(Object.values(sector.walls).every(Boolean), 'the private sector: the lane and the yards are open, houses and fences are not');
 check(sector.reached > 110 && sector.off < 2.5 && sector.zone === 'Частный сектор', 'a car turns off the highway and drives up ул. Таёжная');
 
-// the district's edges: each street that meets the fence ends at a shut
-// gate; Zavodskaya alone runs on through it into ул. Кедровая
+// the district's edges: the streets that crossed the old boundary run on
+// out to the limit between solid blocks; Zavodskaya into ул. Кедровая
 console.log('→ world edges');
 const edges = await page.evaluate(async () => {
   const { EDGE_GATES } = await import('/src/world/edges.js');
   const { EAST } = await import('/src/world/east.js');
+  const { WORLD } = await import('/src/config.js');
   const w = window.__game.world;
   const free = (x, z) => !w.collides(x, z, 0.4);
-  const shut = EDGE_GATES.filter((g) => free(g.x, g.z)).map((g) => g.name);
+  // each street that used to end at the boundary runs on, walkable, out to the limit
+  const blocked = [];
+  for (const g of EDGE_GATES) {
+    const [dx, dz] = g.dir;
+    const c0 = dx ? g.x : g.z;
+    for (let s = -8; c0 * Math.sign(dx || dz) + s < WORLD.limit - 2; s += 1) {
+      const x = dx ? g.x + dx * s : g.x - 1.5;
+      const z = dz ? g.z + dz * s : g.z - 1.5;
+      if (!free(x, z)) {
+        blocked.push(`${g.name} at ${x.toFixed(0)},${z.toFixed(0)}`);
+        break;
+      }
+    }
+  }
   let open = true;
   for (let x = 96; x <= 116; x += 0.5) open &&= free(x, EAST.laneZ);
-  const fence = !free(104, EAST.laneZ - 6) && !free(104, EAST.laneZ + 6);
-  return { gates: EDGE_GATES.length, shut, open, fence };
+  const limit = !free(0, WORLD.limit + 1) && !free(-WORLD.limit - 1, 44) && !free(0, -WORLD.limit - 1);
+  // the blocks out there stand solid, turned or not
+  const solid = w.colliders.filter((c) => c.shape);
+  const inside = solid.filter((c) => !free((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2)).length;
+  return { gates: EDGE_GATES.length, blocked, open, limit, solid: solid.length, inside };
 });
-console.log(`  ${edges.gates} gates, open: ${JSON.stringify(edges.shut)}; Zavodskaya to Кедровая ${edges.open ? 'walkable' : 'blocked'}, fence beside it ${edges.fence ? 'up' : 'down'}`);
-check(edges.gates >= 5 && edges.shut.length === 0, 'every street that meets the boundary fence ends at a shut gate');
-check(edges.open && edges.fence, 'Zavodskaya runs on through the fence into ул. Кедровая, and the fence either side still stands');
+console.log(`  ${edges.gates} streets out, blocked: ${JSON.stringify(edges.blocked)}; Zavodskaya to Кедровая ${edges.open ? 'walkable' : 'blocked'}; limit ${edges.limit ? 'holds' : 'open'}; ${edges.inside}/${edges.solid} outer blocks solid`);
+check(edges.gates >= 5 && edges.blocked.length === 0, 'every street that crossed the old boundary runs on, walkable, out to the limit');
+check(edges.open && edges.limit && edges.solid > 20 && edges.inside === edges.solid, 'Zavodskaya runs on into ул. Кедровая, the outer blocks are solid and the ground ends at the limit');
 
 // the sea port at the end of the highway: the spur, the apron and the
 // breakwater are open ground, the sea, the warehouses and the fence are not,

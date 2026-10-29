@@ -21,7 +21,7 @@ import { buildDog } from './dog.js';
 import { buildPigeons } from './pigeons.js';
 import { buildCats } from './cats.js';
 import { buildHighway, openRoad, highwaySurface } from './highway.js';
-import { buildEast, inEastSector } from './east.js';
+import { buildEast, inEastSector, nearEastSector } from './east.js';
 import { buildEdges } from './edges.js';
 import { buildPort, openPort, portSurface } from './port.js';
 import { buildYardDogs } from './yarddogs.js';
@@ -150,6 +150,8 @@ export class World {
     this.colliders.push(...this.lateColliders);
     // the private sector opens with its fences up (the scatter never walked there)
     this.eastOpen = true;
+    // and so does the ground past the old edges
+    this.outerOpen = true;
     // the parked cars' historic footprints only shaped the scatter passes:
     // from now on each car's own (moving) collider stands for it
     this.colliders = this.colliders.filter((c) => !c.buildOnly);
@@ -259,6 +261,26 @@ export class World {
       addLateColliderRect(x0, x1, z0, z1) {
         self.lateColliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
       },
+      /** A late collider for a box turned by `rotY` about its centre: its
+       * bounding rect, tested against the turned box itself. */
+      addLateOrientedBox(cx, cz, w, d, rotY) {
+        const cos = Math.cos(rotY);
+        const sin = Math.sin(rotY);
+        const ex = (Math.abs(cos) * w + Math.abs(sin) * d) / 2;
+        const ez = (Math.abs(sin) * w + Math.abs(cos) * d) / 2;
+        const shape = {
+          overlapsCircle(x, z, r) {
+            const dx = x - cx;
+            const dz = z - cz;
+            const lx = dx * cos - dz * sin;
+            const lz = dx * sin + dz * cos;
+            const qx = lx - Math.max(-w / 2, Math.min(lx, w / 2));
+            const qz = lz - Math.max(-d / 2, Math.min(lz, d / 2));
+            return qx * qx + qz * qz < r * r;
+          },
+        };
+        self.lateColliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, shape });
+      },
       addBoxCollider(cx, cz, w, d, pad = 0.1, north = false) {
         this.addColliderRect(cx - w / 2 - pad, cx + w / 2 + pad, cz - d / 2 - pad, cz + d / 2 + pad, north);
       },
@@ -362,8 +384,13 @@ export class World {
     // player there, the world edge only applies outdoors
     // past the east edge only the highway's corridor and the private sector
     // off it are open ground
+    // once the world is built, the ground beyond is open out to WORLD.limit
+    // (the seeded scatter passes ran inside the old edges, and still do)
     if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) {
-      if (x <= WORLD.bounds || !(openRoad(x, z, r) || openPort(x, z, r) || (this.eastOpen && inEastSector(x, z, r)))) return true;
+      // (the private sector keeps its own rules: lanes and yards open, its
+      // houses and its perimeter fence not)
+      const outer = this.outerOpen && Math.max(Math.abs(x), Math.abs(z)) + r <= WORLD.limit && !nearEastSector(x, z, r + 0.6);
+      if (!outer && (x <= WORLD.bounds || !(openRoad(x, z, r) || openPort(x, z, r) || (this.eastOpen && inEastSector(x, z, r))))) return true;
     }
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
@@ -371,7 +398,7 @@ export class World {
       const dx = x - cx;
       const dz = z - cz;
       // a car's rect is only its bounding box: test the oriented body
-      if (dx * dx + dz * dz < r * r && (!c.car || c.car.overlapsCircle(x, z, r))) return true;
+      if (dx * dx + dz * dz < r * r && (!c.car || c.car.overlapsCircle(x, z, r)) && (!c.shape || c.shape.overlapsCircle(x, z, r))) return true;
     }
     return false;
   }
