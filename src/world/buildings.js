@@ -994,6 +994,43 @@ export function buildBuildings(ctx) {
     // nor on the streets that run on past the fences (edges.js)
     else if (onEdgeRoad(x, z, 30)) mesh.removeFromParent();
   }
+  // the streets that run on past the gates are streets still: blocks line
+  // them on both sides, set back behind their own yards, so that through a
+  // gate the town carries on into the haze instead of an empty plain
+  const frontRng = new Rng(5150);
+  const standing = skylineBoxes.filter((m) => m.parent);
+  for (const g of EDGE_GATES) {
+    const [dx, dz] = g.dir;
+    // (sideways from the road)
+    const sx = -dz;
+    const sz = dx;
+    const start = Math.abs(dx ? g.from - g.x : g.from - g.z) + 26;
+    for (const side of [-1, 1]) {
+      let s = start + frontRng.float(0, 14);
+      for (;;) {
+        const len = frontRng.pick([BAY * 6, BAY * 8, BAY * 10, BAY * 12]);
+        const deep = frontRng.float(11, 14);
+        const h = frontRng.pick([5, 5, 9, 9, 12]) * STOREY + 0.6;
+        const off = g.half + frontRng.float(20, 30) + deep / 2;
+        const along = s + len / 2;
+        const x = g.x + dx * along + sx * side * off;
+        const z = g.z + dz * along + sz * side * off;
+        s += len + frontRng.float(10, 26);
+        // out past the ground's edge, on the highway, by the private sector,
+        // on another of these roads or on top of a skyline box: left out
+        if (Math.max(Math.abs(x), Math.abs(z)) + len / 2 > 335) break;
+        if ((x > 100 && (highwayRange(x, z) < 90 || nearEastSector(x, z, 45))) || onEdgeRoad(x, z, deep / 2 + 8)) continue;
+        if (standing.some((m) => Math.hypot(m.position.x - x, m.position.z - z) < 30 + len / 2)) continue;
+        // the long side faces the road
+        const mesh = new THREE.Mesh(towerGeo(len, h, deep, frontRng.int(0, 7) / 8), frontRng.chance(0.8) ? distantLitMat : distantFacadeMat);
+        mesh.position.set(x, h / 2, z);
+        mesh.rotation.y = dx ? 0 : Math.PI / 2;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        world.group.add(mesh);
+      }
+    }
+  }
   // industrial sites
   const factory = (x, z, h = 44) => {
     const body = new THREE.Mesh(new THREE.BoxGeometry(34, 16, 22), distantMat);
