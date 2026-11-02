@@ -189,7 +189,8 @@ export function buildSouthTerrain(ctx) {
   }
 
   // trampled paths
-  const pathMat = new THREE.MeshStandardMaterial({ map: T.path, roughness: 0.88 });
+  const pathMat = new THREE.MeshStandardMaterial({ map: world.season === 'winter' ? T.path : T.pathAutumn, roughness: 0.88 });
+  world.pathMats.push(pathMat);
   for (const p of SOUTH_WALK_PATHS) {
     const mesh = tiledPlane(p.x1 - p.x0, p.z1 - p.z0, 4, pathMat, 0.03);
     mesh.position.set((p.x0 + p.x1) / 2, 0.03, (p.z0 + p.z1) / 2);

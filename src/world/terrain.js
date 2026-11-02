@@ -233,7 +233,8 @@ export function buildTerrain(ctx) {
   }
 
   /* ------------------------------------------------ trampled paths */
-  const pathMat = new THREE.MeshStandardMaterial({ map: T.path, roughness: 0.88 });
+  const pathMat = new THREE.MeshStandardMaterial({ map: world.season === 'winter' ? T.path : T.pathAutumn, roughness: 0.88 });
+  world.pathMats.push(pathMat);
   // the legacy list keeps its own name: the mound scatter below samples it
   // with the shared RNG and must see the historic entries only
   const paths = WALK_PATHS;
