@@ -150,7 +150,8 @@ export function buildWestTerrain(ctx) {
   world.group.add(curbMesh);
 
   // trampled paths
-  const pathMat = new THREE.MeshStandardMaterial({ map: T.path, roughness: 0.88 });
+  const pathMat = new THREE.MeshStandardMaterial({ map: world.season === 'winter' ? T.path : T.pathAutumn, roughness: 0.88 });
+  world.pathMats.push(pathMat);
   for (const p of WEST_WALK_PATHS) {
     const y = p.plaza ? 0.045 : 0.03;
     const mesh = tiledPlane(p.x1 - p.x0, p.z1 - p.z0, 4, pathMat, y);

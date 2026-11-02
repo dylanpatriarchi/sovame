@@ -74,6 +74,8 @@ export class World {
     this.tvMats = [];
     this.roofMats = [];
     this.roadMats = [];
+    // trampled paths: packed snow in winter, beaten earth in autumn
+    this.pathMats = [];
     this.posterMats = [];
     this.lamps = [];
     this.updaters = [];
@@ -208,6 +210,7 @@ export class World {
       asphaltPlainRoughWinter: TX.makeAsphaltRoughnessTexture({ dashes: false, winter: true }),
       sidewalk: TX.makeSidewalkTexture(),
       path: TX.makeTrampledSnowTexture(),
+      pathAutumn: TX.makeTrampledEarthTexture(),
       snowEdge: TX.makeSnowEdgeTexture(),
       ice: TX.makeIceTexture(),
       roofWinter: TX.makeRoofTexture(true),
@@ -456,6 +459,10 @@ export class World {
     }
     for (const m of this.roofMats) {
       m.map = key === 'winter' ? this.textures.roofWinter : this.textures.roofAutumn;
+      m.needsUpdate = true;
+    }
+    for (const m of this.pathMats) {
+      m.map = key === 'winter' ? this.textures.path : this.textures.pathAutumn;
       m.needsUpdate = true;
     }
     for (const m of this.roadMats) {

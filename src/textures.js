@@ -362,6 +362,52 @@ export function makeTrampledSnowTexture(size = 512) {
   return toTexture(canvas);
 }
 
+/** A beaten earth path across a yard in autumn: packed grey-brown mud,
+ * gravel, puddle-dark hollows, footprints and the odd fallen leaf. */
+export function makeTrampledEarthTexture(size = 512) {
+  const rng = new Rng(304);
+  const canvas = makeCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#5f574b';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 80; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(26, 110), `rgba(${rng.int(80, 112)},${rng.int(72, 100)},${rng.int(60, 84)},0.6)`, rng.float(0.12, 0.4));
+  }
+  // damp hollows
+  for (let i = 0; i < 26; i++) {
+    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(18, 60), 'rgba(40,38,36,0.55)', rng.float(0.15, 0.35));
+  }
+  // gravel
+  for (let i = 0; i < 2600; i++) {
+    const k = rng.int(90, 160);
+    ctx.fillStyle = `rgba(${k},${k - 4},${k - 10},${rng.float(0.3, 0.7)})`;
+    ctx.fillRect(rng.float(0, size), rng.float(0, size), rng.float(1, 3), rng.float(1, 3));
+  }
+  // footprints
+  for (let i = 0; i < 500; i++) {
+    ctx.save();
+    ctx.translate(rng.float(0, size), rng.float(0, size));
+    ctx.rotate(rng.float(0, TAU));
+    ctx.fillStyle = `rgba(38,34,30,${rng.float(0.08, 0.22)})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rng.float(3, 6), rng.float(6, 12), 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  // leaves trodden in
+  for (let i = 0; i < 120; i++) {
+    ctx.fillStyle = rng.pick(['#8a5a22', '#a0702a', '#6e4a22', '#9b4a20']);
+    ctx.save();
+    ctx.translate(rng.float(0, size), rng.float(0, size));
+    ctx.rotate(rng.float(0, TAU));
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rng.float(2, 4), rng.float(4, 7), 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  return toTexture(canvas);
+}
+
 /** Snowy road edge: opaque at the ground, fading toward the road center. */
 export function makeSnowEdgeTexture(size = 256) {
   const rng = new Rng(555);
