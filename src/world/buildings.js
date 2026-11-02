@@ -843,7 +843,6 @@ export function buildBuildings(ctx) {
   signFor(20, 174, Math.PI);
 
   /* ---------------------------------------------------- distant skyline */
-  const distantMat = new THREE.MeshStandardMaterial({ color: 0x3b434e, roughness: 1 });
   // the far blocks are panel blocks too: a facade of storey-high panels
   // (8 bays x 10 floors a tile), dark windows by day, a scatter of them lit
   // at night, mapped at real size on every face
@@ -851,64 +850,107 @@ export function buildBuildings(ctx) {
   const STOREY = 2.8;
   const TILE_W = BAY * 8;
   const TILE_H = STOREY * 10;
-  const facadeCanvas = makeCanvas(512, 512);
-  const litCanvas = makeCanvas(512, 512);
-  {
+  // two series: grey ribbed panels (II-18) and cream tiled panels with a
+  // brick-red band under every sill (1-464); 128 px a bay, so the facades
+  // still hold up when you walk right to them
+  const makeFacade = (series, seed) => {
+    const W = 1024;
+    const facadeCanvas = makeCanvas(W, W);
+    const litCanvas = makeCanvas(W, W);
     const fc = facadeCanvas.getContext('2d');
     const lc = litCanvas.getContext('2d');
-    fc.fillStyle = '#8d9296';
-    fc.fillRect(0, 0, 512, 512);
+    const tiled = series === 'tiled';
+    fc.fillStyle = tiled ? '#c9c4b6' : '#9a9fa2';
+    fc.fillRect(0, 0, W, W);
     lc.fillStyle = '#000';
-    lc.fillRect(0, 0, 512, 512);
-    const wrng = new Rng(4242);
-    const bw = 512 / 8;
-    const fh = 512 / 10;
+    lc.fillRect(0, 0, W, W);
+    const wrng = new Rng(seed);
+    const bw = W / 8;
+    const fh = W / 10;
     for (let row = 0; row < 10; row++) {
       for (let col = 0; col < 8; col++) {
         const x = col * bw;
         const y = row * fh;
-        // each panel a shade of its own, and the seams between them
-        const k = wrng.int(-10, 10);
-        fc.fillStyle = `rgb(${141 + k},${146 + k},${150 + k})`;
-        fc.fillRect(x + 1, y + 1, bw - 2, fh - 2);
-        fc.fillStyle = '#5d6266';
-        fc.fillRect(x, y, bw, 1.5);
-        fc.fillRect(x, y, 1.5, fh);
-        // the window: two panes in a frame; every fourth bay a balcony slab
-        const wx = x + bw * 0.22;
-        const wy = y + fh * 0.24;
-        const ww = bw * 0.56;
-        const wh = fh * 0.5;
-        fc.fillStyle = '#23292f';
-        fc.fillRect(wx, wy, ww, wh);
-        fc.fillStyle = '#6c7378';
-        fc.fillRect(wx + ww / 2 - 1, wy, 2, wh);
-        if (col % 4 === 1) {
-          fc.fillStyle = '#767b7f';
-          fc.fillRect(x + bw * 0.1, y + fh * 0.76, bw * 0.8, fh * 0.12);
+        // each panel a shade of its own, and the sealed seams between them
+        const k = wrng.int(-9, 9);
+        fc.fillStyle = tiled ? `rgb(${203 + k},${198 + k},${184 + k})` : `rgb(${152 + k},${157 + k},${160 + k})`;
+        fc.fillRect(x + 2, y + 2, bw - 4, fh - 4);
+        if (tiled) {
+          // the little tiles
+          fc.fillStyle = 'rgba(120,112,96,0.18)';
+          for (let ty = y + 2; ty < y + fh; ty += 6) fc.fillRect(x, ty, bw, 1);
+          for (let tx = x + 2; tx < x + bw; tx += 8) fc.fillRect(tx, y, 1, fh);
+          fc.fillStyle = '#9b5a44';
+          fc.fillRect(x, y + fh * 0.8, bw, fh * 0.09);
+        } else {
+          // the ribs of the panel
+          fc.fillStyle = 'rgba(60,64,66,0.12)';
+          for (let tx = x + 8; tx < x + bw - 4; tx += 10) fc.fillRect(tx, y + 4, 2, fh - 8);
         }
-        if (wrng.chance(0.24)) {
-          const warm = wrng.chance(0.75);
+        fc.fillStyle = tiled ? '#7d7668' : '#4f5457';
+        fc.fillRect(x, y, bw, 3);
+        fc.fillRect(x, y, 3, fh);
+        // the window: a painted frame, two panes and a transom, a sill
+        const wx = x + bw * 0.24;
+        const wy = y + fh * 0.22;
+        const ww = bw * 0.52;
+        const wh = fh * 0.52;
+        fc.fillStyle = wrng.chance(0.18) ? '#8a6a48' : '#d8d6cf';
+        fc.fillRect(wx - 3, wy - 3, ww + 6, wh + 6);
+        const lit = wrng.chance(0.24);
+        const warm = wrng.chance(0.75);
+        fc.fillStyle = lit ? (warm ? '#7c6347' : '#5b6670') : '#262c31';
+        fc.fillRect(wx, wy, ww, wh);
+        fc.fillStyle = 'rgba(255,255,255,0.07)';
+        fc.fillRect(wx, wy, ww * 0.45, wh * 0.4);
+        fc.fillStyle = '#d8d6cf';
+        fc.fillRect(wx + ww / 2 - 2, wy, 4, wh);
+        fc.fillRect(wx, wy + wh * 0.3, ww, 3);
+        fc.fillStyle = '#6f7275';
+        fc.fillRect(wx - 5, wy + wh + 2, ww + 10, 4);
+        // rust and rain under the sill
+        fc.fillStyle = 'rgba(70,60,50,0.12)';
+        fc.fillRect(wx + wrng.float(0, ww * 0.6), wy + wh + 6, 6, wrng.float(8, fh * 0.3));
+        if (lit) {
           lc.fillStyle = warm ? `rgb(255,${170 + wrng.int(0, 40)},${90 + wrng.int(0, 30)})` : 'rgb(185,210,255)';
           lc.fillRect(wx + 1, wy + 1, ww - 2, wh - 2);
-          fc.fillStyle = warm ? '#7a6248' : '#5b6670';
-          fc.fillRect(wx + 1, wy + 1, ww - 2, wh - 2);
+          lc.fillStyle = '#000';
+          lc.fillRect(wx + ww / 2 - 2, wy, 4, wh);
+        }
+        // a loggia every fourth bay: slab, railing, a glazed one now and then
+        if (col % 4 === 1 && row > 0) {
+          const by = y + fh * 0.74;
+          fc.fillStyle = tiled ? '#b9b3a3' : '#878c90';
+          fc.fillRect(x + bw * 0.08, by, bw * 0.84, fh * 0.2);
+          fc.fillStyle = '#3e4447';
+          for (let rx = x + bw * 0.1; rx < x + bw * 0.9; rx += 7) fc.fillRect(rx, by - fh * 0.16, 2, fh * 0.16);
+          fc.fillRect(x + bw * 0.08, by - fh * 0.17, bw * 0.84, 3);
+          if (wrng.chance(0.3)) {
+            fc.fillStyle = 'rgba(190,200,205,0.35)';
+            fc.fillRect(x + bw * 0.1, y + fh * 0.12, bw * 0.8, fh * 0.46);
+          }
         }
       }
     }
-  }
-  const facadeTex = canvasTexture(facadeCanvas);
-  const litTex = canvasTexture(litCanvas);
-  const distantFacadeMat = new THREE.MeshStandardMaterial({ map: facadeTex, color: 0x9aa0a6, roughness: 1 });
-  const distantLitMat = new THREE.MeshStandardMaterial({
-    map: facadeTex,
-    color: 0x9aa0a6,
-    emissiveMap: litTex,
-    emissive: new THREE.Color(0xffffff),
-    emissiveIntensity: 0.5,
-    roughness: 1,
-  });
-  world.windowMats.push(distantLitMat);
+    // streaks of damp running down from the roof
+    for (let i = 0; i < 26; i++) {
+      fc.fillStyle = `rgba(40,40,36,${wrng.float(0.03, 0.08)})`;
+      fc.fillRect(wrng.float(0, W), 0, wrng.float(3, 14), wrng.float(60, 400));
+    }
+    const facadeTex = canvasTexture(facadeCanvas);
+    facadeTex.anisotropy = 4;
+    const plain = new THREE.MeshStandardMaterial({ map: facadeTex, roughness: 0.95 });
+    const lit = new THREE.MeshStandardMaterial({
+      map: facadeTex,
+      emissiveMap: canvasTexture(litCanvas),
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.5,
+      roughness: 0.95,
+    });
+    world.windowMats.push(lit);
+    return { plain, lit };
+  };
+  const SERIES = [makeFacade('panel', 4242), makeFacade('tiled', 4243)];
   /** A box with its facades mapped at real size, starting at a whole bay. */
   const towerGeo = (w, h, d, shift) => {
     const geo = new THREE.BoxGeometry(w, h, d);
@@ -937,7 +979,8 @@ export function buildBuildings(ctx) {
     // (whole storeys, plus the parapet)
     const h = Math.max(4, Math.round(ring.float(12, 42) / STOREY)) * STOREY + 0.6;
     const lit = ring.chance(0.65);
-    const mesh = new THREE.Mesh(towerGeo(w, h, d, (i % 8) / 8), lit ? distantLitMat : distantFacadeMat);
+    const series = SERIES[i % 3 === 1 ? 1 : 0];
+    const mesh = new THREE.Mesh(towerGeo(w, h, d, (i % 8) / 8), lit ? series.lit : series.plain);
     mesh.position.set(x, h / 2, z);
     mesh.rotation.y = ring.float(0, TAU) * 0.2;
     mesh.castShadow = false;
@@ -1020,7 +1063,9 @@ export function buildBuildings(ctx) {
         if ((x > 100 && (highwayRange(x, z) < 90 || nearEastSector(x, z, 45))) || onEdgeRoad(x, z, deep / 2 + 8)) continue;
         if (standing.some((m) => Math.hypot(m.position.x - x, m.position.z - z) < 30 + len / 2)) continue;
         // the long side faces the road
-        const mesh = new THREE.Mesh(towerGeo(len, h, deep, frontRng.int(0, 7) / 8), frontRng.chance(0.8) ? distantLitMat : distantFacadeMat);
+        const series = SERIES[frontage.length % 3 === 2 ? 1 : 0];
+        const mesh = new THREE.Mesh(towerGeo(len, h, deep, frontRng.int(0, 7) / 8), frontRng.chance(0.8) ? series.lit : series.plain);
+        mesh.userData.faces = [g.x + dx * along, g.z + dz * along];
         mesh.position.set(x, h / 2, z);
         mesh.rotation.y = dx ? 0 : Math.PI / 2;
         mesh.castShadow = false;
@@ -1033,16 +1078,101 @@ export function buildBuildings(ctx) {
   // out there can be walked to now (WORLD.limit): every block stands solid
   for (const mesh of [...standing, ...frontage]) {
     const { width, depth } = mesh.geometry.parameters;
-    ctx.addLateOrientedBox(mesh.position.x, mesh.position.z, width + 0.2, depth + 0.2, mesh.rotation.y);
+    ctx.addLateOrientedBox(mesh.position.x, mesh.position.z, width + 0.6, depth + 0.6, mesh.rotation.y);
   }
+  dressOuterBlocks(ctx, [...standing, ...frontage], BAY);
   // industrial sites
+  // the halls: grimy brick with two ribbons of factory glazing, a few panes
+  // lit for the night shift; the stacks banded red and white up top
+  const HALL_W = 12;
+  const hallCanvas = makeCanvas(256, 256);
+  const hallLitCanvas = makeCanvas(256, 256);
+  {
+    const hc = hallCanvas.getContext('2d');
+    const lc = hallLitCanvas.getContext('2d');
+    const hr = new Rng(6161);
+    hc.fillStyle = '#6e5a4e';
+    hc.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i++) {
+      const k = hr.int(-14, 14);
+      hc.fillStyle = `rgb(${104 + k},${84 + k},${72 + k})`;
+      hc.fillRect(hr.float(0, 256), hr.float(0, 256), hr.float(4, 10), 2);
+    }
+    lc.fillStyle = '#000';
+    lc.fillRect(0, 0, 256, 256);
+    for (const [y0, y1] of [[0.2, 0.38], [0.52, 0.7]]) {
+      for (let c = 0; c < 4; c++) {
+        const x = c * 64 + 6;
+        hc.fillStyle = '#2a3036';
+        hc.fillRect(x, y0 * 256, 52, (y1 - y0) * 256);
+        hc.fillStyle = '#4e5559';
+        for (let m = 1; m < 4; m++) hc.fillRect(x + m * 13, y0 * 256, 1.5, (y1 - y0) * 256);
+        hc.fillRect(x, ((y0 + y1) / 2) * 256, 52, 1.5);
+        if (hr.chance(0.45)) {
+          lc.fillStyle = `rgb(255,${200 + hr.int(0, 40)},${130 + hr.int(0, 50)})`;
+          lc.fillRect(x + 1, y0 * 256 + 1, 50, (y1 - y0) * 256 - 2);
+        }
+      }
+    }
+    // soot streaks down from the parapet
+    for (let i = 0; i < 30; i++) {
+      const g = hc.createLinearGradient(0, 0, 0, hr.float(60, 200));
+      g.addColorStop(0, 'rgba(30,26,24,0.35)');
+      g.addColorStop(1, 'rgba(30,26,24,0)');
+      hc.fillStyle = g;
+      hc.fillRect(hr.float(0, 256), 0, hr.float(3, 12), 256);
+    }
+  }
+  const hallMat = new THREE.MeshStandardMaterial({
+    map: canvasTexture(hallCanvas),
+    emissiveMap: canvasTexture(hallLitCanvas),
+    emissive: new THREE.Color(0xffffff),
+    emissiveIntensity: 0.5,
+    roughness: 1,
+  });
+  world.windowMats.push(hallMat);
+  const hallGeo = (w, h, d) => {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const uv = geo.attributes.uv;
+    const sizes = [d, d, null, null, w, w];
+    sizes.forEach((size, f) => {
+      for (let v = f * 4; v < f * 4 + 4; v++) {
+        // (the roof takes a plain spot of brick)
+        if (size) uv.setXY(v, (uv.getX(v) * size) / HALL_W, uv.getY(v));
+        else uv.setXY(v, 0.5, 0.97);
+      }
+    });
+    return geo;
+  };
+  const stackCanvas = makeCanvas(16, 256);
+  {
+    const sc = stackCanvas.getContext('2d');
+    sc.fillStyle = '#8a8580';
+    sc.fillRect(0, 0, 16, 256);
+    // (the canvas top is the stack's top)
+    for (let b = 0; b < 6; b++) {
+      sc.fillStyle = b % 2 ? '#d8d4cc' : '#a3322a';
+      sc.fillRect(0, b * 16, 16, 16);
+    }
+    const g = sc.createLinearGradient(0, 0, 0, 40);
+    g.addColorStop(0, 'rgba(20,18,16,0.7)');
+    g.addColorStop(1, 'rgba(20,18,16,0)');
+    sc.fillStyle = g;
+    sc.fillRect(0, 0, 16, 40);
+  }
+  const stackMat = new THREE.MeshStandardMaterial({ map: canvasTexture(stackCanvas), roughness: 0.95 });
   const factory = (x, z, h = 44) => {
-    const body = new THREE.Mesh(new THREE.BoxGeometry(34, 16, 22), distantMat);
+    const body = new THREE.Mesh(hallGeo(34, 16, 22), hallMat);
     body.position.set(x, 7, z);
     world.group.add(body);
     ctx.addLateColliderRect(x - 17.1, x + 17.1, z - 11.1, z + 11.1);
+    // a lower annex along one side
+    const annex = new THREE.Mesh(hallGeo(20, 9, 12), hallMat);
+    annex.position.set(x - 4, 3.5, z + 16.5);
+    world.group.add(annex);
+    ctx.addLateColliderRect(x - 14.1, x + 6.1, z + 10.4, z + 22.6);
     for (const dx of [-9, 9]) {
-      const chim = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.2, h, 12), distantMat);
+      const chim = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.2, h, 12), stackMat);
       chim.position.set(x + dx, h / 2 - 2, z);
       world.group.add(chim);
     }
@@ -1071,18 +1201,79 @@ export function buildBuildings(ctx) {
   // water tower
   {
     const tower = new THREE.Group();
-    const legs = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.4, 18, 8), distantMat);
+    const legs = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.4, 18, 8), new THREE.MeshStandardMaterial({ color: 0x8e8c86, roughness: 1 }));
     legs.position.y = 9;
     tower.add(legs);
-    const tank = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 7, 12), distantMat);
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 0.8, metalness: 0.2 });
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 7, 12), tankMat);
     tank.position.y = 20;
     tower.add(tank);
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(5, 2.6, 12), distantMat);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(5, 2.6, 12), tankMat);
     cap.position.y = 24.8;
     tower.add(cap);
     // beyond the western cluster now (it used to stand where W7 is)
     tower.position.set(-272, 0, 150);
     world.group.add(tower);
     ctx.addLateColliderRect(-275.4, -268.6, 146.6, 153.4);
+  }
+}
+
+/**
+ * What makes a box a block when you walk up to it: a plinth, a cornice, the
+ * lift motor rooms on the roof, and its entrances (подъезды) — a door under
+ * a concrete canopy and a step every section, on the long side that faces
+ * its street (or the district). One merged mesh per material for them all.
+ */
+function dressOuterBlocks(ctx, blocks, BAY) {
+  const { world, materials: M } = ctx;
+  const parts = { plinth: [], concrete: [], door: [], snow: [] };
+  const put = (list, w, h, d, x, y, z, m) => list.push(new THREE.BoxGeometry(w, h, d).translate(x, y, z).applyMatrix4(m));
+  for (const mesh of blocks) {
+    const { width: w, height: h, depth: d } = mesh.geometry.parameters;
+    const m = new THREE.Matrix4().makeRotationY(mesh.rotation.y).setPosition(mesh.position.x, 0, mesh.position.z);
+    put(parts.plinth, w + 0.3, 0.9, d + 0.3, 0, 0.45, 0, m);
+    put(parts.concrete, w + 0.36, 0.45, d + 0.36, 0, h - 0.2, 0, m);
+    put(parts.snow, w + 0.2, 0.12, d + 0.2, 0, h + 0.06, 0, m);
+    if (h > 20) {
+      for (const lx of w > 30 ? [-w / 4, w / 4] : [0]) {
+        put(parts.concrete, 3.2, 2.6, 4.2, lx, h + 1.3, 0, m);
+        put(parts.snow, 3.3, 0.12, 4.3, lx, h + 2.66, 0, m);
+      }
+    }
+    // which long side faces the street (local +z or -z)
+    const [fx, fz] = mesh.userData.faces ?? [0, 0];
+    const ax = fx - mesh.position.x;
+    const az = fz - mesh.position.z;
+    const side = Math.sin(mesh.rotation.y) * ax + Math.cos(mesh.rotation.y) * az >= 0 ? 1 : -1;
+    const bays = Math.floor(w / BAY);
+    const sections = Math.max(1, Math.round(bays / 4));
+    for (let k = 0; k < sections; k++) {
+      // the middle bay of each section, on the bay grid of that face
+      const bay = Math.min(bays - 1, Math.floor(((k + 0.5) * bays) / sections));
+      const lx = side > 0 ? -w / 2 + (bay + 0.5) * BAY : w / 2 - (bay + 0.5) * BAY;
+      const zf = (side * d) / 2;
+      put(parts.door, 1.5, 2.3, 0.2, lx, 1.15, zf + side * 0.08, m);
+      put(parts.concrete, 2.8, 0.16, 1.5, lx, 2.75, zf + side * 0.75, m);
+      put(parts.snow, 2.7, 0.08, 1.4, lx, 2.87, zf + side * 0.75, m);
+      put(parts.plinth, 2.4, 0.18, 1.3, lx, 0.09, zf + side * 0.65, m);
+      for (const s of [-1, 1]) {
+        put(parts.concrete, 0.12, 2.75, 0.12, lx + s * 1.25, 1.37, zf + side * 1.4, m);
+        const p = new THREE.Vector3(lx + s * 1.25, 0, zf + side * 1.4).applyMatrix4(m);
+        ctx.addLateColliderRect(p.x - 0.12, p.x + 0.12, p.z - 0.12, p.z + 0.12);
+      }
+    }
+  }
+  const mats = {
+    plinth: new THREE.MeshStandardMaterial({ color: 0x6d6c68, roughness: 1 }),
+    concrete: new THREE.MeshStandardMaterial({ color: 0x9c9d98, roughness: 0.95 }),
+    door: new THREE.MeshStandardMaterial({ color: 0x4a3426, roughness: 0.85 }),
+    snow: M.snow,
+  };
+  for (const [key, list] of Object.entries(parts)) {
+    if (!list.length) continue;
+    const mesh = new THREE.Mesh(mergeGeometries(list, false), mats[key]);
+    mesh.name = `outer-blocks:${key}`;
+    mesh.receiveShadow = true;
+    world.group.add(key === 'snow' ? ctx.seasonable('winter', mesh) : mesh);
   }
 }
