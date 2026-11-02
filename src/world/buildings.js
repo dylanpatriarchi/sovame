@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, makeCanvas, starPath } from '../util.js';
-import { makeSignTexture, canvasTexture, makeFencePanelTexture } from '../textures.js';
+import { makeSignTexture, canvasTexture, makeFencePanelTexture, makeGlowTexture } from '../textures.js';
 import { OUTDOOR_LIGHT_LAYER } from './interiors.js';
 import { highwayRange } from './highway.js';
 import { EAST, nearEastSector } from './east.js';
@@ -939,7 +939,6 @@ export function buildBuildings(ctx) {
     }
     const facadeTex = canvasTexture(facadeCanvas);
     facadeTex.anisotropy = 4;
-    const plain = new THREE.MeshStandardMaterial({ map: facadeTex, roughness: 0.95 });
     const lit = new THREE.MeshStandardMaterial({
       map: facadeTex,
       emissiveMap: canvasTexture(litCanvas),
@@ -948,7 +947,7 @@ export function buildBuildings(ctx) {
       roughness: 0.95,
     });
     world.windowMats.push(lit);
-    return { plain, lit };
+    return { lit };
   };
   const SERIES = [makeFacade('panel', 4242), makeFacade('tiled', 4243)];
   /** A box with its facades mapped at real size, starting at a whole bay. */
@@ -978,9 +977,9 @@ export function buildBuildings(ctx) {
     const d = ring.float(12, 26);
     // (whole storeys, plus the parapet)
     const h = Math.max(4, Math.round(ring.float(12, 42) / STOREY)) * STOREY + 0.6;
-    const lit = ring.chance(0.65);
+    ring.chance(0.65); // (once the pick of a dark block: every block has its evenings now)
     const series = SERIES[i % 3 === 1 ? 1 : 0];
-    const mesh = new THREE.Mesh(towerGeo(w, h, d, (i % 8) / 8), lit ? series.lit : series.plain);
+    const mesh = new THREE.Mesh(towerGeo(w, h, d, (i % 8) / 8), series.lit);
     mesh.position.set(x, h / 2, z);
     mesh.rotation.y = ring.float(0, TAU) * 0.2;
     mesh.castShadow = false;
@@ -1064,7 +1063,9 @@ export function buildBuildings(ctx) {
         if (standing.some((m) => Math.hypot(m.position.x - x, m.position.z - z) < 30 + len / 2)) continue;
         // the long side faces the road
         const series = SERIES[frontage.length % 3 === 2 ? 1 : 0];
-        const mesh = new THREE.Mesh(towerGeo(len, h, deep, frontRng.int(0, 7) / 8), frontRng.chance(0.8) ? series.lit : series.plain);
+        const shift = frontRng.int(0, 7) / 8;
+        frontRng.chance(0.8); // (the old dark-block pick, kept for the stream)
+        const mesh = new THREE.Mesh(towerGeo(len, h, deep, shift), series.lit);
         mesh.userData.faces = [g.x + dx * along, g.z + dz * along];
         mesh.position.set(x, h / 2, z);
         mesh.rotation.y = dx ? 0 : Math.PI / 2;
@@ -1226,7 +1227,8 @@ export function buildBuildings(ctx) {
  */
 function dressOuterBlocks(ctx, blocks, BAY) {
   const { world, materials: M } = ctx;
-  const parts = { plinth: [], concrete: [], door: [], snow: [] };
+  const parts = { plinth: [], concrete: [], door: [], snow: [], bulb: [] };
+  const bulbs = [];
   const put = (list, w, h, d, x, y, z, m) => list.push(new THREE.BoxGeometry(w, h, d).translate(x, y, z).applyMatrix4(m));
   for (const mesh of blocks) {
     const { width: w, height: h, depth: d } = mesh.geometry.parameters;
@@ -1253,6 +1255,9 @@ function dressOuterBlocks(ctx, blocks, BAY) {
       const lx = side > 0 ? -w / 2 + (bay + 0.5) * BAY : w / 2 - (bay + 0.5) * BAY;
       const zf = (side * d) / 2;
       put(parts.door, 1.5, 2.3, 0.2, lx, 1.15, zf + side * 0.08, m);
+      // a bare bulb over the door, the stairwell lit behind it
+      put(parts.bulb, 0.22, 0.16, 0.22, lx, 2.56, zf + side * 0.3, m);
+      bulbs.push(new THREE.Vector3(lx, 2.5, zf + side * 0.3).applyMatrix4(m));
       put(parts.concrete, 2.8, 0.16, 1.5, lx, 2.75, zf + side * 0.75, m);
       put(parts.snow, 2.7, 0.08, 1.4, lx, 2.87, zf + side * 0.75, m);
       put(parts.plinth, 2.4, 0.18, 1.3, lx, 0.09, zf + side * 0.65, m);
@@ -1267,6 +1272,7 @@ function dressOuterBlocks(ctx, blocks, BAY) {
     plinth: new THREE.MeshStandardMaterial({ color: 0x6d6c68, roughness: 1 }),
     concrete: new THREE.MeshStandardMaterial({ color: 0x9c9d98, roughness: 0.95 }),
     door: new THREE.MeshStandardMaterial({ color: 0x4a3426, roughness: 0.85 }),
+    bulb: new THREE.MeshStandardMaterial({ color: 0x8a8678, emissive: 0xffd9a0, emissiveIntensity: 0 }),
     snow: M.snow,
   };
   for (const [key, list] of Object.entries(parts)) {
@@ -1276,4 +1282,14 @@ function dressOuterBlocks(ctx, blocks, BAY) {
     mesh.receiveShadow = true;
     world.group.add(key === 'snow' ? ctx.seasonable('winter', mesh) : mesh);
   }
+  // their halo, one draw for all, in step with the street lamps (props.js)
+  const glowMat = new THREE.PointsMaterial({ map: makeGlowTexture(64, '255,214,160'), size: 2.4, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const glow = new THREE.Points(new THREE.BufferGeometry().setFromPoints(bulbs), glowMat);
+  glow.name = 'outer-blocks:bulb-glow';
+  world.group.add(glow);
+  ctx.addUpdater(() => {
+    const night = Math.min(1, (world.lampMats?.head.emissiveIntensity ?? 0) / 2.4);
+    mats.bulb.emissiveIntensity = night * 1.6;
+    glowMat.opacity = night * 0.9;
+  });
 }
