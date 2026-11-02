@@ -6,6 +6,7 @@
 // ул. Кедровая in the private sector (east.js).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { makeGlowTexture } from '../textures.js';
 
 const FAR = 340; // the roads run out to here (the ground plane ends at 350)
 
@@ -51,6 +52,9 @@ export function buildEdges(ctx) {
 
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x6f7376, roughness: 0.8 });
   const bankMat = winter ? M.snow : new THREE.MeshStandardMaterial({ color: 0x7f7458, roughness: 1 });
+  // sodium heads that light with the district's lamps (props.js, built later)
+  const headMat = new THREE.MeshStandardMaterial({ color: 0x35393b, emissive: 0xffb066, emissiveIntensity: 0 });
+  const heads = [];
 
   for (const g of EDGE_GATES) {
     // the road beyond: asphalt, banks, a line of lamp posts
@@ -75,9 +79,33 @@ export function buildEdges(ctx) {
       const arm = new THREE.BoxGeometry(alongX ? 0.08 : 1.6, 0.08, alongX ? 1.6 : 0.08);
       arm.translate(alongX ? px : px - 0.75, 7.9, alongX ? pz - 0.75 : pz);
       add(poleMat, arm);
+      const hx = alongX ? px : px - 1.5;
+      const hz = alongX ? pz - 1.5 : pz;
+      add(headMat, new THREE.BoxGeometry(alongX ? 0.36 : 0.8, 0.2, alongX ? 0.8 : 0.36).translate(hx, 7.82, hz));
+      heads.push([hx, hz]);
       ctx.addLateColliderRect(px - 0.2, px + 0.2, pz - 0.2, pz + 0.2);
     }
   }
+
+  // their glow (one draw for all) and the pools of light on the asphalt
+  const glowTex = makeGlowTexture(128, '255,186,110');
+  const glowGeo = new THREE.BufferGeometry();
+  glowGeo.setAttribute('position', new THREE.Float32BufferAttribute(heads.flatMap(([x, z]) => [x, 7.62, z]), 3));
+  const glowMat = new THREE.PointsMaterial({ map: glowTex, color: 0xffc681, size: 3.2, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const glow = new THREE.Points(glowGeo, glowMat);
+  glow.name = 'edge-lamps:glow';
+  world.group.add(glow);
+  const poolMat = new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffa54d, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const pools = new THREE.Mesh(mergeGeometries(heads.map(([x, z]) => new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2).translate(x, 0.05, z)), false), poolMat);
+  pools.name = 'edge-lamps:pools';
+  world.group.add(pools);
+  ctx.addUpdater(() => {
+    const head = world.lampMats?.head.emissiveIntensity ?? 0;
+    const night = Math.min(1, head / 2.4);
+    headMat.emissiveIntensity = head;
+    glowMat.opacity = night * 0.55;
+    poolMat.opacity = night * 0.32;
+  });
 
   for (const { mat, season, list } of parts.values()) {
     for (const geo of list) for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
