@@ -1067,6 +1067,7 @@ export function buildBuildings(ctx) {
         frontRng.chance(0.8); // (the old dark-block pick, kept for the stream)
         const mesh = new THREE.Mesh(towerGeo(len, h, deep, shift), series.lit);
         mesh.userData.faces = [g.x + dx * along, g.z + dz * along];
+        mesh.userData.roadHalf = g.half;
         mesh.position.set(x, h / 2, z);
         mesh.rotation.y = dx ? 0 : Math.PI / 2;
         mesh.castShadow = false;
@@ -1227,8 +1228,13 @@ export function buildBuildings(ctx) {
  */
 function dressOuterBlocks(ctx, blocks, BAY) {
   const { world, materials: M } = ctx;
-  const parts = { plinth: [], concrete: [], door: [], snow: [], bulb: [] };
+  const parts = { plinth: [], concrete: [], door: [], snow: [], bulb: [], wood: [], path: [] };
   const bulbs = [];
+  const worldRect = (pts) => {
+    const xs = pts.map((p) => p.x);
+    const zs = pts.map((p) => p.z);
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
+  };
   const put = (list, w, h, d, x, y, z, m) => list.push(new THREE.BoxGeometry(w, h, d).translate(x, y, z).applyMatrix4(m));
   for (const mesh of blocks) {
     const { width: w, height: h, depth: d } = mesh.geometry.parameters;
@@ -1266,6 +1272,30 @@ function dressOuterBlocks(ctx, blocks, BAY) {
         const p = new THREE.Vector3(lx + s * 1.25, 0, zf + side * 1.4).applyMatrix4(m);
         ctx.addLateColliderRect(p.x - 0.12, p.x + 0.12, p.z - 0.12, p.z + 0.12);
       }
+      // the bench by the door (лавочка у подъезда): slats on concrete legs
+      const bx = lx - Math.sign(lx || 1) * 2.5;
+      const bz = zf + side * 0.95;
+      put(parts.wood, 1.8, 0.07, 0.42, bx, 0.46, bz, m);
+      put(parts.wood, 1.8, 0.32, 0.05, bx, 0.74, bz - side * 0.2, m);
+      for (const e of [-0.75, 0.75]) put(parts.concrete, 0.1, 0.44, 0.4, bx + e, 0.22, bz, m);
+      put(parts.snow, 1.7, 0.05, 0.36, bx, 0.52, bz, m);
+      const b = worldRect([new THREE.Vector3(bx - 0.95, 0, bz - 0.3), new THREE.Vector3(bx + 0.95, 0, bz + 0.3)].map((v) => v.applyMatrix4(m)));
+      ctx.addLateColliderRect(b.minX, b.maxX, b.minZ, b.maxZ);
+      // and the trodden path from the street to the step
+      if (mesh.userData.faces) {
+        const reach = Math.abs(Math.sin(mesh.rotation.y) * ax + Math.cos(mesh.rotation.y) * az);
+        const len = reach - d / 2 - 1.3 - (mesh.userData.roadHalf + 2.2);
+        if (len > 2) {
+          const pz = zf + side * (1.3 + len / 2);
+          const plane = new THREE.PlaneGeometry(2, len).rotateX(-Math.PI / 2);
+          const uv = plane.attributes.uv;
+          for (let v = 0; v < uv.count; v++) uv.setXY(v, (uv.getX(v) * 2) / 4, (uv.getY(v) * len) / 4);
+          parts.path.push(plane.translate(lx, 0.028, pz).applyMatrix4(m));
+          // (the steppe's grass and trees keep off it; nothing blocks you)
+          const r = worldRect([new THREE.Vector3(lx - 1.2, 0, pz - len / 2), new THREE.Vector3(lx + 1.2, 0, pz + len / 2)].map((v) => v.applyMatrix4(m)));
+          world.lateColliders.push({ ...r, buildOnly: true });
+        }
+      }
     }
   }
   const mats = {
@@ -1274,7 +1304,10 @@ function dressOuterBlocks(ctx, blocks, BAY) {
     door: new THREE.MeshStandardMaterial({ color: 0x4a3426, roughness: 0.85 }),
     bulb: new THREE.MeshStandardMaterial({ color: 0x8a8678, emissive: 0xffd9a0, emissiveIntensity: 0 }),
     snow: M.snow,
+    wood: M.wood,
+    path: new THREE.MeshStandardMaterial({ map: world.season === 'winter' ? ctx.textures.path : ctx.textures.pathAutumn, roughness: 0.88 }),
   };
+  world.pathMats.push(mats.path);
   for (const [key, list] of Object.entries(parts)) {
     if (!list.length) continue;
     const mesh = new THREE.Mesh(mergeGeometries(list, false), mats[key]);
