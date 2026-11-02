@@ -406,13 +406,32 @@ function spruceSnowGeometry() {
   return mergeGeometries(parts, false);
 }
 
-function bushGeometry(detail = 2) {
+/** A shrub of four blobs; `leafy` paints each blob a turning-leaf colour
+ * (autumn: rust, ochre, olive), like the tree crowns, so they don't read as
+ * stones. */
+function bushGeometry(detail = 2, leafy = false) {
   const parts = [];
   const rng = new Rng(99);
+  const tint = new Rng(98);
+  const LEAVES = [0x9a5a28, 0xa8822e, 0x6f6a30, 0x7e4a2a, 0xb38a3a];
+  const c = new THREE.Color();
   for (let i = 0; i < 4; i++) {
     const geo = new THREE.IcosahedronGeometry(rng.float(0.45, 0.85), detail);
     geo.scale(1, 0.7, 1);
     geo.translate(rng.float(-0.5, 0.5), rng.float(0.25, 0.6), rng.float(-0.5, 0.5));
+    if (leafy) {
+      const n = geo.attributes.position.count;
+      const colors = new Float32Array(n * 3);
+      c.setHex(LEAVES[i % LEAVES.length]);
+      for (let v = 0; v < n; v++) {
+        // darker toward the inside and the ground
+        const k = 0.78 + 0.22 * tint.float(0, 1);
+        colors[v * 3] = c.r * k;
+        colors[v * 3 + 1] = c.g * k;
+        colors[v * 3 + 2] = c.b * k;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    }
     parts.push(geo);
   }
   return mergeGeometries(parts, false);
@@ -1001,8 +1020,8 @@ export function buildVegetation(ctx) {
   for (const b of bushes) {
     if (hard(b.x, b.z) || hard(b.x + 0.6, b.z) || hard(b.x - 0.6, b.z) || hard(b.x, b.z + 0.6) || hard(b.x, b.z - 0.6)) b.dead = true;
   }
-  const bushGeo = bushGeometry(1);
-  const bushAutumn = makeInstanced(bushGeo, new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), bushes.map((b) => ({ ...b })), [0.8, 1.4], 0.1);
+  const bushGeo = bushGeometry(1, true);
+  const bushAutumn = makeInstanced(bushGeo, new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, vertexColors: true }), bushes.map((b) => ({ ...b })), [0.8, 1.4], 0.1);
   group.add(ctx.seasonable('autumn', bushAutumn));
   // snow-laden shrubs are rounded: smooth shading and a finer mesh
   const bushSnowGeo = bushGeometry(2);
@@ -1089,7 +1108,7 @@ export function buildVegetation(ctx) {
     };
     scatterB(10, -58, -14, 108, 144);
     scatterB(8, 14, 90, 106, 160);
-    const bushGeo = bushGeometry(1);
+    const bushGeo = bushGeometry(1, true);
     const mkBush = (mat, scaleRange, geo = bushGeo) => {
       const mesh = new THREE.InstancedMesh(geo, mat, northBushes.length);
       mesh.castShadow = true;
@@ -1106,7 +1125,7 @@ export function buildVegetation(ctx) {
       group.add(mesh);
       return mesh;
     };
-    group.add(ctx.seasonable('autumn', mkBush(new THREE.MeshStandardMaterial({ color: 0x6a5a34, roughness: 1, flatShading: true }), [0.8, 1.4])));
+    group.add(ctx.seasonable('autumn', mkBush(new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, vertexColors: true }), [0.8, 1.4])));
     group.add(ctx.seasonable('winter', mkBush(new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.9 }), [0.75, 1.25], bushSnowGeo)));
   }
 
@@ -1348,7 +1367,7 @@ function plantOuterSteppe(ctx, kit) {
     for (const s of list) if (Math.max(Math.abs(s.x), Math.abs(s.z)) < WORLD.limit + 1) ctx.addLateColliderRect(s.x - 0.6, s.x + 0.6, s.z - 0.6, s.z + 0.6);
   }
 
-  const bushAutumnMat = new THREE.MeshStandardMaterial({ color: 0x6b5634, roughness: 1, flatShading: true });
+  const bushAutumnMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, vertexColors: true });
   const bushWinterMat = new THREE.MeshStandardMaterial({ color: 0xdfe7f0, roughness: 0.9 });
   for (const list of bySector(bushes)) {
     const scales = list.map(() => [rng.float(0.7, 1.5), rng.float(0.8, 1.2), rng.float(0, TAU)]);
