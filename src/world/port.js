@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, makeCanvas } from '../util.js';
-import { canvasTexture, makeGlowTexture, makeBeamTexture, makeSignTexture } from '../textures.js';
+import { canvasTexture, makeGlowTexture, makeBeamTexture, makeSignTexture, makeFencePanelTexture } from '../textures.js';
 
 /** The spur: its centre line (x) and how far it runs (z), from the roundabout's north side. */
 export const SPUR = { x: 2262, z0: 80, z1: 302 };
@@ -664,7 +664,8 @@ export function buildPort(ctx) {
 
   /* ---- the fence round the port, the gate, the gatehouse */
   {
-    const fenceMat = std({ color: 0xb4b0a6, roughness: 0.95 });
+    // the same ПО-2 diamond panels as the district's fences, one to a bay
+    const fenceMat = std({ map: makeFencePanelTexture(), roughness: 0.92 });
     const run = (x0, z0, x1, z1) => {
       const along = z0 === z1;
       const len = along ? Math.abs(x1 - x0) : Math.abs(z1 - z0);
@@ -673,7 +674,7 @@ export function buildPort(ctx) {
         const t = (i + 0.5) / n;
         const px = x0 + (x1 - x0) * t;
         const pz = z0 + (z1 - z0) * t;
-        const p = box(along ? len / n - 0.1 : 0.2, 2.3, along ? 0.2 : len / n - 0.1, 3).translate(px, 1.15, pz);
+        const p = box(along ? len / n - 0.1 : 0.2, 2.3, along ? 0.2 : len / n - 0.1).translate(px, 1.15, pz);
         parts.add(fenceMat, p);
         parts.add(M.concreteDark, box(0.3, 2.6, 0.3).translate(x0 + (x1 - x0) * (i / n), 1.3, z0 + (z1 - z0) * (i / n)));
         if (i % 2 === 0) parts.add(M.snow, box(along ? len / n : 0.26, 0.08, along ? 0.26 : len / n).translate(px, 2.34, pz), { season: 'winter', cast: false });
@@ -691,7 +692,7 @@ export function buildPort(ctx) {
       c.fillRect(0, 0, W, H);
       c.fillStyle = '#efe7d6';
       c.font = 'bold 74px "Arial Narrow", Arial, sans-serif';
-      c.fillText('МОРСКОЙ ТОРГОВЫЙ ПОРТ', W / 2, H / 2 + 4);
+      c.fillText('МОРСКОЙ ТОРГОВЫЙ ПОРТ', W / 2, H / 2 + 4, W - 40);
     });
     for (const x of [GATE.x0, GATE.x1]) {
       parts.add(M.concreteDark, box(0.8, 6.6, 0.8).translate(x, 3.3, YARD.z0));
@@ -755,7 +756,7 @@ export function buildPort(ctx) {
         c.fillRect(0, 0, W, Hh);
         c.fillStyle = '#23466e';
         c.font = 'bold 56px "Arial Narrow", Arial, sans-serif';
-        c.fillText(`СКЛАД № ${n}`, W / 2, Hh / 2 + 3);
+        c.fillText(`СКЛАД № ${n}`, W / 2, Hh / 2 + 3, W - 20);
       });
       const sign = std({ map: tex, roughness: 0.7 });
       for (const s of [-1, 1]) {
