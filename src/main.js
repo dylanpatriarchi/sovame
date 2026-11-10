@@ -97,6 +97,8 @@ async function boot() {
   await world.build((fraction, label) => ui.setProgress(0.08 + fraction * 0.62, label));
 
   // interaction registry: the kiosk radio, the spots, the cars
+  // one broadcast, two sets: the kiosk's and the one in the dashboard
+  const radioSets = { kiosk: false, car: false };
   const radio = world.points.radio;
   if (radio) {
     world.interactables.push({
@@ -104,9 +106,9 @@ async function boot() {
       x: radio.x,
       z: radio.z,
       radius: 7,
-      prompt: () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio'),
+      prompt: () => (radioSets.kiosk ? 'E — turn off the radio' : 'E — turn on the radio'),
       onUse: () => {
-        sound.toggleRadio();
+        radioSets.kiosk = !radioSets.kiosk;
         sound.ui('tick');
       },
     });
@@ -383,7 +385,7 @@ async function boot() {
   function updatePrompt() {
     let text = null;
     if (driving.active) {
-      text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? 'E — get out · V — camera' : null;
+      text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? `E — get out · V — camera · R — radio ${radioSets.car ? 'off' : 'on'}` : null;
     } else {
       const it = state.smoking ? null : nearestInteractable();
       text = it && !state.transitioning ? it.prompt() : null;
@@ -408,6 +410,10 @@ async function boot() {
     if (driving.active && state.mode === 'playing') {
       if (event.code === 'KeyE' && !event.repeat) leaveCar();
       if (event.code === 'KeyV' && !event.repeat) driving.toggleView();
+      if (event.code === 'KeyR' && !event.repeat) {
+        radioSets.car = !radioSets.car;
+        sound.ui('tick');
+      }
       if (event.code === 'Escape') {
         pause();
         player.releaseLock();
@@ -458,7 +464,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, radioSets };
 
   /* --------------------------------------------------- loop */
 
@@ -495,7 +501,12 @@ async function boot() {
     world.update(dt, state.elapsed, camera);
     world.people?.update(dt, state.elapsed, player.position, env.temperature);
     sound.updateWind(env.wind.gust);
-    sound.update(dt, state.elapsed, camera.position, world.points.radio);
+    // in the car with the set on, the music rides along; otherwise it
+    // stays at the kiosk and fades with distance
+    const inCar = driving.active && radioSets.car;
+    const radioWanted = inCar || radioSets.kiosk;
+    if (sound.radioOn !== radioWanted) sound.toggleRadio(radioWanted);
+    sound.update(dt, state.elapsed, camera.position, inCar ? camera.position : world.points.radio);
 
     if (state.mode === 'playing') {
       zoneTimer += dt;

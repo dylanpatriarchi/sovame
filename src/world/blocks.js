@@ -55,6 +55,17 @@ function makeSignTexture(text, { fg = '#f4ead2', bg = '#3d1512', font = 'bold 64
   return { tex, aspect: canvas.width / canvas.height };
 }
 
+/** A box with three draw groups — the two ends, the roof, the two long
+ * faces — and no underside: nobody ever sees it. */
+function wallBox(w, h, d) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.clearGroups();
+  g.addGroup(0, 12, 0);
+  g.addGroup(12, 6, 1);
+  g.addGroup(24, 12, 2);
+  return g;
+}
+
 export function buildBlocks(ctx) {
   const { world, materials: M, textures: T } = ctx;
   const TX = ctx.TEXTURES;
@@ -123,7 +134,7 @@ export function buildBlocks(ctx) {
     );
     const sideMat = mkMat(TX.makeFacadeTextures({ ...common, cells: sideCells, rng: new Rng(spec.seed + 101), entranceEvery: 99, balconyChance: 0.08, litChance: spec.lit * 0.8 }));
 
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(spec.w, h, spec.d), [sideMat, sideMat, roofMat, M.concreteDark, facadeMat, facadeMat]);
+    const mesh = new THREE.Mesh(wallBox(spec.w, h, spec.d), [sideMat, roofMat, facadeMat]);
     mesh.name = `block-${spec.id}`;
     mesh.position.y = h / 2;
     mesh.applyMatrix4(matrix);
@@ -176,10 +187,10 @@ export function buildBlocks(ctx) {
     const look = PUBLIC_LOOK[p.kind];
     const seed = p.x * 131 + p.z * 17 + 9000;
     const h = p.floors * FLOOR_H + 0.6;
-    const common = { floors: p.floors, base: look.base, plinth: '#8f8b80', entranceEvery: 99, balconyChance: 0, litChance: look.lit, winter: false, street: p.sign, number: p.number };
+    const common = { floors: p.floors, base: look.base, plinth: '#8f8b80', entranceEvery: 99, balconyChance: 0, litChance: look.lit, winter: false, street: p.street, number: p.number };
     const zMat = mkMat(TX.makeFacadeTextures({ ...common, cells: Math.max(3, Math.round(p.w / 3.8)), rng: new Rng(seed) }), 0.6);
     const xMat = mkMat(TX.makeFacadeTextures({ ...common, cells: Math.max(3, Math.round(p.d / 3.8)), rng: new Rng(seed + 1) }), 0.6);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, h, p.d), [xMat, xMat, roofMat, M.concreteDark, zMat, zMat]);
+    const mesh = new THREE.Mesh(wallBox(p.w, h, p.d), [xMat, roofMat, zMat]);
     mesh.name = `public-${p.id}`;
     mesh.position.set(p.x, h / 2, p.z);
     ctx.place(mesh);

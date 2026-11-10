@@ -87,16 +87,32 @@ export class Smoke {
       return m;
     };
     // index and middle hold the cigarette straight out; ring and pinky curl
-    finger(0.046, -0.026, -0.008, 0.08);
-    finger(0.05, -0.008, -0.01, 0.1);
-    finger(0.026, 0.01, -0.006, 0.9).position.y = -0.012;
-    finger(0.02, 0.026, -0.004, 1.1).position.y = -0.014;
+    const pinch = [finger(0.046, -0.026, -0.008, 0.08), finger(0.05, -0.008, -0.01, 0.1)];
+    const ring = finger(0.026, 0.01, -0.006, 0.9);
+    ring.position.y = -0.012;
+    const pinky = finger(0.02, 0.026, -0.004, 1.1);
+    pinky.position.y = -0.014;
+    pinch.push(ring, pinky);
     const thumbG = new THREE.CapsuleGeometry(0.0095, 0.034, 3, 8);
     thumbG.rotateX(Math.PI / 2);
     const thumb = new THREE.Mesh(thumbG, skin);
     thumb.position.set(-0.043, -0.008, 0.02);
     thumb.rotation.set(0.2, 0.75, 0);
     hand.add(thumb);
+    pinch.push(thumb);
+    this.pinchFingers = pinch;
+    // the other grip: the mug stands in the palm, fingers cupped up round it
+    this.cupFingers = [205, 250, 295, 340, 115].map((deg, i) => {
+      const a = (deg * Math.PI) / 180;
+      const len = i === 4 ? 0.03 : 0.04;
+      const m = new THREE.Mesh(new THREE.CapsuleGeometry(i === 4 ? 0.0095 : 0.0085, len, 3, 8), skin);
+      m.position.set(-0.004 + Math.cos(a) * 0.045, 0.008 + len / 2, -0.05 + Math.sin(a) * 0.045);
+      // leaning in against the enamel
+      m.rotation.set(-Math.sin(a) * 0.22, 0, Math.cos(a) * 0.22);
+      m.visible = false;
+      hand.add(m);
+      return m;
+    });
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.048, 0.22, 12), sleeve);
     cuff.rotation.x = Math.PI / 2;
     cuff.position.set(0, -0.004, 0.18);
@@ -344,6 +360,8 @@ export class Smoke {
     this.mode = mode;
     this.cig.visible = mode === 'smoke';
     this.mug.visible = mode === 'tea';
+    for (const f of this.pinchFingers) f.visible = mode === 'smoke';
+    for (const f of this.cupFingers) f.visible = mode === 'tea';
     this.t = 0;
     this.dragIndex = -1;
     this.exhaled.clear();

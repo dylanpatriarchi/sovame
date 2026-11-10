@@ -298,6 +298,61 @@ export class Environment {
     this.stars.renderOrder = -9;
     this.scene.add(this.stars);
 
+    // aurora: two folded curtains hanging in the northern sky
+    this.auroraMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uLevel: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uLevel;
+        varying vec2 vUv;
+        void main() {
+          float x = vUv.x;
+          float v = vUv.y;
+          // fine vertical rays drifting along the fold, and slow bright patches
+          float rays = 0.45 + 0.55 * pow(0.5 + 0.5 * sin(x * 210.0 + sin(x * 19.0 + uTime * 0.21) * 5.0 + uTime * 0.5), 2.0);
+          float patches = 0.5 + 0.5 * sin(x * 13.0 - uTime * 0.11 + sin(x * 4.3 + uTime * 0.05) * 2.4);
+          patches = 0.25 + 0.75 * patches * patches;
+          // a sharp lower hem, a long fade upward
+          float shape = smoothstep(0.0, 0.07, v) * pow(1.0 - v, 1.7);
+          float ends = smoothstep(0.0, 0.14, x) * smoothstep(1.0, 0.86, x);
+          vec3 col = mix(vec3(0.16, 1.0, 0.5), vec3(0.55, 0.25, 0.95), smoothstep(0.3, 0.95, v));
+          gl_FragColor = vec4(col * shape * rays * patches * ends * uLevel, 1.0);
+        }`,
+    });
+    this.aurora = new THREE.Group();
+    for (const [radius, base, height, from, to, wobble] of [
+      [700, 150, 330, -1.25, 0.9, 1],
+      [760, 230, 280, -0.5, 1.45, 2.3],
+    ]) {
+      const geo = new THREE.PlaneGeometry(1, 1, 180, 1);
+      const p = geo.attributes.position;
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < p.count; i++) {
+        const u = uv.getX(i);
+        const a = from + (to - from) * u;
+        const r = radius + Math.sin(u * 11 + wobble) * 70 + Math.sin(u * 29 + wobble * 2) * 22;
+        const y = base + Math.sin(u * 6 + wobble) * 45 + uv.getY(i) * height;
+        // azimuth 0 is due north (+z), toward the lighthouse
+        p.setXYZ(i, Math.sin(a) * r, y, Math.cos(a) * r);
+      }
+      const curtain = new THREE.Mesh(geo, this.auroraMat);
+      curtain.frustumCulled = false;
+      curtain.renderOrder = -8;
+      this.aurora.add(curtain);
+    }
+    this.scene.add(this.aurora);
+
     this.moonMat = new THREE.SpriteMaterial({
       map: makeSoftCircleTexture(128, '236,244,255', 1.6),
       color: 0xdfe9ff,
@@ -496,12 +551,17 @@ export class Environment {
 
     // stars and moon
     this.starMat.opacity = c.stars;
+    // the aurora wants a dark sky: a hint at blue hour, full at night
+    this.auroraMat.uniforms.uTime.value = t;
+    this.auroraMat.uniforms.uLevel.value = Math.max(0, c.stars - 0.08) ** 1.5 * 1.1 * (1 - this.indoor);
+    this.aurora.visible = c.stars > 0.09;
     this.moonMat.opacity = c.moon * 0.9;
     this.moon.position.set(this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, this.sunDir.z * -780);
     // the sky travels with the camera: the world has no edge to stand at
     if (camera) {
       this.sky.position.set(camera.position.x, 0, camera.position.z);
       this.stars.position.copy(this.sky.position);
+      this.aurora.position.copy(this.sky.position);
       this.moon.position.x += camera.position.x;
       this.moon.position.z += camera.position.z;
     }

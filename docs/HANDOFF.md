@@ -335,4 +335,28 @@ longer applies: all of it is deleted.
   from the avenue except at stiles (cars enter from Портовая); no
   trampled paths or driveways in the yards yet; a block mesh is still 6
   draw groups; the mug-on-cigarette hand and soft close-up facades remain.
-  **Next**: aurora, radio toggle from the driver's seat, yard driveways.
+  (The lane, aurora and radio items below closed most of these.)
+- 2026-11-10 — **"Finisci tutto" pass** (owner set that as the goal).
+  - **Car radio**: `R` behind the wheel. `main.js` keeps two sets
+    (`radioSets.kiosk`, `radioSets.car`) feeding the one broadcast in
+    `audio.js`; with the car set on the music rides with the camera,
+    otherwise it stays at the kiosk. It stops when you get out.
+  - **Aurora**: two folded shader curtains in the northern sky
+    (`environment.js`, next to the stars), level from the `stars` preset
+    value — a hint at blue hour, full at night.
+  - **Yard lanes**: `DRIVEWAYS` in `town.js`; `streets.js` lays plain
+    asphalt and drops the kerb where a lane starts; the heating mains
+    arch over them by themselves (surface is 'asphalt'). The avenue main
+    no longer fences the square off.
+  - **Tea grip**: the mug now stands in a cupped hand (`cupFingers` in
+    `smoke.js`), the cigarette pinch is hidden in tea mode.
+  - Block meshes draw in 3 groups, no underside: ~190–250 calls in town.
+  - `tools/drive-test.mjs` rewritten (`npm run drive`): an autopilot
+    drives avenue → ул. Мира → yard lane → courtyard, then checks the
+    radio, shoots the aurora and sits down for tea. Passes with no
+    impacts.
+  Still open, none blocking: facades are soft at arm's length; the plant
+  is a near-silhouette at dusk; `main.js` is one big closure; collisions
+  are a linear list (fine at ~700 rects); yards have no trampled
+  footpaths; `docs/graphics-plan.md` and `docs/improvement-plan.md`
+  describe the pre-pivot game and name deleted files.

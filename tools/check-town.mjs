@@ -48,6 +48,11 @@ for (const c of T.PARKED.filter((c) => c.curb && Math.abs(c.x) < 250)) {
   if (!T.STREETS.some((s) => inside(T.streetRect(s), c.x, c.z))) problems.push(`curb car (${c.x},${c.z}) is not on a street`);
 }
 
+for (const [i, d] of T.DRIVEWAYS.entries()) {
+  for (const s of solids) if (overlap(d, s.full)) problems.push(`driveway#${i} ${fmt(d)} runs through ${s.id} ${fmt(s.full)}`);
+  for (const p of points) if (p.x + p.r > d.x0 && p.x - p.r < d.x1 && p.z + p.r > d.z0 && p.z - p.r < d.z1) problems.push(`${p.id} stands on driveway#${i}`);
+}
+
 // pipes: axis aligned, clear of walls (they may cross streets, on arches)
 for (const run of T.PIPES) {
   for (let i = 1; i < run.length; i++) {

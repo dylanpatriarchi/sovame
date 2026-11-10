@@ -32,6 +32,19 @@ export function streetRect(s, grow = 0) {
     : { x0: s.from, x1: s.to, z0: s.at - s.half - grow, z1: s.at + s.half + grow };
 }
 
+/**
+ * Lanes into the yards: plain asphalt from the edge of a street. The
+ * sidewalk drops where one starts and the heating mains arch over it.
+ */
+export const DRIVEWAYS = [
+  { x0: 38, x1: 43, z0: 50, z1: 100 },
+  { x0: 37, x1: 42, z0: -22, z1: 38 },
+  { x0: -43, x1: -38, z0: -22, z1: 38 },
+  { x0: -44, x1: -39, z0: 50, z1: 110 },
+  { x0: 6, x1: 18, z0: -86, z1: -80 },
+  { x0: -46, x1: -41, z0: -146, z1: -112 },
+];
+
 /* ---------------------------------------------------------- blocks */
 
 function seedOf(id) {

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Land } from './land.js';
 import { hash2 } from './noise.js';
-import { STREETS, SIDEWALK, SQUARE, ZONES, streetRect } from './town.js';
+import { STREETS, SIDEWALK, SQUARE, ZONES, DRIVEWAYS, streetRect } from './town.js';
 
 const KERB = 0.14;
 
@@ -41,6 +41,11 @@ export function sidewalkRects() {
         if (o.to <= lo || o.from >= hi) continue;
         const reach = o.half + (s.axis === 'x' ? SIDEWALK : 0);
         cuts.push([o.at - reach, o.at + reach]);
+      }
+      // dropped kerb at every lane into a yard
+      for (const d of DRIVEWAYS) {
+        const [l0, l1, a0, a1] = s.axis === 'z' ? [d.x0, d.x1, d.z0, d.z1] : [d.z0, d.z1, d.x0, d.x1];
+        if (l0 < hi && l1 > lo) cuts.push([a0, a1]);
       }
       for (const [a, b] of subtract(s.from, s.to, cuts)) {
         rects.push(s.axis === 'z' ? { x0: lo, x1: hi, z0: a, z1: b } : { x0: a, x1: b, z0: lo, z1: hi });
@@ -100,6 +105,31 @@ export function buildStreets(ctx) {
   asphalt.name = 'streets';
   asphalt.receiveShadow = true;
   world.group.add(asphalt);
+
+  /* ------------------------------------------------ yard lanes */
+  const laneMat = new THREE.MeshStandardMaterial({
+    map: T.asphaltPlainWinter,
+    roughnessMap: T.asphaltPlainRoughWinter,
+    roughness: 1,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const laneParts = DRIVEWAYS.map((r) => {
+    const w = r.x1 - r.x0;
+    const d = r.z1 - r.z0;
+    const g = new THREE.PlaneGeometry(w, d);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * w) / 12, (uv.getY(i) * d) / 12);
+    g.rotateX(-Math.PI / 2);
+    g.translate((r.x0 + r.x1) / 2, 0.016, (r.z0 + r.z1) / 2);
+    ctx.addSurfaceRect(r.x0, r.x1, r.z0, r.z1, 'asphalt');
+    return g;
+  });
+  const lanes2 = new THREE.Mesh(mergeGeometries(laneParts, false), laneMat);
+  lanes2.name = 'yard-lanes';
+  lanes2.receiveShadow = true;
+  world.group.add(lanes2);
 
   /* ------------------------------------------------ sidewalks, square */
   const slabs = [];
