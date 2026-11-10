@@ -372,7 +372,8 @@ export class Environment {
     const season = SEASONS[this.season];
     if (!this.scene.fog) this.scene.fog = new THREE.FogExp2(this.cur.fogColor.getHex(), this.cur.fogDensity * season.fogMul);
     this.scene.fog.color.copy(this.cur.fogColor);
-    this.scene.fog.density = this.cur.fogDensity * season.fogMul;
+    // Arctic air is clear: a haze you see a town through, not a town fog
+    this.scene.fog.density = this.cur.fogDensity * season.fogMul * (this.fogScale ?? 0.13);
   }
 
   /* ------------------------------------------------------------ API */
@@ -497,6 +498,13 @@ export class Environment {
     this.starMat.opacity = c.stars;
     this.moonMat.opacity = c.moon * 0.9;
     this.moon.position.set(this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, this.sunDir.z * -780);
+    // the sky travels with the camera: the world has no edge to stand at
+    if (camera) {
+      this.sky.position.set(camera.position.x, 0, camera.position.z);
+      this.stars.position.copy(this.sky.position);
+      this.moon.position.x += camera.position.x;
+      this.moon.position.z += camera.position.z;
+    }
 
     // clouds
     for (const cloud of this.clouds) {

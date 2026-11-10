@@ -11,6 +11,10 @@ import { BUILDING_SPECS, EXPANSION_SPECS, SOUTH_SPECS, WEST_SPECS, entranceDoor 
 
 const CELL_W = 3.4;
 const PAD_TOP = 0.26;
+/** The ground floor stands on piles: the door is a flight of steps up. */
+const RISE = 0.78;
+const LANDING = PAD_TOP + RISE;
+const STEPS = 5;
 const CONCRETE = new THREE.Color(0x8c8981);
 const METAL = new THREE.Color(0x3c4144);
 const DOOR_COLORS = [0x3f4a43, 0x4a3b30, 0x34404c, 0x5a4a36, 0x463f45];
@@ -69,6 +73,7 @@ export function buildEntrances(ctx) {
     const { side } = e;
     const ox = e.x;
     const oz = e.z;
+    const marks = [concrete.length, snow.length, glow.length, wash.length];
     // canopy slab and two cheeks framing the porch
     concrete.push(part(3.0, 0.16, 1.55, 0, 2.78, 0.78, side, ox, oz, CONCRETE));
     concrete.push(part(3.1, 0.06, 0.08, 0, 2.68, 1.53, side, ox, oz, CONCRETE)); // drip edge
@@ -101,7 +106,39 @@ export function buildEntrances(ctx) {
     if (lit) {
       wash.push(plane(3.4, 2.8, 0, 1.75, 0.035, side, ox, oz, false, 1));
       wash.push(plane(3.4, 3.0, 0, PAD_TOP + 0.02, 1.15, side, ox, oz, true, 0.75));
-      spots.push({ x: ox, y: 2.35, z: oz + side * 0.75 });
+      spots.push({ x: ox, y: 2.35 + RISE, z: oz + side * 0.75 });
+    }
+    // everything so far was built at street level: lift it to the door
+    [concrete, snow, glow, wash].forEach((list, i) => {
+      for (let k = marks[i]; k < list.length; k++) list[k].translate(0, RISE, 0);
+    });
+    // the landing (a closed concrete box over the pile gap) and the steps
+    concrete.push(part(3.0, LANDING, 1.3, 0, LANDING / 2, 0.65, side, ox, oz, CONCRETE));
+    snow.push(part(2.7, 0.05, 0.9, 0, LANDING + 0.025, 0.8, side, ox, oz));
+    const rect = (x0, x1, z0, z1, h) => ctx.addHeightRect(ox - 1.5, ox + 1.5, oz + side * z0, oz + side * z1, h, true);
+    rect(-1.5, 1.5, 0, 1.3, LANDING);
+    for (let k = 0; k < STEPS; k++) {
+      const h = LANDING * (1 - (k + 1) / (STEPS + 1));
+      concrete.push(part(2.2, h, 0.3, 0, h / 2, 1.45 + k * 0.3, side, ox, oz, CONCRETE));
+      ctx.addHeightRect(ox - 1.1, ox + 1.1, oz + side * (1.3 + k * 0.3), oz + side * (1.6 + k * 0.3), h, true);
+    }
+    // welded pipe rails either side of the flight
+    for (const sx of [-1.1, 1.1]) {
+      for (const [z, base] of [
+        [1.34, LANDING],
+        [1.3 + STEPS * 0.3 - 0.05, LANDING / (STEPS + 1)],
+      ]) {
+        concrete.push(part(0.05, 0.9, 0.05, sx, base + 0.45, z, side, ox, oz, METAL));
+      }
+      const rail = new THREE.BoxGeometry(0.05, 0.05, Math.hypot(STEPS * 0.3, LANDING * 0.83));
+      rail.rotateX(Math.atan2(LANDING * 0.83, STEPS * 0.3));
+      rail.translate(sx, LANDING * 0.58 + 0.88, 1.3 + STEPS * 0.15);
+      if (side < 0) rail.rotateY(Math.PI);
+      rail.translate(ox, 0, oz);
+      const col = new Float32Array(rail.attributes.position.count * 3);
+      for (let i = 0; i < rail.attributes.position.count; i++) METAL.toArray(col, i * 3);
+      rail.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      concrete.push(rail);
     }
   }
 
@@ -166,6 +203,28 @@ export function buildEntrances(ctx) {
   };
 }
 
+function makeGrainTexture() {
+  const size = 128;
+  const data = new Uint8Array(size * size * 4);
+  let s = 9973;
+  for (let i = 0; i < size * size; i++) {
+    s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+    const coarse = (s >>> 16) & 255;
+    s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+    // mostly mid-grey with the odd dark or bright stone
+    const v = 128 + (coarse - 128) * 0.55 + ((s >>> 20) % 9 === 0 ? ((s >>> 8) & 1 ? 70 : -70) : 0);
+    data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = Math.max(0, Math.min(255, v));
+    data[i * 4 + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, size, size);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /**
  * Facades read as black slabs at night: lift their diffuse a touch with a
  * shared uniform (moonlit concrete, light spill from the windows) so the
@@ -173,11 +232,15 @@ export function buildEntrances(ctx) {
  */
 export function addFacadeLift(world) {
   world.facadeLift = { value: 0 };
+  const grain = { value: makeGrainTexture() };
   for (const mat of world.windowMats) {
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uFacadeLift = world.facadeLift;
+      shader.uniforms.uGrain = grain;
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uFacadeLift;')
+        .replace('#include <common>', '#include <common>\nuniform float uFacadeLift;\nuniform sampler2D uGrain;')
+        // pebble-dash grain far finer than the facade texture can hold
+        .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_MAP\ndiffuseColor.rgb *= 0.72 + 0.56 * texture2D(uGrain, vMapUv * vec2(46.0, 23.0)).r;\n#endif')
         .replace(
           '#include <emissivemap_fragment>',
           '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uFacadeLift;'

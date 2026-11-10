@@ -71,6 +71,8 @@ export function smokeSpots(world) {
       indoor: true,
     });
   }
+  // benches out of town: the lookout, the lighthouse, the port mole
+  for (const spot of world.spots ?? []) spots.push(spot);
   return spots;
 }
 
@@ -175,6 +177,35 @@ export class Smoke {
     cig.add(this.emberGlow);
     hand.add(cig);
     this.cig = cig;
+
+    // the other way to pass the time: an enamel mug of tea from the thermos
+    const mug = new THREE.Group();
+    mug.position.set(-0.004, 0.03, -0.05);
+    const enamel = new THREE.MeshStandardMaterial({ color: 0xe8e6de, roughness: 0.35, emissive: 0x1a1a1a });
+    const rim = new THREE.MeshStandardMaterial({ color: 0x27406a, roughness: 0.4 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.034, 0.072, 18, 1, true), enamel);
+    body.material.side = THREE.DoubleSide;
+    mug.add(body);
+    const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.034, 18), enamel);
+    bottom.rotation.x = Math.PI / 2;
+    bottom.position.y = -0.036;
+    mug.add(bottom);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.037, 0.0022, 6, 20), rim);
+    lip.rotation.x = Math.PI / 2;
+    lip.position.y = 0.036;
+    mug.add(lip);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.004, 6, 12, Math.PI), enamel);
+    handle.rotation.z = -Math.PI / 2;
+    handle.position.set(0.037, 0, 0);
+    mug.add(handle);
+    const tea = new THREE.Mesh(new THREE.CircleGeometry(0.035, 18), new THREE.MeshStandardMaterial({ color: 0x4a2410, roughness: 0.15 }));
+    tea.rotation.x = -Math.PI / 2;
+    tea.position.y = 0.024;
+    mug.add(tea);
+    mug.visible = false;
+    hand.add(mug);
+    this.mug = mug;
+    this.tea = tea;
 
     // lighter flame, only for the first second
     this.flame = new THREE.Sprite(
@@ -336,8 +367,8 @@ export class Smoke {
 
   /* --------------------------------------------------------- sequence */
 
-  available(spot) {
-    return !this.active && !(this.cooldowns[spot.id] > 0);
+  available(spot, mode = 'smoke') {
+    return !this.active && !(this.cooldowns[`${spot.id}:${mode}`] > 0);
   }
 
   get running() {
@@ -345,8 +376,11 @@ export class Smoke {
   }
 
   /** Starts the sequence at a spot; the caller has already placed the player. */
-  start(spot) {
+  start(spot, mode = 'smoke') {
     this.active = spot;
+    this.mode = mode;
+    this.cig.visible = mode === 'smoke';
+    this.mug.visible = mode === 'tea';
     this.t = 0;
     this.dragIndex = -1;
     this.exhaled.clear();
@@ -359,7 +393,7 @@ export class Smoke {
   }
 
   stop() {
-    if (this.active) this.cooldowns[this.active.id] = COOLDOWN;
+    if (this.active) this.cooldowns[`${this.active.id}:${this.mode}`] = this.mode === 'tea' ? 20 : COOLDOWN;
     this.active = null;
     this.hand.visible = false;
   }
@@ -405,6 +439,8 @@ export class Smoke {
     // idle sway, a touch of cold-hand tremor
     this.hand.position.x += Math.sin(elapsed * 0.9) * 0.004;
     this.hand.position.y += Math.sin(elapsed * 1.3 + 1) * 0.003 + Math.sin(elapsed * 23) * 0.0004;
+
+    if (this.mode === 'tea') return this.updateTea(dt, elapsed, drag);
 
     // lighter
     const flameK = t > LIGHT_AT && t < LIGHT_AT + 1.2 ? 1 - smoothstep(0.9, 1.2, t - LIGHT_AT) : 0;
@@ -462,6 +498,42 @@ export class Smoke {
 
     // the caller stands the player up and calls stop()
     return t >= DURATION;
+  }
+
+  /** Tea: steam off the mug, a sip at each raise, breath in the cold after. */
+  updateTea(dt, elapsed, drag) {
+    const t = this.t;
+    this.flame.material.opacity = 0;
+    this.skinMat.emissiveIntensity = 0.12;
+    if (drag.index !== this.dragIndex && drag.index >= 0 && drag.k > 0) {
+      this.dragIndex = drag.index;
+      this.sound.inhale?.(0.5);
+    }
+    // the mug empties a little with every sip
+    this.tea.position.y = 0.024 - this.exhaled.size * 0.009;
+    if (drag.released && !this.exhaled.has(drag.index)) {
+      this.exhaled.add(drag.index);
+      this.sound.exhale?.(1.6);
+      this.exhaleT = 0;
+      this.exhaleLeft = 1.3;
+    }
+    if (t < LOWER_AT + 1 && Math.random() < dt * 26) {
+      this.tea.getWorldPosition(this.tmp);
+      this.tmp.x += (Math.random() - 0.5) * 0.04;
+      this.tmp.z += (Math.random() - 0.5) * 0.04;
+      this.tmp2.set((Math.random() - 0.5) * 0.02, 0.1 + Math.random() * 0.06, (Math.random() - 0.5) * 0.02);
+      this.emit(this.tmp, this.tmp2, { life: 1.6 + Math.random(), size0: 0.03, size1: 0.2, alpha: 0.16 });
+    }
+    if (this.exhaleLeft > 0) {
+      this.exhaleT += dt;
+      this.exhaleLeft -= dt;
+      const strength = Math.exp(-this.exhaleT * 2);
+      const mouth = this.tmp.set(0, -0.09, -0.08).applyMatrix4(this.camera.matrixWorld);
+      const dir = this.tmp2.set((Math.random() - 0.5) * 0.2, -0.1 + Math.random() * 0.1, -1).transformDirection(this.camera.matrixWorld);
+      if (Math.random() < strength * dt * 22) this.emit(mouth, dir.multiplyScalar(0.4 + strength * 0.5), { life: 1.8 + Math.random(), size0: 0.05, size1: 0.5, alpha: 0.16 * (0.4 + strength) });
+    }
+    this.updateParticles(dt, elapsed);
+    return t >= DURATION - 4;
   }
 
   /** Jumps the sequence clock (smoke test screenshots). */

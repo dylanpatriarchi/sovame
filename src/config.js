@@ -85,7 +85,7 @@ export const TIME_PRESETS = [
     baseTemp: -3,
     sky: { zenith: 0x2a3c5c, horizon: 0x8a90a8, ground: 0x3d434b },
     sun: { color: 0x9db0d0, intensity: 0.2, elevation: -5, azimuth: 250, glow: 0.85 },
-    hemi: { sky: 0x4b5c74, ground: 0x2b3037, intensity: 0.9 },
+    hemi: { sky: 0x6c84ae, ground: 0x3a4454, intensity: 0.9 },
     fog: { color: 0x6b7285, density: 0.0124 },
     lamp: 1,
     windowLit: 0.85,

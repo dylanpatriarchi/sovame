@@ -1,5 +1,6 @@
 // Ground, roads, sidewalks, paths, ice and snow mounds.
 import * as THREE from 'three';
+import { Land } from './land.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU } from '../util.js';
 import { buildWestTerrain } from './west.js';
@@ -112,8 +113,8 @@ export function buildTerrain(ctx) {
     roughness: 0.88,
   });
   world.materials.ground = groundMat;
-  const ground = tiledPlane(WORLD.groundSize, WORLD.groundSize, 40, groundMat, 0);
-  world.group.add(ground);
+  // the ground is the land itself: flat under the town, tundra beyond
+  world.land = new Land({ group: world.group, material: groundMat, tile: 40 });
 
   /* ------------------------------------------------ roads */
   const winter = world.season === 'winter';

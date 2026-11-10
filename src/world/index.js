@@ -9,10 +9,12 @@ import { buildBuildings } from './buildings.js';
 import { buildProps } from './props.js';
 import { buildVegetation } from './vegetation.js';
 import { buildPeople } from './people.js';
-import { buildInteriors } from './interiors.js';
-import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
+import { landHeight } from './land.js';
+import { buildPiles } from './piles.js';
+import { buildRoads } from './roads.js';
+import { buildArctic } from './arctic.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -73,6 +75,7 @@ export class World {
         () => {
           buildBuildings(this.ctx);
           buildEntrances(this.ctx);
+          buildPiles(this.ctx);
           addFacadeLift(this);
         },
       ],
@@ -87,12 +90,15 @@ export class World {
       // routes are validated lazily on the first update, once the trees
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
-      ['Trees, bushes and crows', () => buildVegetation(this.ctx)],
+      ['Crows over bare ground', () => this.buildTreeless()],
+      // the teleport stairwells and flats are switched off (they stood in
+      // boxes out east, where the bay is now); a real stairwell comes later
       [
-        'Warm stairwells and flats',
+        'Roads out of town',
         () => {
-          buildInteriors(this.ctx);
-          buildFlats(this.ctx);
+          this.flats = [];
+          buildRoads(this.ctx);
+          buildArctic(this.ctx);
         },
       ],
     ];
@@ -107,6 +113,31 @@ export class World {
     this.colliders = this.colliders.filter((c) => !c.buildOnly);
     for (const car of this.cars ?? []) car.updateCollider();
     onProgress?.(1, 'Ready');
+  }
+
+  /**
+   * Nothing grows this far north. The old vegetation pass still runs (the
+   * crows live in it and its seeded draws keep later stages where they
+   * were), but every tree, spruce and bush it plants — and their trunk
+   * colliders — is taken straight back out. Goes away with the town
+   * rebuild (docs/HANDOFF.md, phase 2).
+   */
+  buildTreeless() {
+    const groups = [this.group, this.farDetails, this.westDetails, this.southDetails];
+    const before = groups.map((g) => new Set(g.children));
+    const colliders = this.colliders.length;
+    const legacy = this.legacyColliders.length;
+    buildVegetation(this.ctx);
+    groups.forEach((g, i) => {
+      for (const child of [...g.children]) {
+        if (!before[i].has(child) && child.isMesh) g.remove(child);
+      }
+    });
+    this.autumnOnly = this.autumnOnly.filter((o) => o.parent);
+    this.winterOnly = this.winterOnly.filter((o) => o.parent);
+    this.colliders.length = colliders;
+    this.legacyColliders.length = legacy;
+    this.treeSpots = [];
   }
 
   /* ---------------------------------------------------------- materials */
@@ -266,7 +297,8 @@ export class World {
     for (const r of this.heightRects) {
       if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ && r.h > h) h = r.h;
     }
-    return h;
+    // kerbs and steps stand on the town pad; past it the tundra rolls away
+    return h + landHeight(x, z);
   }
 
   surfaceAt(x, z) {
@@ -301,9 +333,7 @@ export class World {
 
   /** Checks whether a circle of radius r collides with the environment. */
   collides(x, z, r) {
-    // interiors sit far outside the district: their own walls bound the
-    // player there, the world edge only applies outdoors
-    if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) return true;
+    // no world edge: past the last block the tundra goes on forever
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
@@ -370,12 +400,14 @@ export class World {
   }
 
   setWindowLit(value) {
+    this.litLevel = value;
     for (const m of this.windowMats) m.emissiveIntensity = value;
   }
 
   /* ---------------------------------------------------------- loop */
 
-  update(dt, elapsed) {
+  update(dt, elapsed, camera) {
     for (const fn of this.updaters) fn(dt, elapsed);
+    if (camera) this.land?.update(camera.position.x, camera.position.z);
   }
 }

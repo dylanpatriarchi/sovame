@@ -252,6 +252,109 @@ function sedanParts() {
   };
 }
 
+/** The UAZ-452 van, the "loaf": one tall rounded box on the same running
+ * gear. Reuses the sedan's wheel. */
+const VAN_EYE = new THREE.Vector3(0.36, 1.52, 0.86);
+
+function vanParts(wheel) {
+  const halfL = LENGTH / 2;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const body = profile(
+    [
+      [halfL - 0.03, 0.42],
+      [halfL, 0.98],
+      [halfL - 0.05, 1.12],
+      [halfL - 0.42, 1.84],
+      [halfL - 0.7, 1.95],
+      [-halfL + 0.16, 1.95],
+      [-halfL, 1.82],
+      [-halfL, 0.42],
+    ],
+    WIDTH + 0.12,
+    0.06,
+    true
+  );
+  const W = (WIDTH + 0.12) / 2;
+  // glass: panels standing just proud of the bodywork
+  // single-sided, like the sedan's: tinted from outside, clear from the seat
+  const glassParts = [];
+  const pane = (w, h, x, y, z, ry, rx = 0) => {
+    const g = new THREE.PlaneGeometry(w, h);
+    if (rx) g.rotateX(rx);
+    g.rotateY(ry);
+    g.translate(x, y, z);
+    glassParts.push(g);
+  };
+  pane(1.36, 0.6, 0, 1.5, halfL - 0.225, 0, -0.47);
+  for (const s of [-1, 1]) {
+    pane(0.62, 0.48, s * (W + 0.006), 1.5, 0.95, (s * Math.PI) / 2);
+    pane(0.7, 0.4, s * (W + 0.006), 1.52, -0.1, (s * Math.PI) / 2);
+    pane(0.7, 0.4, s * (W + 0.006), 1.52, -1.0, (s * Math.PI) / 2);
+  }
+  for (const x of [-0.36, 0.36]) pane(0.5, 0.36, x, 1.55, -halfL - 0.006, Math.PI);
+  const trim = [];
+  const CHROME = 0xb9bec2;
+  const BLACK = 0x17191b;
+  const DARK = 0x2a2c2e;
+  for (const z of [halfL + 0.07, -halfL - 0.07]) {
+    trim.push(colorize(box(1.7, 0.13, 0.1, 0, 0.5, z), DARK));
+    trim.push(colorize(box(0.52, 0.12, 0.02, 0, 0.5, z + Math.sign(z) * 0.06), 0xd9dad2));
+  }
+  // the loaf's face: a small oval grille between two round lamps
+  trim.push(colorize(box(0.7, 0.2, 0.03, 0, 0.9, halfL + 0.005), DARK));
+  for (let k = 0; k < 4; k++) trim.push(colorize(box(0.66, 0.015, 0.035, 0, 0.83 + k * 0.045, halfL + 0.008), CHROME));
+  // waist stripe and door seams
+  for (const s of [-1, 1]) {
+    trim.push(colorize(box(0.02, 0.07, LENGTH - 0.2, s * (W + 0.002), 1.16, 0), 0xd8d4c4));
+    for (const z of [1.3, 0.55, -0.55]) trim.push(colorize(box(0.015, 1.3, 0.02, s * (W + 0.003), 1.1, z), BLACK));
+    for (const z of [0.72, -0.4]) trim.push(colorize(box(0.03, 0.03, 0.14, s * (W + 0.02), 1.08, z), CHROME));
+    trim.push(colorize(box(0.05, 0.16, 0.1, s * (W + 0.12), 1.42, 1.42), DARK));
+    trim.push(colorize(box(0.14, 0.02, 0.03, s * (W + 0.05), 1.4, 1.44), DARK));
+    trim.push(colorize(bar(V(s * 0.08, 1.3, halfL - 0.09), V(s * 0.5, 1.33, halfL - 0.1), 0.02, 0.02), BLACK));
+  }
+  // cab seen from the seat: flat dash, the big thin wheel almost level
+  trim.push(colorize(box(1.5, 0.08, 0.3, 0, 1.12, 1.5), DARK));
+  trim.push(colorize(box(0.3, 0.07, 0.02, VAN_EYE.x, 1.19, 1.37), 0x111214));
+  {
+    const rim = new THREE.TorusGeometry(0.2, 0.015, 6, 24);
+    rim.rotateX(-1.05);
+    rim.translate(VAN_EYE.x, 1.22, 1.2);
+    trim.push(colorize(rim, BLACK));
+    trim.push(colorize(bar(V(VAN_EYE.x, 1.22, 1.2), V(VAN_EYE.x, 1.0, 1.36), 0.04, 0.04), BLACK));
+  }
+  trim.push(colorize(box(0.5, 0.5, 0.1, VAN_EYE.x, 1.15, 0.52), 0x4a3326));
+  trim.push(colorize(box(0.5, 0.5, 0.1, -VAN_EYE.x, 1.15, 0.52), 0x4a3326));
+  // what you see of the cab from inside: pillars, header, headlining, sills
+  for (const s of [-1, 1]) {
+    trim.push(colorize(bar(V(s * 0.74, 1.14, halfL - 0.1), V(s * 0.74, 1.84, halfL - 0.46), 0.055, 0.06), 0x3a3f38));
+    trim.push(colorize(box(0.05, 0.1, 0.9, s * 0.8, 1.22, 1.0), 0x3a3f38));
+    trim.push(colorize(box(0.05, 0.08, 0.9, s * 0.8, 1.8, 1.0), 0x3a3f38));
+    trim.push(colorize(box(0.06, 0.6, 0.07, s * 0.8, 1.5, 0.6), 0x3a3f38));
+  }
+  trim.push(colorize(box(1.56, 0.08, 0.08, 0, 1.85, halfL - 0.47), 0x3a3f38));
+  trim.push(colorize(box(1.56, 0.03, 1.6, 0, 1.9, 0.7), 0x4a4a44));
+  trim.push(colorize(box(1.56, 1.0, 0.04, 0, 1.4, 0.2), 0x33372f));
+  // the engine cover between the seats
+  trim.push(colorize(box(0.4, 0.5, 0.9, 0, 0.95, 0.9), 0x2e2a26));
+
+  const lamps = [];
+  for (const x of [-0.55, 0.55]) {
+    const head = new THREE.CylinderGeometry(0.1, 0.1, 0.04, 14);
+    head.rotateX(Math.PI / 2);
+    head.translate(x, 0.9, halfL + 0.012);
+    lamps.push(colorize(head, 0xfff3d6));
+    lamps.push(colorize(box(0.1, 0.2, 0.03, x * 1.3, 0.95, -halfL - 0.004), 0xff2a18));
+    trim.push(colorize(head.clone().translate(0, 0, -0.004), 0x8f8a7c));
+    trim.push(colorize(box(0.1, 0.2, 0.03, x * 1.3, 0.95, -halfL - 0.001), 0x5a1810));
+    const ring = new THREE.TorusGeometry(0.105, 0.014, 4, 14);
+    ring.translate(x, 0.9, halfL + 0.025);
+    trim.push(colorize(ring, CHROME));
+  }
+  const snow = [box(WIDTH - 0.1, 0.07, LENGTH - 1.1, 0, 1.98, -0.3)];
+  const merge = (list) => mergeGeometries(list.map(plain), false);
+  return { body, glass: merge(glassParts), trim: merge(trim), lamps: merge(lamps), snow: merge(snow), wheel, eye: VAN_EYE, lift: 0.1 };
+}
+
 /* ---------------------------------------------------------- the car */
 
 const _dummy = new THREE.Object3D();
@@ -261,6 +364,8 @@ export class Car {
   constructor(world, parts, mats, { x, z, heading, color, id }) {
     this.world = world;
     this.id = id;
+    /** Driver's eye in car-local space. */
+    this.eye = parts.eye ?? DRIVER_EYE;
     this.x = x;
     this.z = z;
     this.y = 0;
@@ -272,6 +377,9 @@ export class Car {
     this.spin = 0;
     this.pitch = 0;
     this.roll = 0;
+    // tilt of the ground under the wheels (nose down / right side up > 0)
+    this.slopePitch = 0;
+    this.slopeRoll = 0;
     this.throttle = 0;
     this.driven = false;
     this.impact = 0;
@@ -416,6 +524,8 @@ export class Car {
       if (vLong > 0.4) a = -CAR.brake * (0.5 + 0.5 * grip);
       else a = -CAR.accel * 0.7 * clamp(1 + vLong / CAR.reverseSpeed, 0, 1);
     }
+    // a hill pulls the car back down (never enough to roll a parked one)
+    if (Math.abs(vLong) > 0.3 || input.throttle || input.brake) vLong += 9.8 * Math.sin(this.slopePitch) * 0.7 * dt;
     vLong += a * dt;
     // rolling resistance and air drag, never flipping the sign
     // off the throttle the engine holds the car back (engine braking)
@@ -483,6 +593,11 @@ export class Car {
     this.pitch = damp(this.pitch, clamp(-a * 0.006, -0.05, 0.035), 5, dt);
     this.roll = damp(this.roll, clamp(yawRate * vLong * 0.004, -0.06, 0.06), 4, dt);
     this.y = damp(this.y, this.world.heightAt(this.x, this.z), 10, dt);
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
+    const hAt = (lx, lz) => this.world.heightAt(this.x + fx * lz + Math.cos(heading) * lx, this.z + fz * lz - Math.sin(heading) * lx);
+    this.slopePitch = damp(this.slopePitch, Math.atan2(hAt(0, -WHEELBASE / 2) - hAt(0, WHEELBASE / 2), WHEELBASE), 9, dt);
+    this.slopeRoll = damp(this.slopeRoll, Math.atan2(hAt(0.75, 0) - hAt(-0.75, 0), 1.5), 9, dt);
     this.spin += (this.speed / WHEEL_R) * dt;
     this.updateCollider();
     this.sync();
@@ -490,7 +605,7 @@ export class Car {
 
   sync() {
     this.root.position.set(this.x, this.y, this.z);
-    this.root.rotation.y = this.heading;
+    this.root.rotation.set(this.slopePitch, this.heading, this.slopeRoll, 'YXZ');
     this.body.rotation.set(this.pitch, 0, this.roll);
     for (let i = 0; i < 4; i++) {
       const [x, y, z, front] = this.wheelPos[i];
@@ -518,6 +633,10 @@ const PARKED = [
   // at the curb of the avenue, facing the traffic flow
   { x: 4.75, z: 86, heading: 0, color: 0xc9c2a8, curb: true },
   { x: -4.75, z: -28, heading: Math.PI, color: 0x8c2f28, curb: true },
+  // UAZ vans: on the avenue, in the garage lane, out on the port mole
+  { x: 4.75, z: 62, heading: 0, color: 0x6f7a68, curb: true, van: true },
+  { x: 166, z: 24.6, heading: Math.PI / 2, color: 0xb9b39c, north: true, van: true },
+  { x: 572, z: 50, heading: Math.PI / 2 - 0.3, color: 0x54687a, north: true, van: true },
   ...WEST_CARS,
   ...SOUTH_CARS,
 ];
@@ -525,6 +644,7 @@ const PARKED = [
 export function buildVehicles(ctx) {
   const { world, materials: M } = ctx;
   const parts = sedanParts();
+  const van = vanParts(parts.wheel);
   const mats = {
     glass: new THREE.MeshStandardMaterial({ color: 0x1a2229, roughness: 0.12, metalness: 0.4, transparent: true, opacity: 0.82 }),
     trim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.48, metalness: 0.35 }),
@@ -541,7 +661,7 @@ export function buildVehicles(ctx) {
       world.colliders.push(rect);
       if (!spec.north && !spec.west && !spec.south) ctx.addLegacyGhostRect(rect.minX, rect.maxX, rect.minZ, rect.maxZ);
     }
-    const car = new Car(world, parts, mats, { ...spec, id: i });
+    const car = new Car(world, spec.van ? van : parts, mats, { ...spec, id: i });
     world.group.add(car.root);
     ctx.seasonable('winter', car.snow);
     return car;

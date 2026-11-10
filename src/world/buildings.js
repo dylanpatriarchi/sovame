@@ -738,16 +738,7 @@ export function buildBuildings(ctx) {
     bake(snowParts, M.snow, 'winter');
     ctx.addColliderRect(Math.min(x0, x1) - 0.3, Math.max(x0, x1) + 0.3, Math.min(z0, z1) - 0.3, Math.max(z0, z1) + 0.3, true);
   };
-  panelFenceMerged(-80, 176, -14, 176);
-  panelFenceMerged(14, 176, 80, 176);
-  // the western cluster's limits: its own edge, and the south and north
-  // lines carried on westward
-  panelFenceMerged(-236, -196, -236, 176);
-  // the southern quarter's limits: its own edge and the east line carried down
-  panelFenceMerged(-236, -196, 104, -196);
-  panelFenceMerged(104, -196, 104, -70);
-  panelFenceMerged(-236, 176, -80, 176);
-  panelFenceMerged(104, 70, 104, 176);
+  // the outer fence runs are gone: nothing stops you leaving town
   // ghosts of the removed z = 104 fence runs: the historic scatter passes
   // still see them, the player does not
   ctx.addLegacyGhostRect(-70.3, -13.7, 103.7, 104.3);
@@ -835,7 +826,8 @@ export function buildBuildings(ctx) {
     mesh.rotation.y = ring.float(0, TAU) * 0.2;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
-    world.group.add(mesh);
+    // the painted skyline stood where the tundra now really is
+    mesh.visible = false;
     skylineBoxes.push(mesh);
   }
   // the northern cluster (playable up to z = 180) now occupies space the
@@ -896,9 +888,8 @@ export function buildBuildings(ctx) {
       light.intensity = on ? 6 : 0;
     });
   };
-  factory(-210, -268, 46);
-  factory(168, -214, 52);
-  factory(150, 190, 38);
+  // the fake far-off factories are gone: the real plant stands by the port
+  void factory;
 
   // water tower
   {
@@ -914,6 +905,6 @@ export function buildBuildings(ctx) {
     tower.add(cap);
     // beyond the western cluster now (it used to stand where W7 is)
     tower.position.set(-272, 0, 150);
-    world.group.add(tower);
+    void tower;
   }
 }

@@ -122,7 +122,7 @@ async function boot() {
   // every entrance door of every block opens: the three furnished
   // stairwells answer for all of them (the one behind its own door, the
   // others picked by a stable hash) and remember which door you came in by
-  for (const door of allEntrances()) {
+  for (const door of world.interiors.length ? allEntrances() : []) {
     const own = world.interiors.find((it) => Math.hypot(it.doorOut.x - door.pad.x, it.doorOut.z - door.pad.z) < 0.1);
     const hash = Math.abs(Math.round(door.x * 7.3 + door.z * 13.1));
     const interior = own ?? world.interiors[hash % world.interiors.length];
@@ -241,8 +241,20 @@ async function boot() {
       y: spot.y,
       radius: spot.radius,
       available: () => smoke.available(spot),
-      prompt: () => 'F — have a smoke',
+      prompt: () => (spot.indoor ? 'F — have a smoke' : 'F — have a smoke · G — tea from the thermos'),
       onUse: () => startSmoke(spot),
+    });
+    if (spot.indoor) continue;
+    world.interactables.push({
+      id: `${spot.id}:tea`,
+      key: 'KeyG',
+      x: spot.x,
+      z: spot.z,
+      y: spot.y,
+      radius: spot.radius,
+      available: () => smoke.available(spot, 'tea'),
+      prompt: () => 'F — have a smoke · G — tea from the thermos',
+      onUse: () => startSmoke(spot, 'tea'),
     });
   }
   // every parked car: E to get in (the prompt follows the car around)
@@ -484,7 +496,7 @@ async function boot() {
   }
 
   /** Sits down (fade) or stays standing, then hands the view to the sequence. */
-  function startSmoke(spot) {
+  function startSmoke(spot, mode = 'smoke') {
     if (state.transitioning || state.smoking) return;
     const begin = () => {
       const seat = spot.seat;
@@ -494,7 +506,7 @@ async function boot() {
       if (player.eyeOverride !== null) player.eye = player.eyeOverride;
       player.enabled = false;
       state.smoking = true;
-      smoke.start(spot);
+      smoke.start(spot, mode);
       lastPrompt = null;
       ui.setPrompt(null);
     };
@@ -587,11 +599,11 @@ async function boot() {
       }
       return;
     }
-    if ((event.code === 'KeyE' || event.code === 'KeyF') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
+    if ((event.code === 'KeyE' || event.code === 'KeyF' || event.code === 'KeyG') && state.mode === 'playing' && !state.transitioning && !state.smoking) {
       nearestInteractable(event.code)?.onUse();
     }
     // F again cuts the break short
-    if (event.code === 'KeyF' && state.mode === 'playing' && state.smoking && !state.transitioning && smoke.t > 0.3) endSmoke();
+    if ((event.code === 'KeyF' || event.code === 'KeyG') && state.mode === 'playing' && state.smoking && !state.transitioning && smoke.t > 0.3) endSmoke();
     if (event.code === 'Escape' && state.mode === 'playing') {
       // the browser exits pointer lock: the pause comes from onLockChange
       pause();
@@ -673,7 +685,7 @@ async function boot() {
     }
     const viewCam = windowViews.update(camera);
     env.update(dt, state.elapsed, viewCam ?? camera);
-    world.update(dt, state.elapsed);
+    world.update(dt, state.elapsed, viewCam ?? camera);
     world.people?.update(dt, state.elapsed, viewCam?.position ?? player.position, env.temperature);
     sound.updateWind(env.wind.gust);
     // inside a flat the music comes from the kitchen radio
