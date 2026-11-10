@@ -2,23 +2,6 @@
 import { DEG } from './util.js';
 
 export const WORLD = {
-  /** Half side of the playable area (m) — west, east and south edges. */
-  bounds: 108,
-  /** North edge of the playable area: the district keeps growing past the
-   * old fence line at z = 104 up to the second residential cluster. */
-  boundsNorth: 180,
-  /** West edge: the third cluster on ул. Строителей reaches out to here. */
-  boundsWest: 236,
-  /** ул. Строителей, the western cluster's north–south street (x). */
-  westStreetX: -170,
-  /** South edge: the school quarter on ул. Школьная reaches down to here. */
-  boundsSouth: 196,
-  /** ул. Школьная, the east–west street of the southern quarter (z). */
-  southStreetZ: -152,
-  groundSize: 700,
-  /** How far out you can walk, past the district's own edges (m, half side):
-   * the streets and blocks beyond them, short of the ground's end (350). */
-  limit: 330,
   roadHalfWidth: 6,
   sidewalkWidth: 3.2,
   crossroadZ: 44,
@@ -39,7 +22,7 @@ export const PLAYER = {
   jumpSpeed: 5.0,
   gravity: 15.5,
   stepDistance: 0.78,
-  spawn: { x: 7.2, z: 19.5 },
+  spawn: { x: 7.6, z: 8 },
   spawnYaw: 0.08,
 };
 
@@ -88,7 +71,7 @@ export const TIME_PRESETS = [
     baseTemp: -3,
     sky: { zenith: 0x2a3c5c, horizon: 0x8a90a8, ground: 0x3d434b },
     sun: { color: 0x9db0d0, intensity: 0.2, elevation: -5, azimuth: 250, glow: 0.85 },
-    hemi: { sky: 0x4b5c74, ground: 0x2b3037, intensity: 0.9 },
+    hemi: { sky: 0x6c84ae, ground: 0x3a4454, intensity: 0.9 },
     fog: { color: 0x6b7285, density: 0.0124 },
     lamp: 1,
     windowLit: 0.85,
@@ -116,22 +99,6 @@ export const TIME_PRESETS = [
 ];
 
 export const SEASONS = {
-  autumn: {
-    id: 'autumn',
-    label: 'Late autumn',
-    hint: 'Leaves, mud and first frost',
-    tempShift: 4,
-    snowAmount: 0.3,
-    leavesAmount: 1,
-    foliage: 1,
-    mounds: 0.28,
-    litter: 1,
-    footprint: 0.4,
-    fogMul: 1.0,
-    wind: 0.85,
-    groundTex: 'autumn',
-    snowEdge: 0.35,
-  },
   winter: {
     id: 'winter',
     label: 'Winter',
@@ -148,23 +115,6 @@ export const SEASONS = {
     groundTex: 'winter',
     snowEdge: 1,
   },
-};
-
-/**
- * What each quality preset spends. "high" is the reference look; the lower
- * presets trade resolution, bloom detail, lamp lights, snowflakes and the
- * refresh of the window views for frame time.
- *  - pixelRatio: cap on devicePixelRatio; minPixelRatio: the floor dynamic
- *    resolution may drop to when frames run over budget
- *  - bloomScale: resolution of the bloom chain relative to the frame (0 = off)
- *  - lampLights: size of the street-lamp PointLight pool
- *  - snow: share of the snow/leaf particles
- *  - windowScale / windowEvery: window-view resolution and refresh (frames)
- */
-export const QUALITY = {
-  high: { pixelRatio: 1.8, minPixelRatio: 1, bloomScale: 1, lampLights: 11, snow: 1, windowScale: 0.6, windowEvery: 1 },
-  medium: { pixelRatio: 1.2, minPixelRatio: 0.8, bloomScale: 0.5, lampLights: 6, snow: 0.55, windowScale: 0.45, windowEvery: 2 },
-  low: { pixelRatio: 1, minPixelRatio: 0.65, bloomScale: 0, lampLights: 0, snow: 0.4, windowScale: 0.35, windowEvery: 2 },
 };
 
 export const SETTINGS_DEFAULTS = {

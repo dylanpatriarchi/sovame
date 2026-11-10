@@ -2,29 +2,18 @@
 // captioned zones and updating of ambient animations.
 import * as THREE from 'three';
 import { Rng } from '../util.js';
-import { WORLD, SEASONS } from '../config.js';
+import { SEASONS } from '../config.js';
 import * as TX from '../textures.js';
-import { buildTerrain } from './terrain.js';
-import { buildBuildings } from './buildings.js';
-import { buildIcicles } from './icicles.js';
-import { buildProps } from './props.js';
-import { buildVegetation } from './vegetation.js';
+import { buildStreets } from './streets.js';
+import { buildBlocks } from './blocks.js';
+import { buildCrows } from './crows.js';
 import { buildPeople } from './people.js';
-import { buildInteriors } from './interiors.js';
-import { buildFlats } from './flats.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
-import { batchStatic } from './batch.js';
-import { buildTraffic } from './traffic.js';
-import { buildBusStops } from './busstops.js';
-import { buildDog } from './dog.js';
-import { buildPigeons } from './pigeons.js';
-import { buildCats } from './cats.js';
-import { buildHighway, openRoad, highwaySurface } from './highway.js';
-import { buildEast, inEastSector, nearEastSector } from './east.js';
-import { buildEdges } from './edges.js';
-import { buildPort, openPort, portSurface } from './port.js';
-import { buildYardDogs } from './yarddogs.js';
+import { landHeight } from './land.js';
+import { buildPiles } from './piles.js';
+import { buildRoads } from './roads.js';
+import { buildArctic } from './arctic.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -32,55 +21,17 @@ export class World {
     this.quality = quality;
     this.group = new THREE.Group();
     this.group.name = 'world';
-    // small props of the far northern cluster: hidden while the camera is
-    // in the historic district, where they would only cost draw calls
-    // (sub-pixel and fog-shrouded at that distance anyway)
-    this.farDetails = new THREE.Group();
-    this.farDetails.name = 'far-north-details';
-    this.group.add(this.farDetails);
-    // same idea for the western cluster on ул. Строителей
-    this.westDetails = new THREE.Group();
-    this.westDetails.name = 'far-west-details';
-    this.group.add(this.westDetails);
-    this.southDetails = new THREE.Group();
-    this.southDetails.name = 'far-south-details';
-    this.group.add(this.southDetails);
-    // and the steppe highway, out past the east fence
-    this.highwayDetails = new THREE.Group();
-    this.highwayDetails.name = 'highway-details';
-    this.group.add(this.highwayDetails);
-    // and the private sector on ул. Таёжная, off the highway
-    this.portDetails = new THREE.Group();
-    this.portDetails.name = 'port-details';
-    this.group.add(this.portDetails);
-    this.eastDetails = new THREE.Group();
-    this.eastDetails.name = 'east-details';
-    this.group.add(this.eastDetails);
     this.rng = new Rng(20260119);
     this.colliders = [];
-    // the world as it stood before the northern expansion: colliders and
-    // heights of the historic district, used by the legacy scatter passes
-    // (mounds, litter, tree relocation) so their seeded placement does not
-    // drift when the playable edge moves
-    this.legacyColliders = [];
-    this.lateColliders = [];
-    this.legacyHeightRects = [];
     this.heightRects = [];
     this.surfaceRects = [];
     this.zones = [];
-    this.autumnOnly = [];
-    this.winterOnly = [];
     this.windowMats = [];
     this.tvMats = [];
     this.roofMats = [];
-    this.roadMats = [];
-    // trampled paths: packed snow in winter, beaten earth in autumn
-    this.pathMats = [];
     this.posterMats = [];
-    this.lamps = [];
     this.updaters = [];
     this.points = {};
-    this.interiors = [];
     this.interactables = [];
 
     this.initMaterials();
@@ -89,59 +40,28 @@ export class World {
   }
 
   /**
-   * Builds the world in stages (lets the UI show progress).
-   * Buildings come first because they register the colliders used by the others.
+   * Builds the world in stages (lets the UI show progress). The walls come
+   * first: everything after them asks the world what is already standing.
    */
   async build(onProgress) {
     const stages = [
       [
         'Apartment blocks and courtyards',
         () => {
-          buildBuildings(this.ctx);
-          buildIcicles(this.ctx);
+          buildBlocks(this.ctx);
           buildEntrances(this.ctx);
+          buildPiles(this.ctx);
           addFacadeLift(this);
         },
       ],
-      [
-        'Roads, snow and paths',
-        () => {
-          buildTerrain(this.ctx);
-          buildEdges(this.ctx);
-        },
-      ],
-      [
-        'District props',
-        () => {
-          buildProps(this.ctx);
-          buildVehicles(this.ctx);
-          buildTraffic(this.ctx);
-          buildDog(this.ctx);
-          buildPigeons(this.ctx);
-          buildCats(this.ctx);
-        },
-      ],
-      // routes are validated lazily on the first update, once the trees
-      // planted by the next stage have registered their colliders too
-      ['Passers-by', () => buildPeople(this.ctx)],
-      [
-        'Trees, bushes and crows',
-        () => {
-          buildVegetation(this.ctx);
-          buildBusStops(this.ctx);
-          buildHighway(this.ctx);
-          buildPort(this.ctx);
-          buildEast(this.ctx);
-          buildYardDogs(this.ctx);
-        },
-      ],
-      [
-        'Warm stairwells and flats',
-        () => {
-          buildInteriors(this.ctx);
-          buildFlats(this.ctx);
-        },
-      ],
+      ['Streets and snow', () => buildStreets(this.ctx)],
+      ['Roads out of town', () => buildRoads(this.ctx)],
+      ['Plant, port and street lamps', () => buildArctic(this.ctx)],
+      ['Parked cars', () => buildVehicles(this.ctx)],
+      ['Passers-by and crows', () => {
+        buildPeople(this.ctx);
+        buildCrows(this.ctx);
+      }],
     ];
     for (let i = 0; i < stages.length; i++) {
       onProgress?.(i / stages.length, stages[i][0]);
@@ -149,18 +69,6 @@ export class World {
       await new Promise((resolve) => setTimeout(resolve, 24));
       stages[i][1]();
     }
-    this.colliders.push(...this.lateColliders);
-    // the private sector opens with its fences up (the scatter never walked there)
-    this.eastOpen = true;
-    // and so does the ground past the old edges
-    this.outerOpen = true;
-    // the parked cars' historic footprints only shaped the scatter passes:
-    // from now on each car's own (moving) collider stands for it
-    this.colliders = this.colliders.filter((c) => !c.buildOnly);
-    for (const car of this.cars ?? []) car.updateCollider();
-    // everything that never moves becomes a handful of meshes per cell
-    // (?nobatch in the URL keeps the meshes apart, to compare)
-    if (!new URLSearchParams(globalThis.location?.search ?? '').has('nobatch')) this.batchReport = batchStatic(this);
     onProgress?.(1, 'Ready');
   }
 
@@ -199,7 +107,6 @@ export class World {
   initTextures() {
     this.textures = {
       groundWinter: TX.makeGroundTexture('winter'),
-      groundAutumn: TX.makeGroundTexture('autumn'),
       asphalt: TX.makeAsphaltTexture({ dashes: true }),
       asphaltPlain: TX.makeAsphaltTexture({ dashes: false }),
       asphaltWinter: TX.makeAsphaltTexture({ dashes: true, winter: true }),
@@ -210,34 +117,28 @@ export class World {
       asphaltPlainRoughWinter: TX.makeAsphaltRoughnessTexture({ dashes: false, winter: true }),
       sidewalk: TX.makeSidewalkTexture(),
       path: TX.makeTrampledSnowTexture(),
-      pathAutumn: TX.makeTrampledEarthTexture(),
       snowEdge: TX.makeSnowEdgeTexture(),
       ice: TX.makeIceTexture(),
       roofWinter: TX.makeRoofTexture(true),
-      roofAutumn: TX.makeRoofTexture(false),
       snowLedge: TX.makeSnowLedgeTexture(),
       tvGlow: TX.makeTvGlowTexture(),
       rust: TX.makeRustTexture(),
       corrugated: TX.makeCorrugatedTexture(),
-      birch: TX.makeBirchTexture(),
       bark: TX.makeBarkTexture(),
       brick: TX.makeBrickTexture(),
       metalScratch: TX.makeMetalTexture(),
       manhole: TX.makeManholeTexture(),
     };
-    this.textures.birch.repeat.set(1, 3);
     this.textures.bark.repeat.set(1, 2);
     this.textures.brick.repeat.set(3, 6);
     this.textures.corrugated.repeat.set(1, 1);
     this.textures.roofWinter.repeat.set(3, 3);
-    this.textures.roofAutumn.repeat.set(3, 3);
     this.textures.metalScratch.repeat.set(1, 1);
 
     this.materials.rust = new THREE.MeshStandardMaterial({ map: this.textures.rust, roughness: 0.9, metalness: 0.25 });
     this.materials.corrugated = new THREE.MeshStandardMaterial({ map: this.textures.corrugated, roughness: 0.72, metalness: 0.4 });
     this.materials.brick = new THREE.MeshStandardMaterial({ map: this.textures.brick, roughness: 0.95 });
     this.materials.metalTexture = new THREE.MeshStandardMaterial({ map: this.textures.metalScratch, roughness: 0.6, metalness: 0.5 });
-    this.materials.birch = new THREE.MeshStandardMaterial({ map: this.textures.birch, roughness: 0.9 });
     this.materials.bark = new THREE.MeshStandardMaterial({ map: this.textures.bark, roughness: 0.95 });
   }
 
@@ -254,61 +155,20 @@ export class World {
       season: this.season,
       SEASONS,
       TEXTURES: TX,
-      addColliderRect(x0, x1, z0, z1, north = false) {
-        const rect = { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
-        self.colliders.push(rect);
-        if (!north) self.legacyColliders.push(rect);
+      addColliderRect(x0, x1, z0, z1) {
+        self.colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
       },
-      /** A collider that only goes up once the world is built: the seeded
-       * scatter passes never see it, so the trees stay where they were. */
-      addLateColliderRect(x0, x1, z0, z1) {
-        self.lateColliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
+      addBoxCollider(cx, cz, w, d, pad = 0.1) {
+        this.addColliderRect(cx - w / 2 - pad, cx + w / 2 + pad, cz - d / 2 - pad, cz + d / 2 + pad);
       },
-      /** A late collider for a box turned by `rotY` about its centre: its
-       * bounding rect, tested against the turned box itself. */
-      addLateOrientedBox(cx, cz, w, d, rotY) {
-        const cos = Math.cos(rotY);
-        const sin = Math.sin(rotY);
-        const ex = (Math.abs(cos) * w + Math.abs(sin) * d) / 2;
-        const ez = (Math.abs(sin) * w + Math.abs(cos) * d) / 2;
-        const shape = {
-          overlapsCircle(x, z, r) {
-            const dx = x - cx;
-            const dz = z - cz;
-            const lx = dx * cos - dz * sin;
-            const lz = dx * sin + dz * cos;
-            const qx = lx - Math.max(-w / 2, Math.min(lx, w / 2));
-            const qz = lz - Math.max(-d / 2, Math.min(lz, d / 2));
-            return qx * qx + qz * qz < r * r;
-          },
-        };
-        self.lateColliders.push({ minX: cx - ex, maxX: cx + ex, minZ: cz - ez, maxZ: cz + ez, shape });
-      },
-      addBoxCollider(cx, cz, w, d, pad = 0.1, north = false) {
-        this.addColliderRect(cx - w / 2 - pad, cx + w / 2 + pad, cz - d / 2 - pad, cz + d / 2 + pad, north);
-      },
-      /** A collider of the pre-expansion district that no longer exists:
-       * keeps the historic scatter math identical without blocking anyone. */
-      addLegacyGhostRect(x0, x1, z0, z1) {
-        self.legacyColliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) });
-      },
-      addHeightRect(x0, x1, z0, z1, h, north = false) {
-        const rect = { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), h };
-        self.heightRects.push(rect);
-        if (!north) self.legacyHeightRects.push(rect);
+      addHeightRect(x0, x1, z0, z1, h) {
+        self.heightRects.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), h });
       },
       addSurfaceRect(x0, x1, z0, z1, type) {
         self.surfaceRects.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), type });
       },
       addZone(name, sub, x0, x1, z0, z1) {
         self.zones.push({ name, sub, x0: Math.min(x0, x1), x1: Math.max(x0, x1), z0: Math.min(z0, z1), z1: Math.max(z0, z1), area: Math.abs((x1 - x0) * (z1 - z0)) });
-      },
-      /** Object visible only in the given season. */
-      seasonable(season, object) {
-        if (season === 'autumn') self.autumnOnly.push(object);
-        else self.winterOnly.push(object);
-        object.visible = self.season === season;
-        return object;
       },
       addUpdater(fn) {
         self.updaters.push(fn);
@@ -334,7 +194,7 @@ export class World {
         mesh.position.set(x, y, z);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        parent ? parent.add(mesh) : self.group.add(mesh);
+        self.group.add(mesh);
         return mesh;
       },
     };
@@ -347,11 +207,11 @@ export class World {
     for (const r of this.heightRects) {
       if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ && r.h > h) h = r.h;
     }
-    return h;
+    // kerbs and steps stand on the town pad; past it the tundra rolls away
+    return h + landHeight(x, z);
   }
 
   surfaceAt(x, z) {
-    if (x > WORLD.bounds) return portSurface(x, z) ?? highwaySurface(x, z);
     let type = 'snow';
     for (const r of this.surfaceRects) {
       if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) type = r.type;
@@ -368,127 +228,36 @@ export class World {
     return best;
   }
 
-  /** The stairwell or flat interior containing the point, if any. */
-  interiorAt(x, z) {
-    for (const it of this.flats ?? []) {
-      const b = it.bounds;
-      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
-    }
-    for (const it of this.interiors) {
-      const b = it.bounds;
-      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
-    }
-    return null;
-  }
-
   /** Checks whether a circle of radius r collides with the environment. */
   collides(x, z, r) {
-    // interiors sit far outside the district: their own walls bound the
-    // player there, the world edge only applies outdoors
-    // past the east edge only the highway's corridor and the private sector
-    // off it are open ground
-    // once the world is built, the ground beyond is open out to WORLD.limit
-    // (the seeded scatter passes ran inside the old edges, and still do)
-    if (!this.interiorAt(x, z) && (x > WORLD.bounds || x < -WORLD.boundsWest || z < -WORLD.boundsSouth || z > WORLD.boundsNorth)) {
-      // (the private sector keeps its own rules: lanes and yards open, its
-      // houses and its perimeter fence not)
-      const outer = this.outerOpen && Math.max(Math.abs(x), Math.abs(z)) + r <= WORLD.limit && !nearEastSector(x, z, r + 0.6);
-      if (!outer && (x <= WORLD.bounds || !(openRoad(x, z, r) || openPort(x, z, r) || (this.eastOpen && inEastSector(x, z, r))))) return true;
-    }
+    // no world edge: past the last block the tundra goes on forever
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
       const dx = x - cx;
       const dz = z - cz;
       // a car's rect is only its bounding box: test the oriented body
-      if (dx * dx + dz * dz < r * r && (!c.car || c.car.overlapsCircle(x, z, r)) && (!c.shape || c.shape.overlapsCircle(x, z, r))) return true;
+      if (dx * dx + dz * dz < r * r && (!c.car || c.car.overlapsCircle(x, z, r))) return true;
     }
     return false;
-  }
-
-  /**
-   * A vehicle that moved onto someone (a car still braking, a bus pulling
-   * over) would otherwise leave them inside its body, where every step
-   * collides: the nearest free spot just clear of it, or null if not caught.
-   */
-  escapeVehicles(x, z, r) {
-    for (const c of this.colliders) {
-      if (!c.car?.escapes || !c.car.overlapsCircle(x, z, r)) continue;
-      for (const spot of c.car.escapes(x, z, r)) if (!this.collides(spot.x, spot.z, r)) return spot;
-    }
-    return null;
-  }
-
-  /** Whether the point is out on the steppe highway (open road, higher speeds). */
-  onHighway(x, z) {
-    return x > WORLD.bounds + 4 && (openRoad(x, z) || openPort(x, z));
-  }
-
-  /** Same check against the pre-expansion district (legacy scatter passes). */
-  collidesHistoric(x, z, r) {
-    if (Math.abs(x) > WORLD.bounds || Math.abs(z) > WORLD.bounds) return true;
-    for (const c of this.legacyColliders) {
-      const cx = Math.max(c.minX, Math.min(x, c.maxX));
-      const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
-      const dx = x - cx;
-      const dz = z - cz;
-      if (dx * dx + dz * dz < r * r) return true;
-    }
-    return false;
-  }
-
-  /** Historic height lookup (sidewalks as they were before the expansion). */
-  heightAtHistoric(x, z) {
-    let h = 0;
-    for (const r of this.legacyHeightRects) {
-      if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ && r.h > h) h = r.h;
-    }
-    return h;
   }
 
   /* ---------------------------------------------------------- seasons/lights */
 
+  /** There is one season. Kept so the settings code has something to call. */
   setSeason(key) {
     this.season = key;
-    const s = SEASONS[key];
-    const gm = this.materials.ground;
-    if (gm) {
-      gm.map = key === 'winter' ? this.textures.groundWinter : this.textures.groundAutumn;
-      gm.color.setHex(key === 'winter' ? 0xffffff : 0xf0ece4);
-      gm.needsUpdate = true;
-    }
-    for (const m of this.roofMats) {
-      m.map = key === 'winter' ? this.textures.roofWinter : this.textures.roofAutumn;
-      m.needsUpdate = true;
-    }
-    for (const m of this.pathMats) {
-      m.map = key === 'winter' ? this.textures.path : this.textures.pathAutumn;
-      m.needsUpdate = true;
-    }
-    for (const m of this.roadMats) {
-      m.map = key === 'winter' ? (m.userData.winterTex ?? this.textures.asphaltWinter) : (m.userData.autumnTex ?? this.textures.asphalt);
-      if (m.userData.winterRough) m.roughnessMap = key === 'winter' ? m.userData.winterRough : m.userData.autumnRough;
-      m.needsUpdate = true;
-    }
-    if (this.materials.snowEdge) this.materials.snowEdge.opacity = s.snowEdge;
-    for (const o of this.autumnOnly) o.visible = key === 'autumn';
-    for (const o of this.winterOnly) o.visible = key === 'winter';
-    if (this.snowMounds) this.snowMounds.count = Math.max(1, Math.floor(this.snowMounds.userData.total * s.mounds));
-    if (this.leafLitter) this.leafLitter.count = Math.max(0, Math.floor(this.leafLitter.userData.total * (key === 'autumn' ? 1 : s.litter)));
-    // the northern expansion keeps its own instanced meshes (seeded apart)
-    if (this.snowMoundsNorth) this.snowMoundsNorth.count = Math.max(1, Math.floor(this.snowMoundsNorth.userData.total * s.mounds));
-    if (this.snowMoundsWest) this.snowMoundsWest.count = Math.max(1, Math.floor(this.snowMoundsWest.userData.total * s.mounds));
-    if (this.snowMoundsSouth) this.snowMoundsSouth.count = Math.max(1, Math.floor(this.snowMoundsSouth.userData.total * s.mounds));
-    if (this.leafLitterNorth) this.leafLitterNorth.count = Math.max(0, Math.floor(this.leafLitterNorth.userData.total * (key === 'autumn' ? 1 : s.litter)));
   }
 
   setWindowLit(value) {
+    this.litLevel = value;
     for (const m of this.windowMats) m.emissiveIntensity = value;
   }
 
   /* ---------------------------------------------------------- loop */
 
-  update(dt, elapsed) {
+  update(dt, elapsed, camera) {
     for (const fn of this.updaters) fn(dt, elapsed);
+    if (camera) this.land?.update(camera.position.x, camera.position.z);
   }
 }

@@ -1,16 +1,9 @@
 // Atmosphere: sky, lights, fog, stars, clouds, snow/leaves, smoke, wind.
 import * as THREE from 'three';
 import { clamp, damp, lerp, Rng, smoothstep, TAU } from './util.js';
-import { QUALITY, SEASONS, TIME_PRESETS, WORLD, sunDirection } from './config.js';
+import { SEASONS, TIME_PRESETS, WORLD, sunDirection } from './config.js';
 import { makeLeafTexture, makeSoftCircleTexture, makeSmokeTexture } from './textures.js';
 import { Mist } from './world/mist.js';
-import { OUTDOOR_LIGHT_LAYER } from './world/interiors.js';
-
-/** Street lamps closer than this to the camera get a real PointLight, from a
- * fixed pool (QUALITY[q].lampLights). On "high" the pool holds 11, the most
- * lamps ever within range of a walkable point: every lamp that should be
- * lit is. */
-const LAMP_LIGHT_RANGE = 60;
 
 const SKY_VERT = /* glsl */ `
   varying vec3 vDir;
@@ -45,71 +38,6 @@ const SKY_FRAG = /* glsl */ `
     float band = pow(az, 6.0) * smoothstep(0.3, 0.02, abs(h - 0.02));
     sky += uRemnantColor * band * uRemnant;
     gl_FragColor = vec4(sky, 1.0);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-  }
-`;
-
-/* The overcast: a layer of procedural stratus CLOUD_HEIGHT over the camera,
- * drifting with the wind and thinning out towards the horizon, where the sky
- * dome's own gradient takes over. It is painted on a dome just inside the sky
- * (each view ray carried up to the layer), so like the sky it lies behind
- * everything in the world, the stars and the moon showing through its gaps. */
-const CLOUD_HEIGHT = 210;
-const CLOUD_RADIUS = 1300;
-const CLOUD_WHITE = new THREE.Color(0xffffff);
-const CLOUD_VERT = /* glsl */ `
-  varying vec3 vDir;
-  void main() {
-    vDir = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-const CLOUD_FRAG = /* glsl */ `
-  varying vec3 vDir;
-  uniform vec2 uOffset;
-  uniform vec3 uColor;
-  uniform vec3 uShade;
-  uniform vec3 uSunColor;
-  uniform vec2 uSunXZ;
-  uniform float uSunGlow;
-  uniform float uOpacity;
-  uniform float uCover;
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
-  float fbm(vec2 p) {
-    float v = 0.0;
-    float a = 0.5;
-    for (int i = 0; i < 5; i++) {
-      v += a * noise(p);
-      p = p * 2.03 + vec2(17.3, 9.1);
-      a *= 0.5;
-    }
-    return v;
-  }
-  void main() {
-    vec3 d = normalize(vDir);
-    if (d.y < 0.02) discard;
-    // where the view ray meets the layer
-    vec2 vLocal = d.xz * (${CLOUD_HEIGHT.toFixed(1)} / d.y);
-    float vR = length(vLocal) / ${CLOUD_RADIUS.toFixed(1)};
-    if (vR > 1.0) discard;
-    vec2 vXZ = vLocal + uOffset;
-    vec2 p = vXZ * 0.0032;
-    float n = fbm(p);
-    float detail = fbm(p * 3.1 + 4.7);
-    float cover = smoothstep(uCover - 0.18, uCover + 0.16, n);
-    // heavier, darker bellies where the layer is thickest
-    vec3 col = mix(uColor, uShade, smoothstep(0.5, 0.85, n) * 0.6 + detail * 0.15);
-    // the side facing a low sun catches its light
-    col += uSunColor * uSunGlow * 0.35 * max(dot(normalize(vLocal + 0.001), uSunXZ), 0.0) * (1.0 - cover * 0.5);
-    float fade = 1.0 - smoothstep(0.45, 1.0, vR);
-    gl_FragColor = vec4(col, cover * fade * uOpacity);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -150,13 +78,6 @@ class Weather {
     this.points.frustumCulled = false;
     this.positions = positions;
     scene.add(this.points);
-  }
-
-  dispose() {
-    this.points.removeFromParent();
-    this.points.geometry.dispose();
-    this.points.material.map?.dispose();
-    this.points.material.dispose();
   }
 
   update(dt, t, cam, wind, fall, sizeScale = 1) {
@@ -330,9 +251,7 @@ export class Environment {
     this.scene.add(this.hemi);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 1);
-    // decided by the same rule as every frame from the start, so the shaders
-    // compiled while loading match the ones the first frames need
-    this.sun.castShadow = this.sunCastsShadow();
+    this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(this.quality === 'high' ? 2048 : 1024, this.quality === 'high' ? 2048 : 1024);
     const cam = this.sun.shadow.camera;
     cam.left = -58;
@@ -350,32 +269,6 @@ export class Environment {
 
     this.ambient = new THREE.AmbientLight(0xffffff, 0.08);
     this.scene.add(this.ambient);
-
-    this.lampLights = [];
-    this.lampFlicker = new Float32Array(this.world.lamps.length);
-    this.lampOrder = [];
-    this.buildLampLights();
-  }
-
-  /** The street-lamp light pool. Its size never changes while playing (only
-   * with the quality preset): a varying light count would recompile the
-   * shader of every lit material each time a lamp came into range. */
-  buildLampLights() {
-    const count = (QUALITY[this.quality] ?? QUALITY.high).lampLights;
-    while (this.lampLights.length > count) this.lampLights.pop().removeFromParent();
-    while (this.lampLights.length < count) {
-      const light = new THREE.PointLight(0xff9d3c, 0, 30, 2);
-      light.layers.set(OUTDOOR_LIGHT_LAYER);
-      this.scene.add(light);
-      this.lampLights.push(light);
-    }
-  }
-
-  sunCastsShadow() {
-    // NB: `this.sunIntensity` is never assigned (the value lives in
-    // this.cur.sunIntensity), so this has always been false and the sun has
-    // never cast a shadow. Kept as is: turning shadows on is a visual change.
-    return this.sunIntensity > 0.16 && this.cur.elevation > 2 && this.quality !== 'low';
   }
 
   buildStars() {
@@ -405,6 +298,61 @@ export class Environment {
     this.stars.renderOrder = -9;
     this.scene.add(this.stars);
 
+    // aurora: two folded curtains hanging in the northern sky
+    this.auroraMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uLevel: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uLevel;
+        varying vec2 vUv;
+        void main() {
+          float x = vUv.x;
+          float v = vUv.y;
+          // fine vertical rays drifting along the fold, and slow bright patches
+          float rays = 0.45 + 0.55 * pow(0.5 + 0.5 * sin(x * 210.0 + sin(x * 19.0 + uTime * 0.21) * 5.0 + uTime * 0.5), 2.0);
+          float patches = 0.5 + 0.5 * sin(x * 13.0 - uTime * 0.11 + sin(x * 4.3 + uTime * 0.05) * 2.4);
+          patches = 0.25 + 0.75 * patches * patches;
+          // a sharp lower hem, a long fade upward
+          float shape = smoothstep(0.0, 0.07, v) * pow(1.0 - v, 1.7);
+          float ends = smoothstep(0.0, 0.14, x) * smoothstep(1.0, 0.86, x);
+          vec3 col = mix(vec3(0.16, 1.0, 0.5), vec3(0.55, 0.25, 0.95), smoothstep(0.3, 0.95, v));
+          gl_FragColor = vec4(col * shape * rays * patches * ends * uLevel, 1.0);
+        }`,
+    });
+    this.aurora = new THREE.Group();
+    for (const [radius, base, height, from, to, wobble] of [
+      [700, 150, 330, -1.25, 0.9, 1],
+      [760, 230, 280, -0.5, 1.45, 2.3],
+    ]) {
+      const geo = new THREE.PlaneGeometry(1, 1, 180, 1);
+      const p = geo.attributes.position;
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < p.count; i++) {
+        const u = uv.getX(i);
+        const a = from + (to - from) * u;
+        const r = radius + Math.sin(u * 11 + wobble) * 70 + Math.sin(u * 29 + wobble * 2) * 22;
+        const y = base + Math.sin(u * 6 + wobble) * 45 + uv.getY(i) * height;
+        // azimuth 0 is due north (+z), toward the lighthouse
+        p.setXYZ(i, Math.sin(a) * r, y, Math.cos(a) * r);
+      }
+      const curtain = new THREE.Mesh(geo, this.auroraMat);
+      curtain.frustumCulled = false;
+      curtain.renderOrder = -8;
+      this.aurora.add(curtain);
+    }
+    this.scene.add(this.aurora);
+
     this.moonMat = new THREE.SpriteMaterial({
       map: makeSoftCircleTexture(128, '236,244,255', 1.6),
       color: 0xdfe9ff,
@@ -420,30 +368,19 @@ export class Environment {
   }
 
   buildClouds() {
-    this.cloudOffset = new THREE.Vector2();
-    this.cloudMat = new THREE.ShaderMaterial({
-      vertexShader: CLOUD_VERT,
-      fragmentShader: CLOUD_FRAG,
-      transparent: true,
-      depthWrite: false,
-      fog: false,
-      side: THREE.BackSide,
-      uniforms: {
-        uOffset: { value: new THREE.Vector2() },
-        uColor: { value: new THREE.Color() },
-        uShade: { value: new THREE.Color() },
-        uSunColor: { value: this.cur.sunColor },
-        uSunXZ: { value: new THREE.Vector2(0, 1) },
-        uSunGlow: { value: 0 },
-        uOpacity: { value: 0.6 },
-        uCover: { value: 0.5 },
-      },
-    });
-    // (just inside the sky dome; drawn after it and the stars, before the world)
-    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(860, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), this.cloudMat);
-    this.clouds.frustumCulled = false;
-    this.clouds.renderOrder = -7;
-    this.scene.add(this.clouds);
+    this.clouds = [];
+    const tex = makeSmokeTexture(256);
+    const rng = new Rng(606);
+    for (let i = 0; i < 14; i++) {
+      const mat = new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, fog: false });
+      const sprite = new THREE.Sprite(mat);
+      const s = rng.float(180, 420);
+      sprite.scale.set(s, s * rng.float(0.35, 0.55), 1);
+      sprite.position.set(rng.float(-700, 700), rng.float(130, 220), rng.float(-700, 700));
+      sprite.renderOrder = -7;
+      this.scene.add(sprite);
+      this.clouds.push({ sprite, speed: rng.float(0.4, 1.1) });
+    }
   }
 
   buildMist() {
@@ -451,9 +388,7 @@ export class Environment {
     this.mistColor = new THREE.Color();
   }
 
-  buildWeather() {
-    for (const layer of [...(this.snowLayers ?? []), ...(this.leaf ? [this.leaf] : [])]) layer.dispose();
-    const q = (QUALITY[this.quality] ?? QUALITY.high).snow;
+  buildWeather() {    const q = this.quality === 'high' ? 1 : 0.55;
     this.snowLayers = [
       new Weather(this.scene, 'snow', Math.round(2200 * q), 0.11, { opacity: 0.95, color: 0xf2f7ff }),
       new Weather(this.scene, 'snow', Math.round(1200 * q), 0.2, { opacity: 0.7, color: 0xe8f0ff }),
@@ -472,7 +407,7 @@ export class Environment {
     const tex = makeSmokeTexture(192);
     this.spritePool = [];
     const rng = new Rng(9090);
-    this.smokeAnchor = this.world.points.chimney ? this.world.points.chimney.clone() : new THREE.Vector3(-76, 24.6, -64);
+    this.smokeAnchor = this.world.points.chimney ? this.world.points.chimney.clone() : new THREE.Vector3(161, 60, -109);
     for (let i = 0; i < 26; i++) {
       const mat = new THREE.SpriteMaterial({ map: tex, color: 0x9aa3ad, transparent: true, opacity: 0, depthWrite: false });
       const sprite = new THREE.Sprite(mat);
@@ -492,7 +427,8 @@ export class Environment {
     const season = SEASONS[this.season];
     if (!this.scene.fog) this.scene.fog = new THREE.FogExp2(this.cur.fogColor.getHex(), this.cur.fogDensity * season.fogMul);
     this.scene.fog.color.copy(this.cur.fogColor);
-    this.scene.fog.density = this.cur.fogDensity * season.fogMul;
+    // Arctic air is clear: a haze you see a town through, not a town fog
+    this.scene.fog.density = this.cur.fogDensity * season.fogMul * (this.fogScale ?? 0.13);
   }
 
   /* ------------------------------------------------------------ API */
@@ -520,10 +456,7 @@ export class Environment {
   }
 
   setQuality(q) {
-    if (q === this.quality) return;
     this.quality = q;
-    this.buildLampLights();
-    this.buildWeather();
   }
 
   updateWeatherDensity(animate = true) {
@@ -596,7 +529,7 @@ export class Environment {
     this.sun.intensity = c.sunIntensity;
     // With the sun below the horizon (dusk), shadows cast by a grazing
     // light become a black veil over the whole terrain: they get disabled.
-    this.sun.castShadow = this.sunCastsShadow();
+    this.sun.castShadow = this.sunIntensity > 0.16 && c.elevation > 2 && this.quality !== 'low';
     const dist = 90;
     const px = camera ? Math.round(camera.position.x / 4) * 4 : 0;
     const pz = camera ? Math.round(camera.position.z / 4) * 4 : 0;
@@ -618,28 +551,32 @@ export class Environment {
 
     // stars and moon
     this.starMat.opacity = c.stars;
+    // the aurora wants a dark sky: a hint at blue hour, full at night
+    this.auroraMat.uniforms.uTime.value = t;
+    this.auroraMat.uniforms.uLevel.value = Math.max(0, c.stars - 0.08) ** 1.5 * 1.1 * (1 - this.indoor);
+    this.aurora.visible = c.stars > 0.09;
     this.moonMat.opacity = c.moon * 0.9;
-    // the sky dome, the stars and the moon travel with the camera: out on the
-    // steppe highway it goes further from the district than their radius
-    const ox = camera ? camera.position.x : 0;
-    const oz = camera ? camera.position.z : 0;
-    this.sky.position.set(ox, 0, oz);
-    this.stars.position.set(ox, 0, oz);
-    this.moon.position.set(ox + this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, oz + this.sunDir.z * -780);
+    this.moon.position.set(this.sunDir.x * -780, Math.abs(this.sunDir.y) * 500 + 120, this.sunDir.z * -780);
+    // the sky travels with the camera: the world has no edge to stand at
+    if (camera) {
+      this.sky.position.set(camera.position.x, 0, camera.position.z);
+      this.stars.position.copy(this.sky.position);
+      this.aurora.position.copy(this.sky.position);
+      this.moon.position.x += camera.position.x;
+      this.moon.position.z += camera.position.z;
+    }
 
-    // clouds: the layer rides over the camera, its pattern drifting with the wind
-    this.clouds.position.set(ox, camera ? camera.position.y : 0, oz);
-    this.cloudOffset.x += this.wind.x * dt * 1.6;
-    this.cloudOffset.y += this.wind.z * dt * 1.6;
-    // (the pattern is sampled upwind so that it travels with the wind)
-    this.cloudMat.uniforms.uOffset.value.set(ox - this.cloudOffset.x, oz - this.cloudOffset.y);
-    const cu = this.cloudMat.uniforms;
-    cu.uOpacity.value = c.cloudOpacity;
-    cu.uColor.value.copy(c.horizon).lerp(CLOUD_WHITE, 0.45 - c.stars * 0.2);
-    cu.uShade.value.copy(c.zenith).lerp(c.horizon, 0.4);
-    cu.uSunGlow.value = c.sunGlow;
-    cu.uSunXZ.value.set(this.sunDir.x, this.sunDir.z).normalize();
-    cu.uCover.value = 0.48 - c.stars * 0.04;
+    // clouds
+    for (const cloud of this.clouds) {
+      cloud.sprite.position.x += this.wind.x * cloud.speed * dt * 1.2;
+      cloud.sprite.position.z += this.wind.z * cloud.speed * dt * 1.2;
+      if (cloud.sprite.position.x > 760) cloud.sprite.position.x = -760;
+      if (cloud.sprite.position.x < -760) cloud.sprite.position.x = 760;
+      if (cloud.sprite.position.z > 760) cloud.sprite.position.z = -760;
+      if (cloud.sprite.position.z < -760) cloud.sprite.position.z = 760;
+      cloud.sprite.material.opacity = c.cloudOpacity;
+      cloud.sprite.material.color.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.55);
+    }
 
     // drifting ground mist: density follows the fog preset and season
     const seasonFog = SEASONS[this.season].fogMul;
@@ -647,58 +584,9 @@ export class Environment {
     this.mistColor.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.4);
     this.mist.update(dt, t, this.wind, camera.position, mistDensity, this.mistColor);
 
-    // street lamps and windows
-    const lampWarm = new THREE.Color(0xffb066);
-    const lampDark = new THREE.Color(0x2a2c2c);
-    this.world.lampMats.head.emissiveIntensity = c.lamp * 2.4;
-    this.world.lampMats.glass.color.copy(lampDark).lerp(new THREE.Color(0xfff0d0), clamp(c.lamp * 1.2, 0, 1));
-    // far northern micro-props appear only once the camera walks north of
-    // the historic crossroad (the title dolly never does)
-    if (camera) {
-      this.world.farDetails.visible = camera.position.z > 48;
-      this.world.westDetails.visible = camera.position.x < -64;
-      this.world.southDetails.visible = camera.position.z < -60;
-      this.world.highwayDetails.visible = camera.position.x > 60;
-      this.world.eastDetails.visible = camera.position.x > 60;
-      // (the port stands at the far end of the highway)
-      this.world.portDetails.visible = camera.position.x > 1500;
-    }
-    // only lamps near the camera borrow a real PointLight from the pool,
-    // nearest first; the rest rely on the glow
+    // windows (street lamps follow world.litLevel on their own)
     const camX = camera ? camera.position.x : 0;
     const camZ = camera ? camera.position.z : 0;
-    const order = this.lampOrder;
-    order.length = 0;
-    this.world.lamps.forEach((lamp, i) => {
-      const flicker = 0.94 + 0.06 * Math.sin(t * 7.3 + i * 2.1) + 0.03 * Math.sin(t * 23.1 + i);
-      this.lampFlicker[i] = flicker;
-      lamp.dist2 = (lamp.group.position.x - camX) ** 2 + (lamp.group.position.z - camZ) ** 2;
-      if (lamp.dist2 < LAMP_LIGHT_RANGE * LAMP_LIGHT_RANGE) order.push(i);
-      lamp.glow.material.opacity = c.lamp * 0.5 * flicker;
-      lamp.pool.material.opacity = c.lamp * 0.3 * flicker;
-      lamp.coneMat.opacity = c.lamp * 0.09 * flicker;
-    });
-    if (order.length > this.lampLights.length) order.sort((a, b) => this.world.lamps[a].dist2 - this.world.lamps[b].dist2);
-    this.lampLights.forEach((light, k) => {
-      const i = order[k];
-      if (i === undefined) {
-        light.intensity = 0;
-        return;
-      }
-      light.position.copy(this.world.lamps[i].lightPos);
-      light.intensity = c.lamp * 95 * this.lampFlicker[i];
-    });
-    // the factory beacon light sits on the chimney nearest to the camera
-    if (this.world.beacon) {
-      let best = Infinity;
-      for (const spot of this.world.beacon.spots) {
-        const d = (spot.x - camX) ** 2 + (spot.z - camZ) ** 2;
-        if (d < best) {
-          best = d;
-          this.world.beacon.light.position.copy(spot);
-        }
-      }
-    }
     this.world.setWindowLit(c.windowLit * 0.95);
     // entrance porches follow the street lamps; facades get a faint night lift
     this.world.porches?.update(c.lamp, camX, camZ, this.indoor > 0.5);
@@ -713,28 +601,6 @@ export class Environment {
     // notice boards and posters: slightly backlit when the street lamps turn on
     for (const mat of this.world.posterMats) mat.emissiveIntensity = 0.1 + 0.45 * c.lamp;
     this.ambientLevel = c.lamp;
-
-    // kiosk always lit, brighter in the evening
-    if (this.world.kiosk) {
-      const level = 0.35 + 0.65 * clamp(c.lamp + 0.15, 0, 1);
-      this.world.kiosk.light.intensity = 3 + 9 * level;
-      this.world.kiosk.glow.material.opacity = 0.08 + 0.22 * level;
-      // the same hours the counter keeps (8:00 to 20:00): shut, the tube is off
-      const k = this.world.kiosk;
-      const m = (this.cur.clockMinutes ?? 12 * 60) % 1440;
-      const open = m >= 8 * 60 && m < 20 * 60;
-      const map = open ? k.openTex : k.shutTex;
-      if (map && k.windowMat.map !== map) k.windowMat.map = map;
-      const lit = open ? level : 0.3 * level;
-      k.light.intensity *= open ? 1 : 0.25;
-      k.glow.material.opacity *= open ? 1 : 0.35;
-      // the texture carries the colours: the tint only warms and dims it
-      k.windowMat.color.setRGB(0.3 + 0.75 * lit, 0.28 + 0.62 * lit, 0.24 + 0.42 * lit);
-    }
-    if (this.world.garlandMats) {
-      // the fir lights turn on only when the street lamps are on
-      this.world.garlandLevel = clamp(c.lamp * 1.2, 0, 1);
-    }
 
     // precipitation
     this.snowLayers.forEach((layer) => {

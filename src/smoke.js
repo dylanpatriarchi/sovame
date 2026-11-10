@@ -34,43 +34,8 @@ const ease = (t) => t * t * (3 - 2 * t);
 /** Builds the smoke spot list from world points: bench, landing, bus stop. */
 export function smokeSpots(world) {
   const spots = [];
-  // courtyard bench behind building 12 (sitter faces +z)
-  spots.push({
-    id: 'smoke:bench',
-    x: -27.2,
-    z: -15.2,
-    radius: 1.9,
-    seat: { x: -27.4, z: -15.92, yaw: Math.PI, eyeY: 1.2, pitch: -0.08 },
-    stand: { x: -27.4, z: -14.9, yaw: Math.PI },
-  });
-  // bus stop bench inside the shelter (sitter faces -x, toward the road)
-  const bus = world.points.busStop;
-  if (bus) {
-    spots.push({
-      id: 'smoke:bus',
-      x: bus.x + 0.2,
-      z: bus.z,
-      radius: 2.2,
-      seat: { x: bus.x + 0.86, z: bus.z + 0.4, yaw: Math.PI / 2, eyeY: 1.68, pitch: -0.05 },
-      stand: { x: bus.x - 0.2, z: bus.z + 0.4, yaw: Math.PI / 2 },
-    });
-  }
-  // stairwell landing window, standing (the courtyard stairwell of building 7)
-  const interior = world.interiors.find((i) => i.id === 'b7-court') ?? world.interiors[0];
-  if (interior) {
-    const cx = (interior.bounds.x0 + interior.bounds.x1) / 2;
-    const cz = (interior.bounds.z0 + interior.bounds.z1) / 2;
-    spots.push({
-      id: 'smoke:landing',
-      x: cx,
-      z: cz + 2.6,
-      y: world.heightAt(cx, cz + 2.6), // only on the landing, not from the floor below
-      radius: 2.3,
-      seat: { x: cx + 0.35, z: cz + 2.28, yaw: Math.PI, eyeY: null, pitch: -0.2 },
-      stand: null,
-      indoor: true,
-    });
-  }
+  // every bench in the world: the yards, the bus stop, the lookout, the mole
+  for (const spot of world.spots ?? []) spots.push(spot);
   return spots;
 }
 
@@ -122,16 +87,32 @@ export class Smoke {
       return m;
     };
     // index and middle hold the cigarette straight out; ring and pinky curl
-    finger(0.046, -0.026, -0.008, 0.08);
-    finger(0.05, -0.008, -0.01, 0.1);
-    finger(0.026, 0.01, -0.006, 0.9).position.y = -0.012;
-    finger(0.02, 0.026, -0.004, 1.1).position.y = -0.014;
+    const pinch = [finger(0.046, -0.026, -0.008, 0.08), finger(0.05, -0.008, -0.01, 0.1)];
+    const ring = finger(0.026, 0.01, -0.006, 0.9);
+    ring.position.y = -0.012;
+    const pinky = finger(0.02, 0.026, -0.004, 1.1);
+    pinky.position.y = -0.014;
+    pinch.push(ring, pinky);
     const thumbG = new THREE.CapsuleGeometry(0.0095, 0.034, 3, 8);
     thumbG.rotateX(Math.PI / 2);
     const thumb = new THREE.Mesh(thumbG, skin);
     thumb.position.set(-0.043, -0.008, 0.02);
     thumb.rotation.set(0.2, 0.75, 0);
     hand.add(thumb);
+    pinch.push(thumb);
+    this.pinchFingers = pinch;
+    // the other grip: the mug stands in the palm, fingers cupped up round it
+    this.cupFingers = [205, 250, 295, 340, 115].map((deg, i) => {
+      const a = (deg * Math.PI) / 180;
+      const len = i === 4 ? 0.03 : 0.04;
+      const m = new THREE.Mesh(new THREE.CapsuleGeometry(i === 4 ? 0.0095 : 0.0085, len, 3, 8), skin);
+      m.position.set(-0.004 + Math.cos(a) * 0.045, 0.008 + len / 2, -0.05 + Math.sin(a) * 0.045);
+      // leaning in against the enamel
+      m.rotation.set(-Math.sin(a) * 0.22, 0, Math.cos(a) * 0.22);
+      m.visible = false;
+      hand.add(m);
+      return m;
+    });
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.048, 0.22, 12), sleeve);
     cuff.rotation.x = Math.PI / 2;
     cuff.position.set(0, -0.004, 0.18);
@@ -175,6 +156,35 @@ export class Smoke {
     cig.add(this.emberGlow);
     hand.add(cig);
     this.cig = cig;
+
+    // the other way to pass the time: an enamel mug of tea from the thermos
+    const mug = new THREE.Group();
+    mug.position.set(-0.004, 0.03, -0.05);
+    const enamel = new THREE.MeshStandardMaterial({ color: 0xe8e6de, roughness: 0.35, emissive: 0x1a1a1a });
+    const rim = new THREE.MeshStandardMaterial({ color: 0x27406a, roughness: 0.4 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.034, 0.072, 18, 1, true), enamel);
+    body.material.side = THREE.DoubleSide;
+    mug.add(body);
+    const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.034, 18), enamel);
+    bottom.rotation.x = Math.PI / 2;
+    bottom.position.y = -0.036;
+    mug.add(bottom);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.037, 0.0022, 6, 20), rim);
+    lip.rotation.x = Math.PI / 2;
+    lip.position.y = 0.036;
+    mug.add(lip);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.004, 6, 12, Math.PI), enamel);
+    handle.rotation.z = -Math.PI / 2;
+    handle.position.set(0.037, 0, 0);
+    mug.add(handle);
+    const tea = new THREE.Mesh(new THREE.CircleGeometry(0.035, 18), new THREE.MeshStandardMaterial({ color: 0x4a2410, roughness: 0.15 }));
+    tea.rotation.x = -Math.PI / 2;
+    tea.position.y = 0.024;
+    mug.add(tea);
+    mug.visible = false;
+    hand.add(mug);
+    this.mug = mug;
+    this.tea = tea;
 
     // lighter flame, only for the first second
     this.flame = new THREE.Sprite(
@@ -336,8 +346,8 @@ export class Smoke {
 
   /* --------------------------------------------------------- sequence */
 
-  available(spot) {
-    return !this.active && !(this.cooldowns[spot.id] > 0);
+  available(spot, mode = 'smoke') {
+    return !this.active && !(this.cooldowns[`${spot.id}:${mode}`] > 0);
   }
 
   get running() {
@@ -345,8 +355,13 @@ export class Smoke {
   }
 
   /** Starts the sequence at a spot; the caller has already placed the player. */
-  start(spot) {
+  start(spot, mode = 'smoke') {
     this.active = spot;
+    this.mode = mode;
+    this.cig.visible = mode === 'smoke';
+    this.mug.visible = mode === 'tea';
+    for (const f of this.pinchFingers) f.visible = mode === 'smoke';
+    for (const f of this.cupFingers) f.visible = mode === 'tea';
     this.t = 0;
     this.dragIndex = -1;
     this.exhaled.clear();
@@ -359,7 +374,7 @@ export class Smoke {
   }
 
   stop() {
-    if (this.active) this.cooldowns[this.active.id] = COOLDOWN;
+    if (this.active) this.cooldowns[`${this.active.id}:${this.mode}`] = this.mode === 'tea' ? 20 : COOLDOWN;
     this.active = null;
     this.hand.visible = false;
   }
@@ -405,6 +420,8 @@ export class Smoke {
     // idle sway, a touch of cold-hand tremor
     this.hand.position.x += Math.sin(elapsed * 0.9) * 0.004;
     this.hand.position.y += Math.sin(elapsed * 1.3 + 1) * 0.003 + Math.sin(elapsed * 23) * 0.0004;
+
+    if (this.mode === 'tea') return this.updateTea(dt, elapsed, drag);
 
     // lighter
     const flameK = t > LIGHT_AT && t < LIGHT_AT + 1.2 ? 1 - smoothstep(0.9, 1.2, t - LIGHT_AT) : 0;
@@ -462,6 +479,42 @@ export class Smoke {
 
     // the caller stands the player up and calls stop()
     return t >= DURATION;
+  }
+
+  /** Tea: steam off the mug, a sip at each raise, breath in the cold after. */
+  updateTea(dt, elapsed, drag) {
+    const t = this.t;
+    this.flame.material.opacity = 0;
+    this.skinMat.emissiveIntensity = 0.12;
+    if (drag.index !== this.dragIndex && drag.index >= 0 && drag.k > 0) {
+      this.dragIndex = drag.index;
+      this.sound.inhale?.(0.5);
+    }
+    // the mug empties a little with every sip
+    this.tea.position.y = 0.024 - this.exhaled.size * 0.009;
+    if (drag.released && !this.exhaled.has(drag.index)) {
+      this.exhaled.add(drag.index);
+      this.sound.exhale?.(1.6);
+      this.exhaleT = 0;
+      this.exhaleLeft = 1.3;
+    }
+    if (t < LOWER_AT + 1 && Math.random() < dt * 26) {
+      this.tea.getWorldPosition(this.tmp);
+      this.tmp.x += (Math.random() - 0.5) * 0.04;
+      this.tmp.z += (Math.random() - 0.5) * 0.04;
+      this.tmp2.set((Math.random() - 0.5) * 0.02, 0.1 + Math.random() * 0.06, (Math.random() - 0.5) * 0.02);
+      this.emit(this.tmp, this.tmp2, { life: 1.6 + Math.random(), size0: 0.03, size1: 0.2, alpha: 0.16 });
+    }
+    if (this.exhaleLeft > 0) {
+      this.exhaleT += dt;
+      this.exhaleLeft -= dt;
+      const strength = Math.exp(-this.exhaleT * 2);
+      const mouth = this.tmp.set(0, -0.09, -0.08).applyMatrix4(this.camera.matrixWorld);
+      const dir = this.tmp2.set((Math.random() - 0.5) * 0.2, -0.1 + Math.random() * 0.1, -1).transformDirection(this.camera.matrixWorld);
+      if (Math.random() < strength * dt * 22) this.emit(mouth, dir.multiplyScalar(0.4 + strength * 0.5), { life: 1.8 + Math.random(), size0: 0.05, size1: 0.5, alpha: 0.16 * (0.4 + strength) });
+    }
+    this.updateParticles(dt, elapsed);
+    return t >= DURATION - 4;
   }
 
   /** Jumps the sequence clock (smoke test screenshots). */

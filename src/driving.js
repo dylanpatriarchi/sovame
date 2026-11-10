@@ -3,7 +3,6 @@
 // pavement next to the driver's door.
 import * as THREE from 'three';
 import { clamp, damp } from './util.js';
-import { DRIVER_EYE } from './world/vehicles.js';
 
 const _eye = new THREE.Vector3();
 const _look = new THREE.Vector3();
@@ -106,13 +105,13 @@ export class Driving {
     if (!this.chase) {
       p.yaw = clamp(p.yaw, -1.9, 1.9);
       p.pitch = clamp(p.pitch, -0.7, 0.5);
-      car.toWorld(DRIVER_EYE.x, DRIVER_EYE.y, DRIVER_EYE.z, _eye);
+      car.toWorld(car.eye.x, car.eye.y, car.eye.z, _eye);
       cam.position.copy(_eye);
       cam.position.y += (Math.random() - 0.5) * jitter;
       cam.rotation.set(0, 0, 0);
       cam.rotateY(car.heading + Math.PI + p.yaw);
-      cam.rotateX(p.pitch - car.pitch);
-      cam.rotateZ(-car.roll * 0.6);
+      cam.rotateX(p.pitch - car.pitch - car.slopePitch);
+      cam.rotateZ(-car.roll * 0.6 - car.slopeRoll);
       this.setFov(70, dt);
     } else {
       // chase camera: lags behind the car, orbits with the mouse

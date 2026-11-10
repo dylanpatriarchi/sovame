@@ -1,5 +1,5 @@
 // Interface: settings panels, HUD, zone captions.
-import { SEASONS, TIME_PRESETS } from './config.js';
+import { TIME_PRESETS } from './config.js';
 
 export class UI {
   constructor({ settings, onChange, onStart, onResume, onQuit, sound }) {
@@ -78,27 +78,6 @@ export class UI {
   createFields() {
     const frag = document.createDocumentFragment();
     const slots = {};
-
-    // season
-    {
-      const chips = document.createElement('div');
-      chips.className = 'chips';
-      const buttons = [];
-      for (const key of ['winter', 'autumn']) {
-        const season = SEASONS[key];
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'chip';
-        btn.textContent = season.label;
-        btn.title = season.hint;
-        btn.addEventListener('click', () => this.change('season', key));
-        chips.appendChild(btn);
-        buttons.push({ btn, key });
-      }
-      const { field } = this.createField('Season', chips, '');
-      frag.appendChild(field);
-      slots.season = buttons;
-    }
 
     // time of day
     {
@@ -213,7 +192,6 @@ export class UI {
   sync() {
     const s = this.settings;
     for (const slots of this.controlSets) {
-      for (const { btn, key } of slots.season) btn.setAttribute('aria-pressed', String(s.season === key));
       for (const { btn, key } of slots.time) btn.setAttribute('aria-pressed', String(s.time === key));
       slots.snow.input.value = String(s.snow);
       slots.snow.value.textContent = `${Math.round(s.snow * 100)}%`;

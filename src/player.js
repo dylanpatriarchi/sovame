@@ -54,11 +54,6 @@ export class Player {
     this.fovBase = 68;
     this.fovTarget = 68;
     this.shake = 0;
-    this.onIce = false;
-    this.sliding = false;
-    this.slideT = 0;
-    this.slideSway = 0;
-    this.onSlide = null;
     this.eyeOverride = null; // seated eye height during a smoke break
     this.buildFootprints();
     this.bind();
@@ -109,8 +104,6 @@ export class Player {
   }
 
   placeFootprint(x, z, yaw) {
-    // no snow to mark inside a stairwell: footprints pause indoors
-    if (this.world.interiorAt(x, z)) return;
     const side = this.stepSide;
     this.stepSide *= -1;
     const ox = Math.cos(yaw) * 0.14 * side;
@@ -190,11 +183,7 @@ export class Player {
     const dirX = wish.x * cos + wish.z * sin;
     const dirZ = -wish.x * sin + wish.z * cos;
 
-    // on winter ice the boots hardly grip: speed builds slowly, and a run
-    // carries on into a long slide once you let go
-    this.onIce = this.world.season === 'winter' && this.world.surfaceAt(this.position.x, this.position.z) === 'ice';
-    const grip = !this.onGround ? 0.35 : this.onIce ? (wishLen > 0 ? 0.16 : 0.07) : 1;
-    const accel = PLAYER.accel * grip;
+    const accel = PLAYER.accel * (this.onGround ? 1 : 0.35);
     this.velocity.x = damp(this.velocity.x, dirX * targetSpeed, accel, dt);
     this.velocity.z = damp(this.velocity.z, dirZ * targetSpeed, accel, dt);
 
@@ -208,12 +197,6 @@ export class Player {
 
     // movement with collisions solved separately on the two axes
     const r = PLAYER.radius;
-    // stepped out of the way when a car has come up onto you
-    const out = this.world.escapeVehicles?.(this.position.x, this.position.z, r);
-    if (out) {
-      this.position.x = out.x;
-      this.position.z = out.z;
-    }
     let nx = this.position.x + this.velocity.x * dt;
     if (!this.world.collides(nx, this.position.z, r)) this.position.x = nx;
     else this.velocity.x *= 0.2;
@@ -240,16 +223,7 @@ export class Player {
     const horizontal = Math.hypot(this.velocity.x, this.velocity.z);
     this.speed = horizontal;
     this.moving = horizontal > 0.35;
-    this.sliding = this.onIce && this.onGround && wishLen === 0 && horizontal > 1.2;
-    if (this.sliding) {
-      // no steps while gliding, just the soles hissing on the ice
-      this.slideT -= dt;
-      if (this.slideT <= 0) {
-        this.slideT = 0.45;
-        if (this.onSlide) this.onSlide(horizontal);
-      }
-      this.bob += dt * 1.2;
-    } else if (this.moving) {
+    if (this.moving) {
       this.bob += dt * (this.sprinting ? 12.5 : 8.6);
       this.stepAccumulator += horizontal * dt;
       if (this.stepAccumulator > PLAYER.stepDistance) {
@@ -278,9 +252,7 @@ export class Player {
     cam.rotation.set(0, 0, 0);
     cam.rotateY(this.yaw);
     cam.rotateX(this.pitch);
-    // arms out on a slide: the view sways a little
-    this.slideSway = damp(this.slideSway, this.sliding ? Math.sin(this.bob * 1.7) * 0.025 : 0, 4, dt);
-    cam.rotateZ(Math.sin(this.bob) * 0.008 * bobAmount + this.shake * 0.02 + this.slideSway);
+    cam.rotateZ(Math.sin(this.bob) * 0.008 * bobAmount + this.shake * 0.02);
 
     // dynamic FOV
     this.fovTarget = this.fovBase + (this.sprinting ? 7 : 0) - (this.crouching ? 2 : 0);

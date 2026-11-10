@@ -362,52 +362,6 @@ export function makeTrampledSnowTexture(size = 512) {
   return toTexture(canvas);
 }
 
-/** A beaten earth path across a yard in autumn: packed grey-brown mud,
- * gravel, puddle-dark hollows, footprints and the odd fallen leaf. */
-export function makeTrampledEarthTexture(size = 512) {
-  const rng = new Rng(304);
-  const canvas = makeCanvas(size, size);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#5f574b';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 80; i++) {
-    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(26, 110), `rgba(${rng.int(80, 112)},${rng.int(72, 100)},${rng.int(60, 84)},0.6)`, rng.float(0.12, 0.4));
-  }
-  // damp hollows
-  for (let i = 0; i < 26; i++) {
-    wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(18, 60), 'rgba(40,38,36,0.55)', rng.float(0.15, 0.35));
-  }
-  // gravel
-  for (let i = 0; i < 2600; i++) {
-    const k = rng.int(90, 160);
-    ctx.fillStyle = `rgba(${k},${k - 4},${k - 10},${rng.float(0.3, 0.7)})`;
-    ctx.fillRect(rng.float(0, size), rng.float(0, size), rng.float(1, 3), rng.float(1, 3));
-  }
-  // footprints
-  for (let i = 0; i < 500; i++) {
-    ctx.save();
-    ctx.translate(rng.float(0, size), rng.float(0, size));
-    ctx.rotate(rng.float(0, TAU));
-    ctx.fillStyle = `rgba(38,34,30,${rng.float(0.08, 0.22)})`;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rng.float(3, 6), rng.float(6, 12), 0, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-  }
-  // leaves trodden in
-  for (let i = 0; i < 120; i++) {
-    ctx.fillStyle = rng.pick(['#8a5a22', '#a0702a', '#6e4a22', '#9b4a20']);
-    ctx.save();
-    ctx.translate(rng.float(0, size), rng.float(0, size));
-    ctx.rotate(rng.float(0, TAU));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rng.float(2, 4), rng.float(4, 7), 0, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-  }
-  return toTexture(canvas);
-}
-
 /** Snowy road edge: opaque at the ground, fading toward the road center. */
 export function makeSnowEdgeTexture(size = 256) {
   const rng = new Rng(555);
@@ -672,6 +626,116 @@ function drawEntrance(ctx, x, yTop, cell, floors, opts) {
 }
 
 /**
+ * Paint schemes of the Arctic towns (Anadyr, Pevek, Norilsk, Tiksi): whole
+ * blocks painted in bright bays against the polar night, the ground floor
+ * in a darker tone, the pile caps in road-marking yellow.
+ */
+export const PAINT_SCHEMES = [
+  { id: 'pink', bands: ['#e3a2b3', '#d9d5e2', '#eadf9f', '#e3a2b3', '#d2607b'], accents: ['#bd3152', '#3c6cab'], ground: '#b3435a', pile: '#c8b255', peel: [0.04, 0.16] },
+  { id: 'cream', bands: ['#ebe2b3', '#e2e0dc', '#ebe2b3', '#dbe0e8'], accents: ['#2f68a3', '#bd3248'], ground: '#ad3547', pile: '#c8b255', peel: [0.04, 0.16] },
+  { id: 'yellow', bands: ['#dccb3a', '#dccb3a', '#e4d75e'], accents: ['#eeece2', '#eeece2'], ground: '#d26d59', pile: '#d6c058', peel: [0.03, 0.12] },
+  { id: 'turquoise', bands: ['#5fb4a9', '#dbe4da', '#5fb4a9', '#8ccbbf'], accents: ['#e0873b', '#ece9df'], ground: '#3d8a84', pile: '#c8b255', peel: [0.06, 0.2] },
+  { id: 'red', bands: ['#a3352b', '#a3352b', '#b04538'], accents: ['#e5e0d2', '#e5e0d2'], ground: '#8a2c25', pile: '#b8a559', peel: [0.22, 0.4] },
+  { id: 'pebble', bands: ['#b1ada3', '#b1ada3', '#abadaa'], accents: ['#b1ada3', '#a9a59b'], ground: '#8cbb99', pile: '#d5bd57', peel: [0.08, 0.2] },
+  { id: 'sky', bands: ['#a5c7e2', '#e4eaee', '#a5c7e2'], accents: ['#e4eaee', '#487cb1'], ground: '#6c98c0', pile: '#c8b255', peel: [0.05, 0.18] },
+  { id: 'orange', bands: ['#e59c48', '#ece2c4', '#e59c48', '#dfbf67'], accents: ['#b1482a', '#ece2c4'], ground: '#b4532e', pile: '#c8b255', peel: [0.05, 0.18] },
+];
+
+function hashString(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** The scheme a block is painted in: the same for all four of its walls. */
+export function facadePaint(street, number) {
+  const seed = hashString(`${street}|${number}`);
+  return { seed, scheme: PAINT_SCHEMES[seed % PAINT_SCHEMES.length] };
+}
+
+const BARE_CONCRETE = '#928e85';
+
+/** Paints the bays, stripes and ground floor of a block, then lets the
+ * weather take some of it back off. */
+function paintFacade(ctx, W, H, cells, floors, cell, street, number) {
+  const { seed, scheme } = facadePaint(street, number);
+  const rng = new Rng(seed);
+  ctx.fillStyle = BARE_CONCRETE;
+  ctx.fillRect(0, 0, W, H);
+  // bays: runs of one to three panels in the same colour
+  let k = rng.int(0, scheme.bands.length - 1);
+  for (let c = 0; c < cells; ) {
+    const run = rng.int(1, 3);
+    ctx.fillStyle = scheme.bands[k++ % scheme.bands.length];
+    ctx.fillRect(c * cell, 0, run * cell, H);
+    c += run;
+  }
+  // window-row bars: short runs of accent colour behind the windows
+  if (rng.chance(0.55)) {
+    for (let f = 1; f < floors; f++) {
+      for (let c = 0; c < cells; c++) {
+        if (!rng.chance(0.2)) continue;
+        ctx.fillStyle = scheme.accents[0];
+        ctx.fillRect(c * cell, (floors - 1 - f) * cell + cell * 0.24, cell * rng.int(1, 2), cell * 0.5);
+      }
+    }
+  }
+  // vertical stripes riding the panel joints
+  for (let c = 1; c < cells; c++) {
+    if (!rng.chance(0.34)) continue;
+    ctx.fillStyle = scheme.accents[c % 2];
+    const w = cell * rng.float(0.12, 0.2);
+    ctx.fillRect(c * cell - w / 2, 0, w, H - cell);
+  }
+  // the ground floor wears the darker tone
+  ctx.fillStyle = scheme.ground;
+  ctx.fillRect(0, H - cell, W, cell);
+
+  // peeling: the paint lets go in ragged patches, worst low down and at
+  // the corners, baring the concrete underneath
+  const peel = rng.float(scheme.peel[0], scheme.peel[1]);
+  const patches = Math.round(cells * floors * peel * 5);
+  for (let i = 0; i < patches; i++) {
+    const low = rng.chance(0.45);
+    const px = rng.chance(0.25) ? (rng.chance(0.5) ? rng.float(0, cell * 0.5) : W - rng.float(0, cell * 0.5)) : rng.float(0, W);
+    const py = low ? H - rng.float(0, cell * 1.3) : rng.float(0, H);
+    const size = rng.float(3, 13) * (low ? 1.4 : 1);
+    const bare = rng.chance(0.75) ? BARE_CONCRETE : '#7f7b73';
+    // one ragged island with a few chips flaked off around it; the paint
+    // film casts a hairline shadow along its upper edge
+    const blob = (cx, cy, r) => {
+      const n = rng.int(7, 11);
+      const pts = [];
+      for (let j = 0; j < n; j++) {
+        const a = (j / n) * Math.PI * 2;
+        const rr = r * rng.float(0.45, 1.15);
+        pts.push([cx + Math.cos(a) * rr * 1.25, cy + Math.sin(a) * rr]);
+      }
+      const trace = (dy) => {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1] + dy);
+        for (let j = 1; j < n; j++) ctx.lineTo(pts[j][0], pts[j][1] + dy);
+        ctx.closePath();
+        ctx.fill();
+      };
+      ctx.fillStyle = 'rgba(30,26,22,0.35)';
+      trace(-0.8);
+      ctx.fillStyle = bare;
+      trace(0);
+    };
+    blob(px, py, size);
+    for (let j = 0; j < rng.int(2, 6); j++) blob(px + rng.float(-size, size) * 1.7, py + rng.float(-size, size) * 1.3, size * rng.float(0.12, 0.4));
+  }
+  // pebble-dash: the panels are faced with fine gravel
+  const dots = Math.round((W * H) / 26);
+  for (let i = 0; i < dots; i++) {
+    ctx.fillStyle = rng.chance(0.5) ? 'rgba(255,255,255,0.09)' : 'rgba(20,18,16,0.1)';
+    ctx.fillRect(rng.float(0, W), rng.float(0, H), 1, 1);
+  }
+  return scheme;
+}
+
+/**
  * Facade of a prefab panel building: windows, balconies, entrances,
  * dirt stains, plaques. Returns color map + emissive map.
  */
@@ -691,17 +755,21 @@ export function makeFacadeTextures(spec) {
     number = '12',
     tall = false,
     tvCells = null,
+    // the colour map can be drawn finer than its 64 px cells: everything
+    // below works in cell units, the canvas just has more pixels under it
+    scale = 1,
   } = spec;
 
   const W = cells * cell;
   const H = floors * cell;
-  const map = makeCanvas(W, H);
+  const map = makeCanvas(Math.round(W * scale), Math.round(H * scale));
   const glow = makeCanvas(W, H);
   const ctx = map.getContext('2d');
+  ctx.scale(map.width / W, map.height / H);
   const gctx = glow.getContext('2d');
 
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, W, H);
+  // painted bays over bare concrete (`base`/`plinth` are the old grey look)
+  const scheme = paintFacade(ctx, W, H, cells, floors, cell, street, number);
   gctx.fillStyle = '#000';
   gctx.fillRect(0, 0, W, H);
 
@@ -842,15 +910,20 @@ export function makeFacadeTextures(spec) {
     gctx.fill();
   }
 
-  // plinth
+  // no plinth: the block stands on piles over the permafrost. The gap under
+  // it is dark, with the inner rows of piles just visible (the outer row
+  // and the beam they carry are real geometry, see piles.js)
   const plinthH = cell * 0.34;
-  const pgrad = ctx.createLinearGradient(0, H - plinthH, 0, H);
-  pgrad.addColorStop(0, plinth);
-  pgrad.addColorStop(1, '#6f6d66');
-  ctx.fillStyle = pgrad;
+  ctx.fillStyle = '#0d0f12';
   ctx.fillRect(0, H - plinthH, W, plinthH);
-  ctx.fillStyle = 'rgba(255,255,255,0.16)';
-  ctx.fillRect(0, H - plinthH, W, 2);
+  for (let c = 0; c < cells; c++) {
+    ctx.fillStyle = 'rgba(96,90,66,0.55)';
+    ctx.fillRect((c + 0.5) * cell - cell * 0.06, H - plinthH, cell * 0.12, plinthH);
+  }
+  ctx.fillStyle = scheme.pile;
+  ctx.fillRect(0, H - plinthH, W, plinthH * 0.2);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(0, H - plinthH * 0.8, W, 1.5);
 
   // cornice / parapet
   ctx.fillStyle = 'rgba(255,255,255,0.14)';
@@ -1060,93 +1133,6 @@ export function makeCorrugatedTexture(size = 256) {
   }
   for (let i = 0; i < 40; i++) {
     wrappedBlob(ctx, size, rng.float(0, size), rng.float(0, size), rng.float(8, 46), `rgba(${rng.int(112, 152)},${rng.int(64, 92)},${rng.int(40, 62)},0.55)`, rng.float(0.2, 0.6));
-  }
-  return toTexture(canvas);
-}
-
-/**
- * One ПО-2 concrete fence panel: a smooth frame around a lattice of raised
- * rhombi, lit from the upper left, with rain streaks running down from the
- * top and grime splashed up from the ground. Maps once onto a panel face.
- */
-export function makeFencePanelTexture(w = 256, h = 256) {
-  const rng = new Rng(2302);
-  const canvas = makeCanvas(w, h);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#c9c8c2';
-  ctx.fillRect(0, 0, w, h);
-  const fx = w * 0.07;
-  const fy = h * 0.08;
-  const cols = 6;
-  const rows = 5;
-  const cw = (w - 2 * fx) / cols;
-  const ch = (h - 2 * fy) / rows;
-  const tri = (ax, ay, bx, by, cx, cy, fill) => {
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(bx, by);
-    ctx.lineTo(cx, cy);
-    ctx.closePath();
-    ctx.fill();
-  };
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x0 = fx + c * cw;
-      const y0 = fy + r * ch;
-      const mx = x0 + cw / 2;
-      const my = y0 + ch / 2;
-      // four facets of the pyramid: the two facing up-left catch the light
-      tri(x0, my, mx, y0, mx, my, '#dcdbd5');
-      tri(mx, y0, x0 + cw, my, mx, my, '#cfcec8');
-      tri(x0 + cw, my, mx, y0 + ch, mx, my, '#a3a29b');
-      tri(mx, y0 + ch, x0, my, mx, my, '#b4b3ac');
-    }
-  }
-  // the frame's own edge: a lit top, a shadowed bottom
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(0, 0, w, 3);
-  ctx.fillStyle = 'rgba(0,0,0,0.16)';
-  ctx.fillRect(0, h - 3, w, 3);
-  // rain streaks from the top edge
-  for (let i = 0; i < 26; i++) {
-    const x = rng.float(0, w);
-    const len = rng.float(h * 0.15, h * 0.7);
-    const g = ctx.createLinearGradient(0, 0, 0, len);
-    g.addColorStop(0, `rgba(70,66,58,${rng.float(0.12, 0.3)})`);
-    g.addColorStop(1, 'rgba(70,66,58,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x, 0, rng.float(1.5, 6), len);
-  }
-  // grime splashed up from the ground
-  const grime = ctx.createLinearGradient(0, h, 0, h * 0.72);
-  grime.addColorStop(0, 'rgba(78,72,62,0.45)');
-  grime.addColorStop(1, 'rgba(78,72,62,0)');
-  ctx.fillStyle = grime;
-  ctx.fillRect(0, h * 0.72, w, h * 0.28);
-  for (let i = 0; i < 1400; i++) {
-    ctx.fillStyle = `rgba(${rng.int(60, 120)},${rng.int(60, 116)},${rng.int(54, 108)},${rng.float(0.05, 0.2)})`;
-    ctx.fillRect(rng.float(0, w), rng.float(0, h), rng.float(1, 2.5), rng.float(1, 2.5));
-  }
-  return toTexture(canvas);
-}
-
-/** Birch bark: white with black streaks. */
-export function makeBirchTexture(size = 128) {
-  const rng = new Rng(66);
-  const canvas = makeCanvas(size, size);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#dcdcd4';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 40; i++) {
-    ctx.fillStyle = `rgba(${rng.int(40, 90)},${rng.int(40, 88)},${rng.int(38, 84)},${rng.float(0.35, 0.95)})`;
-    const w = rng.float(6, 34);
-    const h = rng.float(1.5, 5);
-    ctx.fillRect(rng.float(0, size), rng.float(0, size), w, h);
-  }
-  for (let i = 0; i < 600; i++) {
-    ctx.fillStyle = `rgba(${rng.int(120, 190)},${rng.int(120, 190)},${rng.int(116, 184)},${rng.float(0.05, 0.2)})`;
-    ctx.fillRect(rng.float(0, size), rng.float(0, size), 1.5, 1.5);
   }
   return toTexture(canvas);
 }
