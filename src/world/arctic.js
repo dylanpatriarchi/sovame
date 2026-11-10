@@ -58,13 +58,15 @@ function metricUv(geo, w, h, d, tile) {
 
 /** Same dusk lift the facades get: unlit walls keep a little of their own
  * colour instead of dropping to black silhouettes. */
-function liftAtDusk(world, material) {
+function liftAtDusk(world, material, strength = 3.5) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFacadeLift = world.facadeLift;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uFacadeLift;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uFacadeLift * 3.5;');
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uFacadeLift * ${strength.toFixed(1)};`);
   };
+  // three.js shares programs between materials whose hook reads the same
+  material.customProgramCacheKey = () => `dusk-lift-${strength}`;
   return material;
 }
 
@@ -164,6 +166,18 @@ export function buildArctic(ctx) {
       box(lit ? glow : flat, 2.2, 9, 0.2, x - 22 + i * 5.4, 8, z + 12.06, lit ? 0xe0b25e : 0x26303a);
       box(flat, 2.2, 9, 0.2, x - 22 + i * 5.4, 8, z - 12.06, 0x232c36);
     }
+    // the boiler house never sleeps: rows of small lit panes high up, on
+    // the town side too, so the plant reads as a building after dark
+    for (let row = 0; row < 3; row++) {
+      for (let i = 0; i < 7; i++) {
+        if (hash2(i, row, 305) < 0.3) continue;
+        const hot = hash2(i, row, 306) < 0.5 ? 0xe0b25e : 0xbfd0d8;
+        box(glow, 1.5, 1.9, 0.2, x - 1.5 + i * 3.5, 16.5 + row * 2.9, z + 9.06, hot);
+        box(glow, 0.2, 1.9, 1.5, x - 4.06, 16.5 + row * 2.9, z - 11 + i * 3, hot);
+      }
+    }
+    for (let i = 0; i < 4; i++) box(glow, 0.2, 5, 1.8, x - 26.06, 8, z - 8 + i * 5.2, hash2(i, 7, 307) < 0.7 ? 0xe0b25e : 0x26303a);
+    for (let i = 0; i < 5; i++) if (hash2(i, 9, 308) < 0.7) box(glow, 1.4, 1.5, 0.2, x - 21 + i * 3.6, 4.2, z + 20.56, 0xe6c27a);
     // inclined coal gallery from the yard up into the boiler house
     placed(
       () => {
@@ -715,6 +729,8 @@ export function buildArctic(ctx) {
     lampPost(lx, 27, 6.5);
   }
   for (const [lx, lz] of [[166, -78], [206, -78], [232, -120], [160, -124]]) lampPost(lx, lz, 10, 16);
+  // floodlights on the town side of the plant and at the foot of the stacks
+  for (const [lx, lz] of [[164, -70], [150, -92], [146, -106], [186, -70], [226, -70]]) lampPost(lx, lz, 11, 20, lx < 160 ? 1 : 0, lx < 160 ? 0 : -1);
   for (const [lx, lz] of [[176, 147], [224, 147]]) lampPost(lx, lz, 8, 13);
   {
     const [ex, ez] = port.end;
@@ -743,13 +759,13 @@ export function buildArctic(ctx) {
     mesh.frustumCulled = false;
     world.group.add(mesh);
   };
-  add(flat, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 })), 'arctic-flat');
+  add(flat, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 }), 9), 'arctic-flat');
   const tinTex = makeRibTexture();
-  add(tin, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, map: tinTex, color: 0xffffff, roughness: 0.75, metalness: 0.08 })), 'arctic-tin');
+  add(tin, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, map: tinTex, color: 0xffffff, roughness: 0.75, metalness: 0.08 }), 7), 'arctic-tin');
   const brickTex = world.textures.brick.clone();
   brickTex.repeat.set(1, 1);
   brickTex.needsUpdate = true;
-  add(brick, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, map: brickTex, roughness: 0.95 })), 'arctic-brick');
+  add(brick, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, map: brickTex, roughness: 0.95 }), 40), 'arctic-brick');
   add(glow, new THREE.MeshBasicMaterial({ vertexColors: true }), 'arctic-glow');
   world.group.children[world.group.children.length - 1].castShadow = false;
 

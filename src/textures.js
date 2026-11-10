@@ -755,13 +755,17 @@ export function makeFacadeTextures(spec) {
     number = '12',
     tall = false,
     tvCells = null,
+    // the colour map can be drawn finer than its 64 px cells: everything
+    // below works in cell units, the canvas just has more pixels under it
+    scale = 1,
   } = spec;
 
   const W = cells * cell;
   const H = floors * cell;
-  const map = makeCanvas(W, H);
+  const map = makeCanvas(Math.round(W * scale), Math.round(H * scale));
   const glow = makeCanvas(W, H);
   const ctx = map.getContext('2d');
+  ctx.scale(map.width / W, map.height / H);
   const gctx = glow.getContext('2d');
 
   // painted bays over bare concrete (`base`/`plinth` are the old grey look)

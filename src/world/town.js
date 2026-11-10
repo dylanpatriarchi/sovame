@@ -45,6 +45,21 @@ export const DRIVEWAYS = [
   { x0: -46, x1: -41, z0: -146, z1: -112 },
 ];
 
+/**
+ * Footpaths trodden across the yards, on top of the ones every block gets
+ * along its two long sides (streets.js): [x0, x1, z0, z1].
+ */
+export const PATHS = [
+  [43, 55, 77.2, 78.8],
+  [61.2, 62.8, 5, 14.4],
+  [-56.5, -43, -18.8, -17.2],
+  [-60.5, -44, 105.2, 106.8],
+  [-76.8, -75.2, -90, -46],
+  [-110, -79, -80.8, -79.2],
+  [9.2, 18, -70.8, -69.2],
+  [-17.2, -9.2, -62.8, -61.2],
+];
+
 /* ---------------------------------------------------------- blocks */
 
 function seedOf(id) {

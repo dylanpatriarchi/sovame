@@ -32,6 +32,8 @@ const VIEWS = [
   ['school', -70, -66, 0.15, 0.08],
   ['playground', 52, 78, -Math.PI / 2 - 0.3, 0.0],
   ['mira-west', -150, 44, -Math.PI / 2, 0.06],
+  ['paths', -30, -12, Math.PI / 2, -0.3],
+  ['plant', 126, -60, -Math.PI / 2 + 0.45, 0.18],
   ['kiosk', -4, -56, Math.PI / 2 + 0.5, 0.02],
   ['stele', 3, 176, Math.PI + 0.5, 0.05],
 ];

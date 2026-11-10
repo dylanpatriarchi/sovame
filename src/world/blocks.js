@@ -128,9 +128,11 @@ export function buildBlocks(ctx) {
       const r = new Rng(spec.seed + 500);
       tv = { f: r.int(1, spec.floors - 1), c: r.int(0, cells - 1), side: r.sign(), phase: r.float(0, TAU), speed: r.float(0.5, 1.05) };
     }
+    // the long faces are what you stand in front of: drawn finer on good hardware
+    const fine = world.quality === 'high' ? 1.5 : 1;
     const common = { floors: spec.floors, winter: false, street: spec.street, number: spec.number };
     const facadeMat = mkMat(
-      TX.makeFacadeTextures({ ...common, cells, rng: new Rng(spec.seed), entranceEvery: 4, balconyChance: spec.balcony, litChance: spec.lit, tvCells: tv ? new Set([`${tv.f}:${tv.c}`]) : null }),
+      TX.makeFacadeTextures({ ...common, scale: fine, cells, rng: new Rng(spec.seed), entranceEvery: 4, balconyChance: spec.balcony, litChance: spec.lit, tvCells: tv ? new Set([`${tv.f}:${tv.c}`]) : null }),
     );
     const sideMat = mkMat(TX.makeFacadeTextures({ ...common, cells: sideCells, rng: new Rng(spec.seed + 101), entranceEvery: 99, balconyChance: 0.08, litChance: spec.lit * 0.8 }));
 

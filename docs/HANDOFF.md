@@ -355,8 +355,24 @@ longer applies: all of it is deleted.
     drives avenue → ул. Мира → yard lane → courtyard, then checks the
     radio, shoots the aurora and sits down for tea. Passes with no
     impacts.
-  Still open, none blocking: facades are soft at arm's length; the plant
-  is a near-silhouette at dusk; `main.js` is one big closure; collisions
-  are a linear list (fine at ~700 rects); yards have no trampled
-  footpaths; `docs/graphics-plan.md` and `docs/improvement-plan.md`
-  describe the pre-pivot game and name deleted files.
+- 2026-11-10 — **Closing the open list** (same goal).
+  - **`main.js` split**: `src/settings.js` (saved settings, quality),
+    `src/interactions.js` (class `Interactions`: the registry of things to
+    use, radio sets, cars, benches, the prompt, the keys while playing).
+    `main.js` keeps boot, modes, settings application and the loop.
+  - **Footpaths**: `streets.js` treads a strip along both long sides of
+    every block (past the foot of the porch steps) plus `PATHS` in
+    `town.js`; laid in 2 m pieces that skip anything in the way, edges
+    faded in the shader.
+  - **Facades up close**: `makeFacadeTextures` takes `scale`; the long
+    faces are drawn at 1.5× on quality "high" (the emissive map stays 1×).
+  - **Plant after dark**: lit panes on every side, floodlight posts, and
+    a stronger dusk lift per mesh (`liftAtDusk(world, mat, strength)`;
+    it needs `customProgramCacheKey`, or three.js shares one program
+    between materials with the same hook).
+  - **Docs**: `docs/graphics-plan.md` rewritten for the Arctic game (it
+    is the contract CONTRIBUTING points at); `docs/improvement-plan.md`
+    deleted (pre-pivot, all done or void); README updated.
+  Nothing is left on the list. Ideas, not debts: a spatial hash for
+  collisions if the rect count grows, more yards with lanes west of
+  Строителей, a second town down the coast road.

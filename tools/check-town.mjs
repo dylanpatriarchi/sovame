@@ -53,6 +53,10 @@ for (const [i, d] of T.DRIVEWAYS.entries()) {
   for (const p of points) if (p.x + p.r > d.x0 && p.x - p.r < d.x1 && p.z + p.r > d.z0 && p.z - p.r < d.z1) problems.push(`${p.id} stands on driveway#${i}`);
 }
 
+for (const [i, [x0, x1, z0, z1]] of T.PATHS.entries()) {
+  for (const s of solids) if (overlap({ x0, x1, z0, z1 }, s.rect)) problems.push(`path#${i} runs through ${s.id}`);
+}
+
 // pipes: axis aligned, clear of walls (they may cross streets, on arches)
 for (const run of T.PIPES) {
   for (let i = 1; i < run.length; i++) {

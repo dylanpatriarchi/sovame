@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Land } from './land.js';
 import { hash2 } from './noise.js';
-import { STREETS, SIDEWALK, SQUARE, ZONES, DRIVEWAYS, streetRect } from './town.js';
+import { STREETS, SIDEWALK, SQUARE, ZONES, DRIVEWAYS, PATHS, BLOCKS, rectToWorld, streetRect } from './town.js';
 
 const KERB = 0.14;
 
@@ -156,6 +156,58 @@ export function buildStreets(ctx) {
   paving.name = 'sidewalks';
   paving.receiveShadow = true;
   world.group.add(paving);
+
+  /* ------------------------------------------------ footpaths */
+  // snow trodden hard: along both long sides of every block, just past the
+  // foot of the porch steps, and across the yards. Laid in short pieces so
+  // a path simply stops where something stands in its way.
+  const trodden = [];
+  const tread = (r) => {
+    const alongX = r.x1 - r.x0 >= r.z1 - r.z0;
+    const len = alongX ? r.x1 - r.x0 : r.z1 - r.z0;
+    const wide = alongX ? r.z1 - r.z0 : r.x1 - r.x0;
+    const n = Math.max(1, Math.round(len / 2));
+    const step = len / n;
+    for (let i = 0; i < n; i++) {
+      const c = (alongX ? r.x0 : r.z0) + (i + 0.5) * step;
+      const x = alongX ? c : (r.x0 + r.x1) / 2;
+      const z = alongX ? (r.z0 + r.z1) / 2 : c;
+      if (world.surfaceAt(x, z) !== 'snow' || world.heightAt(x, z) > 0.01 || world.collides(x, z, 0.7)) continue;
+      const g = new THREE.PlaneGeometry(alongX ? step : wide, alongX ? wide : step);
+      const uv = g.attributes.uv;
+      // the texture runs along the path, whichever way it goes
+      for (let k = 0; k < uv.count; k++) {
+        const u = uv.getX(k);
+        const v = uv.getY(k);
+        uv.setXY(k, alongX ? ((i + u) * step) / 3 : ((i + v) * step) / 3, alongX ? v : u);
+      }
+      g.rotateX(-Math.PI / 2);
+      g.translate(x, 0.012, z);
+      trodden.push(g);
+    }
+  };
+  for (const b of BLOCKS) {
+    for (const side of [1, -1]) {
+      const a = side * (b.d / 2 + 2.9);
+      const c = side * (b.d / 2 + 4.3);
+      tread(rectToWorld(b, -b.w / 2 - 3, b.w / 2 + 3, Math.min(a, c), Math.max(a, c)));
+    }
+  }
+  for (const [x0, x1, z0, z1] of PATHS) tread({ x0, x1, z0, z1 });
+  if (trodden.length) {
+    const pathMat = new THREE.MeshStandardMaterial({ map: T.path, roughness: 0.9, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    // v runs across the path: fade both edges into the loose snow
+    pathMat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        '#include <map_fragment>\ndiffuseColor.a *= 0.9 * smoothstep(0.0, 0.32, vMapUv.y) * smoothstep(1.0, 0.68, vMapUv.y);',
+      );
+    };
+    const paths = new THREE.Mesh(mergeGeometries(trodden, false), pathMat);
+    paths.name = 'footpaths';
+    paths.receiveShadow = true;
+    world.group.add(paths);
+  }
 
   for (const [name, sub, x0, x1, z0, z1] of ZONES) ctx.addZone(name, sub, x0, x1, z0, z1);
 
