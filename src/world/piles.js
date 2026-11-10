@@ -5,9 +5,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { facadePaint } from '../textures.js';
-import { BUILDING_SPECS, EXPANSION_SPECS, SOUTH_SPECS, WEST_SPECS, FLOOR_H } from './buildings.js';
+import { BLOCKS, CELL_W, FLOOR_H } from './town.js';
+import { blockMatrix } from './blocks.js';
 
-const CELL_W = 3.4;
 /** Height of the gap: the band the facade texture leaves dark. */
 export const PILE_H = FLOOR_H * 0.34;
 
@@ -25,7 +25,10 @@ export function buildPiles(ctx) {
   const { world } = ctx;
   const parts = [];
   const beamH = PILE_H * 0.2;
-  for (const spec of [...BUILDING_SPECS, ...EXPANSION_SPECS, ...WEST_SPECS, ...SOUTH_SPECS]) {
+  for (const block of BLOCKS) {
+    // modelled around the block's own origin, then set down
+    const spec = { ...block, x: 0, z: 0 };
+    const mark = parts.length;
     const { scheme } = facadePaint(spec.street, spec.number);
     const paint = new THREE.Color(scheme.pile).convertSRGBToLinear();
     // the lower half of every pile is road dirt and old snow
@@ -53,6 +56,8 @@ export function buildPiles(ctx) {
       for (let c = 1; c < sideCells; c++) pile(x, spec.z - spec.d / 2 + c * sw, false);
       parts.push(box(0.16, beamH, spec.d + 0.2, x - side * 0.02, PILE_H - beamH / 2, spec.z, paint));
     }
+    const matrix = blockMatrix(block);
+    for (let k = mark; k < parts.length; k++) parts[k].applyMatrix4(matrix);
   }
   const mesh = new THREE.Mesh(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
   mesh.name = 'piles';

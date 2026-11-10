@@ -6,7 +6,8 @@
 // hill. Nearly everything is baked into three merged meshes.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BUILDING_SPECS, EXPANSION_SPECS, SOUTH_SPECS, WEST_SPECS, FLOOR_H } from './buildings.js';
+import { BLOCKS, PIPES, GARAGE_ROWS, FLOOR_H, toWorld } from './town.js';
+import { buildFurniture } from './furniture.js';
 import { ROUTES, SEA_Y } from './routes.js';
 import { landHeight } from './land.js';
 import { hash2, seeded } from './noise.js';
@@ -200,6 +201,8 @@ export function buildArctic(ctx) {
       beacon(cx + r * 0.6, h + 0.4, cz);
       beacon(cx - r * 0.6, h * 0.55, cz);
       plumes.push({ x: cx, y: h + 1, z: cz, size: r * 2.4 });
+      // the grey smoke of environment.js rises from the first stack
+      world.points.chimney ??= new THREE.Vector3(cx, h + 1, cz);
       ctx.addBoxCollider(cx, cz, r * 3.2, r * 3.2, 0.1, true);
     }
     world.points.plant = { x, z };
@@ -248,6 +251,7 @@ export function buildArctic(ctx) {
   garageRow(140, 8, 16, -1);
   garageRow(140, 14.2, 16, 1);
   garageRow(140, 40, 16, -1);
+  for (const row of GARAGE_ROWS) garageRow(...row);
 
   /* ------------------------------------------------ containers */
   const CONTAINER_COLORS = [0x9a3b2a, 0x2f5f86, 0x3d7257, 0xc27a2c, 0x8c8f92, 0x7a2f30, 0x1f4f6a];
@@ -255,13 +259,13 @@ export function buildArctic(ctx) {
     const color = CONTAINER_COLORS[Math.floor(hash2(seed, 1, 431) * CONTAINER_COLORS.length)];
     const w = turned ? 2.44 : 6.06;
     const d = turned ? 6.06 : 2.44;
-    box(tin, w, 2.59, d, x, 1.3 + level * 2.59 + 0.08, z, color, lin(color).multiplyScalar(0.55).lerp(lin(0x5a4636), 0.4));
+    box(tin, w, 2.59, d, x, 1.3 + level * 2.59 + 0.08, z, color, lin(color).multiplyScalar(0.72));
     if (level === 0) ctx.addBoxCollider(x, z, w, d, 0.1, true);
     return { w, d };
   };
   {
     let placedCount = 0;
-    for (let i = 0; i < 400 && placedCount < 34; i++) {
+    for (let i = 0; i < 400 && placedCount < 14; i++) {
       const x = -238 + hash2(i, 1, 441) * 350;
       const z = -200 + hash2(i, 2, 441) * 392;
       const turned = hash2(i, 3, 441) < 0.5;
@@ -379,30 +383,16 @@ export function buildArctic(ctx) {
       }
     }
   };
-  pipeRun([
-    [PLANT.x - 27, PLANT.z + 2],
-    [14, PLANT.z + 2],
-    [14, 176],
-  ]);
-  pipeRun([
-    [14, PLANT.z + 2],
-    [-156, PLANT.z + 2],
-    [-156, 152],
-  ]);
-  pipeRun([
-    [-156, PLANT.z + 2],
-    [-236, PLANT.z + 2],
-  ]);
+  for (const run of PIPES) pipeRun(run);
 
   /* ------------------------------------------------ roofs */
   // aerials on every roof, dishes on the walls all looking the same way
-  for (const spec of [...BUILDING_SPECS, ...EXPANSION_SPECS, ...WEST_SPECS, ...SOUTH_SPECS]) {
+  for (const spec of BLOCKS) {
     const rnd = seeded(spec.seed * 7919 + 13);
     const top = spec.floors * FLOOR_H;
     const count = Math.round(spec.w / 5);
     for (let i = 0; i < count; i++) {
-      const x = spec.x - spec.w / 2 + 1.5 + rnd() * (spec.w - 3);
-      const z = spec.z - spec.d / 2 + 1.2 + rnd() * (spec.d - 2.4);
+      const at = toWorld(spec, -spec.w / 2 + 1.5 + rnd() * (spec.w - 3), -spec.d / 2 + 1.2 + rnd() * (spec.d - 2.4));
       const h = 2.2 + rnd() * 3.4;
       const lean = (rnd() - 0.5) * 0.12;
       placed(
@@ -412,9 +402,9 @@ export function buildArctic(ctx) {
           for (let b = 0; b < bars; b++) box(flat, 1.5 - b * 0.22, 0.035, 0.035, 0, h - 0.15 - b * 0.34, 0, 0x2c2f31);
           box(flat, 0.035, 0.035, bars * 0.36, 0, h - 0.5, 0, 0x2c2f31);
         },
-        x,
+        at.x,
         top + 0.3,
-        z,
+        at.z,
         rnd() * 3,
         lean,
       );
@@ -422,16 +412,17 @@ export function buildArctic(ctx) {
     const dishes = Math.round(spec.w / 9);
     for (let i = 0; i < dishes; i++) {
       const side = rnd() < 0.5 ? 1 : -1;
-      const x = spec.x - spec.w / 2 + 2 + rnd() * (spec.w - 4);
+      const lx = -spec.w / 2 + 2 + rnd() * (spec.w - 4);
       const y = (1 + Math.floor(rnd() * (spec.floors - 1))) * FLOOR_H + 1.3;
-      const z = spec.z + side * (spec.d / 2 + 0.42);
+      const at = toWorld(spec, lx, side * (spec.d / 2 + 0.42));
+      const arm = toWorld(spec, lx, side * (spec.d / 2 + 0.22));
       const dish = new THREE.CylinderGeometry(0.46, 0.4, 0.07, 14);
       // every dish in town looks at the same satellite, low in the south
       dish.rotateX(Math.PI / 2 - 0.5);
       dish.rotateY(-0.5);
-      dish.translate(x, y, z);
+      dish.translate(at.x, y, at.z);
       flat.push(paint(dish, rnd() < 0.3 ? 0x8a6a58 : 0xc9cdd0));
-      box(flat, 0.05, 0.05, 0.5, x, y - 0.1, z - side * 0.2, 0x3a3d3f);
+      box(flat, spec.rot ? 0.5 : 0.05, 0.05, spec.rot ? 0.05 : 0.5, arm.x, y - 0.1, arm.z, 0x3a3d3f);
     }
   }
 
@@ -712,12 +703,12 @@ export function buildArctic(ctx) {
 
   /* ------------------------------------------------ lamps */
   // a pole, a sodium head and the pool of light it throws on the snow
-  const lampPost = (x, z, h = 7, reach = 11) => {
+  const lampPost = (x, z, h = 7, reach = 11, dx = 1, dz = 0) => {
     const y = landHeight(x, z);
     box(flat, 0.14, h, 0.14, x, y + h / 2, z, 0x34373a);
-    box(flat, 0.9, 0.08, 0.1, x + 0.4, y + h, z, 0x34373a);
-    box(glow, 0.5, 0.12, 0.28, x + 0.75, y + h - 0.08, z, 0xffd9a0);
-    lamps.push({ x: x + 0.75, y: y + h - 0.1, z, ground: y, reach });
+    box(flat, dx ? 0.9 : 0.1, 0.08, dx ? 0.1 : 0.9, x + dx * 0.4, y + h, z + dz * 0.4, 0x34373a);
+    box(glow, dx ? 0.5 : 0.28, 0.12, dx ? 0.28 : 0.5, x + dx * 0.75, y + h - 0.08, z + dz * 0.75, 0xffd9a0);
+    lamps.push({ x: x + dx * 0.75, y: y + h - 0.1, z: z + dz * 0.75, ground: y, reach });
   };
   for (const lx of [150, 172, 194]) {
     lampPost(lx, -5, 6.5);
@@ -732,6 +723,9 @@ export function buildArctic(ctx) {
     const [cx, cz] = coast.end;
     lampPost(cx - 9, cz + 3, 5.5, 9);
   }
+
+  /* ------------------------------------------------ the town's own things */
+  buildFurniture(ctx, { flat, tin, glow, box, cyl, placed, paint, bench, lampPost, SNOW });
 
   /* ------------------------------------------------ meshes */
   const add = (list, material, name) => {
@@ -751,7 +745,7 @@ export function buildArctic(ctx) {
   };
   add(flat, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 })), 'arctic-flat');
   const tinTex = makeRibTexture();
-  add(tin, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, map: tinTex, color: 0xffffff, roughness: 0.7, metalness: 0.25 })), 'arctic-tin');
+  add(tin, liftAtDusk(world, new THREE.MeshStandardMaterial({ vertexColors: true, map: tinTex, color: 0xffffff, roughness: 0.75, metalness: 0.08 })), 'arctic-tin');
   const brickTex = world.textures.brick.clone();
   brickTex.repeat.set(1, 1);
   brickTex.needsUpdate = true;

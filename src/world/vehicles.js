@@ -5,8 +5,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, damp, TAU } from '../util.js';
-import { WEST_CARS } from './west.js';
-import { SOUTH_CARS } from './south.js';
+import { PARKED } from './town.js';
 
 /* ---------------------------------------------------------- dimensions */
 
@@ -620,27 +619,6 @@ export class Car {
 
 /* ---------------------------------------------------------- placement */
 
-/** Parked cars: courtyards, the parking lot, the curb. */
-const PARKED = [
-  { x: -24, z: -39, heading: 0.06, color: 0x4a6076 },
-  { x: -21, z: -39, heading: 0.02, color: 0x8a7a62 },
-  { x: 44, z: -14, heading: Math.PI / 2, color: 0x6d3a30 },
-  { x: 44, z: -8.5, heading: Math.PI / 2, color: 0x3f4a45 },
-  { x: -38, z: 30, heading: 0.04, color: 0x5a5f63 },
-  { x: -63, z: -44, heading: Math.PI / 2 + 0.06, color: 0x7d8078 },
-  { x: 64, z: 111.5, heading: 0.04, color: 0x54585e, north: true },
-  { x: 71.5, z: 111.5, heading: -0.05, color: 0x6b4a3a, north: true },
-  // at the curb of the avenue, facing the traffic flow
-  { x: 4.75, z: 86, heading: 0, color: 0xc9c2a8, curb: true },
-  { x: -4.75, z: -28, heading: Math.PI, color: 0x8c2f28, curb: true },
-  // UAZ vans: on the avenue, in the garage lane, out on the port mole
-  { x: 4.75, z: 62, heading: 0, color: 0x6f7a68, curb: true, van: true },
-  { x: 166, z: 24.6, heading: Math.PI / 2, color: 0xb9b39c, north: true, van: true },
-  { x: 572, z: 50, heading: Math.PI / 2 - 0.3, color: 0x54687a, north: true, van: true },
-  ...WEST_CARS,
-  ...SOUTH_CARS,
-];
-
 export function buildVehicles(ctx) {
   const { world, materials: M } = ctx;
   const parts = sedanParts();
@@ -651,19 +629,9 @@ export function buildVehicles(ctx) {
     lamps: new THREE.MeshBasicMaterial({ vertexColors: true }),
     snow: M.snow,
   };
-  // While the world is being built, the scatter passes (trees, routes) must
-  // see the parked cars exactly as they always were: the old axis-aligned
-  // 2.5 × 4.7 m footprints. They go in as temporary rects (dropped once the
-  // build is done, see World.build), the cars' own colliders take over then.
   world.cars = PARKED.map((spec, i) => {
-    if (!spec.curb) {
-      const rect = { minX: spec.x - 1.25, maxX: spec.x + 1.25, minZ: spec.z - 2.35, maxZ: spec.z + 2.35, buildOnly: true };
-      world.colliders.push(rect);
-      if (!spec.north && !spec.west && !spec.south) ctx.addLegacyGhostRect(rect.minX, rect.maxX, rect.minZ, rect.maxZ);
-    }
     const car = new Car(world, spec.van ? van : parts, mats, { ...spec, id: i });
     world.group.add(car.root);
-    ctx.seasonable('winter', car.snow);
     return car;
   });
 

@@ -25,12 +25,15 @@ await wait(800);
 
 // yaw 0 looks toward -z, +PI/2 toward -x
 const VIEWS = [
-  ['facade-close', 36, 80, 0, 0.12],
-  ['facade-piles', 30, 72.5, 0.5, -0.05],
-  ['avenue', 7.2, 19.5, 0.08, 0.05],
-  ['courtyard', -8, -30, Math.PI / 2, 0.08],
-  ['tower', -20, 40, Math.PI / 2 + 0.5, 0.2],
-  ['north', 0, 100, Math.PI, 0.08],
+  ['avenue', 7.6, 8, 0.08, 0.05],
+  ['avenue-south', 0, 150, 0, 0.06],
+  ['court-ne', 40, 100, -Math.PI / 2 - 0.4, 0.1],
+  ['square', 24, -70, -Math.PI / 2 - 0.25, 0.1],
+  ['school', -70, -66, 0.15, 0.08],
+  ['playground', 52, 78, -Math.PI / 2 - 0.3, 0.0],
+  ['mira-west', -150, 44, -Math.PI / 2, 0.06],
+  ['kiosk', -4, -56, Math.PI / 2 + 0.5, 0.02],
+  ['stele', 3, 176, Math.PI + 0.5, 0.05],
 ];
 for (const time of (process.argv[4] ? [process.argv[4]] : ['afternoon', 'dusk'])) {
   for (const [name, x, z, yaw, pitch] of VIEWS) {
@@ -51,5 +54,18 @@ for (const time of (process.argv[4] ? [process.argv[4]] : ['afternoon', 'dusk'])
     await page.screenshot({ path: `${OUT}/${time}-${name}.png` });
   }
 }
+// the plan from above: freeze the player, thin the fog, hang the camera
+await page.evaluate(() => {
+  const g = window.__game;
+  g.env.setTime('afternoon');
+  g.env.fogScale = 0.004;
+  g.player.update = () => {};
+  g.camera.far = 3000;
+  g.camera.updateProjectionMatrix();
+  g.camera.position.set(0, 430, 0);
+  g.camera.rotation.set(-Math.PI / 2, 0, 0);
+});
+await wait(6000);
+await page.screenshot({ path: `${OUT}/plan.png` });
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng, TAU, clamp, damp } from '../util.js';
+import { WALKS, WALKERS } from './town.js';
 import { makeSoftCircleTexture } from '../textures.js';
 import { PEOPLE } from '../config.js';
 
@@ -132,78 +133,6 @@ function buildBagGeometry() {
 
 /* ------------------------------------------------------------ routes */
 
-/**
- * Waypoint loops along the real lanes (see terrain.js). Every point and every
- * segment is validated against world.collides() on the first update — after
- * the whole world exists, tree colliders included — and nudged if needed.
- * `wait` pauses the figure at the point, `faceYaw` turns it while waiting.
- */
-function makeRoutes() {
-  return {
-    // long ring: north along the east sidewalk, across the avenue at both
-    // ends, back south along the west sidewalk; weaves around lamp posts,
-    // the bus stop shelter pad and the stop sign. Since the district grew,
-    // the ring keeps going to the new northern end of the avenue before
-    // turning back
-    avenue: {
-      mode: 'loop',
-      points: [
-        [7.4, -100], [7.1, -78], [7.1, -6], [7.4, 10], [7.6, 16],
-        [6.35, 21], [6.35, 27], [7.6, 32], [7.4, 44], [7.1, 66], [7.2, 100],
-        [7.0, 124], [7.2, 150], [7.2, 168], [-7, 168], [-7, 150], [-7, 100],
-        [-7, 66], [-7, 30], [-7, -6], [-7, -42], [-7, -78], [-7, -100],
-      ],
-    },
-    // west courtyard: trampled paths and a short cut across the yard,
-    // out to the avenue sidewalk and back
-    courtyard: {
-      mode: 'pingpong',
-      points: [
-        { x: -24, z: -44.5, wait: 2.5 },
-        [-41, -44.5], [-41, -30], [-41, -6], [-29, -6], [-29, -18.4],
-        [-12, -18.4],
-        { x: 8.6, z: -18.4, wait: 3.5, face: [1, 0] },
-      ],
-    },
-    // to the grocery kiosk and back to the avenue; the figure pauses at the
-    // kiosk window, right where the radio plays
-    kiosk: {
-      mode: 'pingpong',
-      points: [
-        { x: 7.2, z: -16, wait: 2 },
-        [7.2, -5], [9.6, -2.2], [11.0, -2.2],
-        { x: 11.6, z: 1.3, wait: 7, face: [0, 1] },
-      ],
-    },
-    // waiting for the bus: single spot under the shelter roof
-    busStop: {
-      mode: 'idle',
-      points: [{ x: 8.1, z: 23.0, face: [-1, 0], groundY: 0.3 }],
-    },
-    // west courtyard of the northern cluster: down the avenue extension and
-    // into the yard between B8 and B10, pausing by the benches
-    northCourt: {
-      mode: 'pingpong',
-      points: [
-        { x: -7, z: 112, wait: 1.5 },
-        [-16, 133],
-        { x: -30, z: 133, wait: 3, face: [0, -1] },
-        [-46, 133],
-        { x: -58, z: 133, wait: 2 },
-      ],
-    },
-    // out along Zavodskaya to the parked cars and back to the avenue
-    eastArm: {
-      mode: 'pingpong',
-      points: [
-        { x: 7.4, z: 112, wait: 1 },
-        [30, 120.4],
-        { x: 66, z: 120.4, wait: 2.5, face: [0, -1] },
-      ],
-    },
-  };
-}
-
 /** Normalizes a raw waypoint into {x, z, wait, faceYaw, groundY}. */
 function normPoint(raw) {
   const p = Array.isArray(raw) ? { x: raw[0], z: raw[1] } : { ...raw };
@@ -262,9 +191,7 @@ class Pedestrian {
       this.armR.add(this.bagPivot);
     }
     this.root.scale.setScalar(this.scaleF);
-    // far-route figures join the far-detail group: hidden until the camera
-    // actually walks north (world.farDetails is visibility-toggled there)
-    (opts.far ? world.farDetails : world.group).add(this.root);
+    world.group.add(this.root);
     this.position = this.root.position;
   }
 
@@ -440,64 +367,18 @@ class People {
     }));
     this.bagGeo = buildBagGeometry();
 
-    const routes = makeRoutes();
-    this.routes = Object.values(routes);
-    const partsFor = (i) => ({ ...this.parts[i], bag: this.bagGeo, material: this.material });
-    this.list = [
-      new Pedestrian(this.world, partsFor(0), routes.avenue, {
-        name: 'avenue ring',
-        speed: 1.35,
-        scale: 1.03,
-        phase: 0.7,
-        startFraction: 0.33,
-      }),
-      new Pedestrian(this.world, partsFor(1), routes.courtyard, {
-        name: 'courtyard pair A',
-        speed: 1.1,
-        scale: 1.0,
-        lateral: 0.42,
-        phase: 0,
-        startFraction: 0.45,
-      }),
-      new Pedestrian(this.world, partsFor(2), routes.courtyard, {
-        name: 'courtyard pair B',
-        speed: 1.1,
-        scale: 0.95,
-        lateral: -0.42,
-        phase: 1.9,
-        startFraction: 0.45,
-      }),
-      new Pedestrian(this.world, partsFor(2), routes.kiosk, {
-        name: 'kiosk run',
-        speed: 1.25,
-        scale: 1.04,
-        phase: 2.8,
-        startFraction: 0.55,
-        bag: true,
-      }),
-      new Pedestrian(this.world, partsFor(1), routes.busStop, {
-        name: 'bus stop wait',
-        scale: 0.97,
-        phase: 4.1,
-      }),
-      new Pedestrian(this.world, partsFor(0), routes.northCourt, {
-        name: 'north courtyard',
-        speed: 1.15,
-        scale: 1.01,
-        phase: 3.6,
-        startFraction: 0.4,
-        far: true,
-      }),
-      new Pedestrian(this.world, partsFor(2), routes.eastArm, {
-        name: 'zavodskaya stroll',
-        speed: 1.2,
-        scale: 0.96,
-        phase: 5.2,
-        startFraction: 0.6,
-        bag: true,
-        far: true,
-      }),
-    ];
+    this.routes = Object.values(WALKS);
+    this.list = WALKERS.map(
+      (w) =>
+        new Pedestrian(this.world, { ...this.parts[w.variant], bag: this.bagGeo, material: this.material }, WALKS[w.walk], {
+          name: w.walk,
+          speed: w.speed,
+          scale: w.scale,
+          phase: w.phase,
+          startFraction: w.start,
+          bag: w.bag,
+        }),
+    );
 
     // breath vapor: pooled sprites, one shared soft-circle texture
     const tex = makeSoftCircleTexture(64, '228,238,246', 2.4);

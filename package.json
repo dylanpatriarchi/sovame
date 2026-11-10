@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --port 4173",
     "smoke": "node tools/smoke.mjs",
-    "playtest": "node tools/playtest.mjs",
+    "check:town": "node tools/check-town.mjs",
     "drive": "node tools/drive-test.mjs"
   },
   "dependencies": {

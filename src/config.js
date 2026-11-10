@@ -2,20 +2,6 @@
 import { DEG } from './util.js';
 
 export const WORLD = {
-  /** Half side of the playable area (m) — west, east and south edges. */
-  bounds: 108,
-  /** North edge of the playable area: the district keeps growing past the
-   * old fence line at z = 104 up to the second residential cluster. */
-  boundsNorth: 180,
-  /** West edge: the third cluster on ул. Строителей reaches out to here. */
-  boundsWest: 236,
-  /** ул. Строителей, the western cluster's north–south street (x). */
-  westStreetX: -170,
-  /** South edge: the school quarter on ул. Школьная reaches down to here. */
-  boundsSouth: 196,
-  /** ул. Школьная, the east–west street of the southern quarter (z). */
-  southStreetZ: -152,
-  groundSize: 700,
   roadHalfWidth: 6,
   sidewalkWidth: 3.2,
   crossroadZ: 44,
@@ -36,7 +22,7 @@ export const PLAYER = {
   jumpSpeed: 5.0,
   gravity: 15.5,
   stepDistance: 0.78,
-  spawn: { x: 7.2, z: 19.5 },
+  spawn: { x: 7.6, z: 8 },
   spawnYaw: 0.08,
 };
 

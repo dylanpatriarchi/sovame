@@ -64,12 +64,13 @@ export function buildCrows(ctx) {
       });
     }
   }
-  // perched on the avenue wires
+  // perched on the parapet of the nine-storey block on the avenue and on
+  // the roof of the bus shelter
   for (const [px, py, pz] of [
-    [-12.6, 7.9, -24],
-    [-12.6, 7.9, 0],
-    [-12.6, 7.9, 48],
-    [-18.5, 8.9, 2],
+    [20, 27.5, -12],
+    [20, 27.5, -3],
+    [32, 27.5, 9],
+    [-11.6, 2.78, 64.6],
   ]) {
     const { group: crow } = makeCrowMesh(mat);
     crow.position.set(px, py, pz);

@@ -90,25 +90,32 @@ beyond the Arctic Circle"; RFE/RL "Abandoned Mining Towns Of The Russian
 Arctic"; CNN "Inside Russia's deep-frozen ghost towns" (Vorkuta);
 National Geographic / Evgenia Arbugaeva (Tiksi, Dikson).
 
-## Diagnosis of the current code (2026-11-10)
+## Where the code stands (2026-11-10, after the town rewrite)
 
-~13k lines in `src/`, written in four days by accretion.
+The old diagnosis (four hand-placed clusters on one shared RNG stream,
+propped up by `legacyColliders` / `collidesHistoric` / `north` flags) no
+longer applies: all of it is deleted.
 
-- World = hand-placed absolute coordinates in four clusters
-  (`BUILDING_SPECS`, `EXPANSION_SPECS`, `WEST_SPECS`, `SOUTH_SPECS` in
-  `src/world/buildings.js`; `west.js`, `south.js`).
-- One shared RNG stream consumed in build order, so any addition shifts
-  everything; worked around with `legacyColliders`, `collidesHistoric`,
-  `heightAtHistoric`, `addLegacyGhostRect`, `north` flags (~70 references).
-- Ground is a flat 700 m plane; height comes from `heightRects` (kerbs).
-  Hard playable bounds in `World.collides`.
-- Interiors are three boxes far east of the map, entered by fade-teleport,
-  shared by every door via a hash; floors change by fade; windows are
-  render-to-texture portals (`windowview.js`). ~1500 lines.
-- `src/main.js` is one 700-line `boot()` closure wiring every interaction.
-- Worth keeping: car physics (`src/world/vehicles.js`, `src/driving.js`),
-  `environment.js` (sky, fog, snow), `audio.js` (engine, wind, procedural
-  post-punk radio), `player.js`, `smoke.js`, the canvas-texture toolkit.
+- **`src/world/town.js` is the town.** Pure data, no three.js: streets,
+  33 panel blocks, public buildings, square, playgrounds, kiosk, bus stop,
+  heating mains, garage rows, benches, parked cars, zone captions, walks.
+  `npm run check:town` validates it in node (nothing on a street or its
+  sidewalk, no footprints touching, pipes axis-aligned and clear of walls).
+  **Edit the plan there, run the check, then look at it.**
+- Builders, in build order (`src/world/index.js`): `blocks.js` (blocks +
+  public buildings, per-block seeds, `rot: 0|1`, trim merged town-wide) →
+  `entrances.js` / `piles.js` (built in block-local space, set down with
+  `blockMatrix`) → `streets.js` (land, asphalt, sidewalks cut at junctions,
+  square, ploughed snow) → `roads.js` → `arctic.js` (plant, port, pipes,
+  aerials, lamps; calls `furniture.js` with its merge `kit`) →
+  `vehicles.js` → `people.js` + `crows.js`.
+- A block is modelled around its own origin; `toWorld` / `rectToWorld` /
+  `blockMatrix` put it in the world. Anything new on a block must do the
+  same or it breaks on `rot: 1` blocks.
+- Street lamps are fake light only (glow mesh + additive pools + halos on
+  `world.litLevel`); the only real lights are the porch light, the car
+  beams and the sun/hemisphere. ~230–310 draw calls in town (was ~1800).
+- `src/main.js` is still one big `boot()` closure wiring every interaction.
 
 ## Target architecture
 
@@ -116,9 +123,8 @@ National Geographic / Evgenia Arbugaeva (Tiksi, Dikson).
   under the town and under roads, the sea where it drops below 0. Ground
   meshes are chunks streamed around the camera — this is what makes the
   world endless. Car and player sample `h`.
-- **World as data**: one layout file (blocks, streets, pipes, props,
-  spots). Every object derives its RNG from its own id — no shared stream,
-  no legacy shadows.
+- **World as data**: done for the town (`town.js`). Every object derives
+  its RNG from its own id — no shared stream, no legacy shadows.
 - **Collisions**: spatial hash grid instead of a linear list.
 - **Scatter** (tussocks, rocks, poles, marker posts): per chunk,
   deterministic from chunk coordinates, instanced.
@@ -147,10 +153,11 @@ National Geographic / Evgenia Arbugaeva (Tiksi, Dikson).
 - `CONTRIBUTING.md`: English in code/docs/commits, Conventional Commits,
   feature branches + PRs, **no Co-authored-by trailers**.
 - The owner writes in Italian; answer in Italian.
-- Verify with `npm run build` and `npm run smoke` (needs `npm run dev`
-  running; uses system Chrome through `puppeteer-core`).
-- `tools/_*.mjs` are untracked debug probes from earlier sessions — not
-  deleted yet (untracked = unrecoverable); ask before removing.
+- Verify with `npm run check:town`, `npm run build` and `npm run smoke`
+  (needs the dev server on port 5173; uses system Chrome through
+  `puppeteer-core`). `node tools/town-test.mjs <url> <out> [time]` takes
+  street views plus `plan.png`, the town from above. Run one browser test
+  at a time and do not edit sources while one runs (Vite reloads the page).
 
 ## Log
 
@@ -305,3 +312,27 @@ National Geographic / Evgenia Arbugaeva (Tiksi, Dikson).
   them out moves every old prop. They go when the town layout is
   rewritten as data (per-object seeds) — that is the next real step,
   not a cut.
+- 2026-11-10 — **Town rewritten as data** (owner: "ok vai con la
+  riscrittura della città"). `buildings.js`, `terrain.js`, `props.js`,
+  `west.js`, `south.js` deleted (~4000 lines) together with the legacy
+  scatter machinery, `WORLD.bounds*`, the far-detail groups, the season
+  visibility lists and the real street-lamp PointLights. New: `town.js`,
+  `blocks.js`, `streets.js`, `furniture.js`, `tools/check-town.mjs`.
+  Layout decisions (mine, under the "immaginazione" mandate): the town is
+  called **Полярный**; seven streets on a grid (Космонавтов avenue,
+  Мира, Заводская, Строителей, Школьная, new Портовая and Северная);
+  blocks stand in closed courts against the wind, some turned a quarter;
+  площадь Первопроходцев with the House of Culture «Полярник» (colonnade),
+  a New Year tree with a garland and an obelisk; school, kindergarten,
+  two shops, clinic; four playgrounds each with a rocket; kiosk with the
+  radio on the avenue; bus shelter; six yard benches + the shelter bench
+  are smoke/tea spots; a concrete stele with the town's name where the
+  coast road leaves; heating mains re-routed along Школьная and up the
+  avenue; a tin garage row in the south-west; courtyard containers cut
+  from 34 to 14 and lightened. Spawn moved to (7.6, 8) on the avenue.
+  Verified: check:town, build, smoke test, day and dusk street views.
+  Known rough edges: the main along x = 13 fences the east courts off
+  from the avenue except at stiles (cars enter from Портовая); no
+  trampled paths or driveways in the yards yet; a block mesh is still 6
+  draw groups; the mug-on-cigarette hand and soft close-up facades remain.
+  **Next**: aurora, radio toggle from the driver's seat, yard driveways.

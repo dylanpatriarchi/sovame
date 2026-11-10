@@ -34,28 +34,7 @@ const ease = (t) => t * t * (3 - 2 * t);
 /** Builds the smoke spot list from world points: bench, landing, bus stop. */
 export function smokeSpots(world) {
   const spots = [];
-  // courtyard bench behind building 12 (sitter faces +z)
-  spots.push({
-    id: 'smoke:bench',
-    x: -27.2,
-    z: -15.2,
-    radius: 1.9,
-    seat: { x: -27.4, z: -15.92, yaw: Math.PI, eyeY: 1.2, pitch: -0.08 },
-    stand: { x: -27.4, z: -14.9, yaw: Math.PI },
-  });
-  // bus stop bench inside the shelter (sitter faces -x, toward the road)
-  const bus = world.points.busStop;
-  if (bus) {
-    spots.push({
-      id: 'smoke:bus',
-      x: bus.x + 0.2,
-      z: bus.z,
-      radius: 2.2,
-      seat: { x: bus.x + 0.86, z: bus.z + 0.4, yaw: Math.PI / 2, eyeY: 1.68, pitch: -0.05 },
-      stand: { x: bus.x - 0.2, z: bus.z + 0.4, yaw: Math.PI / 2 },
-    });
-  }
-  // benches out of town: the lookout, the lighthouse, the port mole
+  // every bench in the world: the yards, the bus stop, the lookout, the mole
   for (const spot of world.spots ?? []) spots.push(spot);
   return spots;
 }

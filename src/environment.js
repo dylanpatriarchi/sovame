@@ -352,7 +352,7 @@ export class Environment {
     const tex = makeSmokeTexture(192);
     this.spritePool = [];
     const rng = new Rng(9090);
-    this.smokeAnchor = this.world.points.chimney ? this.world.points.chimney.clone() : new THREE.Vector3(-76, 24.6, -64);
+    this.smokeAnchor = this.world.points.chimney ? this.world.points.chimney.clone() : new THREE.Vector3(161, 60, -109);
     for (let i = 0; i < 26; i++) {
       const mat = new THREE.SpriteMaterial({ map: tex, color: 0x9aa3ad, transparent: true, opacity: 0, depthWrite: false });
       const sprite = new THREE.Sprite(mat);
@@ -524,30 +524,9 @@ export class Environment {
     this.mistColor.copy(c.horizon).lerp(new THREE.Color(0xffffff), 0.4);
     this.mist.update(dt, t, this.wind, camera.position, mistDensity, this.mistColor);
 
-    // street lamps and windows
-    const lampWarm = new THREE.Color(0xffb066);
-    const lampDark = new THREE.Color(0x2a2c2c);
-    this.world.lampMats.head.emissiveIntensity = c.lamp * 2.4;
-    this.world.lampMats.glass.color.copy(lampDark).lerp(new THREE.Color(0xfff0d0), clamp(c.lamp * 1.2, 0, 1));
-    // far northern micro-props appear only once the camera walks north of
-    // the historic crossroad (the title dolly never does)
-    if (camera) {
-      this.world.farDetails.visible = camera.position.z > 48;
-      this.world.westDetails.visible = camera.position.x < -64;
-      this.world.southDetails.visible = camera.position.z < -60;
-    }
-    // only lamps near the camera keep a real PointLight; the rest rely on the glow
+    // windows (street lamps follow world.litLevel on their own)
     const camX = camera ? camera.position.x : 0;
     const camZ = camera ? camera.position.z : 0;
-    this.world.lamps.forEach((lamp, i) => {
-      const flicker = 0.94 + 0.06 * Math.sin(t * 7.3 + i * 2.1) + 0.03 * Math.sin(t * 23.1 + i);
-      const near = (lamp.group.position.x - camX) ** 2 + (lamp.group.position.z - camZ) ** 2 < 60 * 60;
-      lamp.light.visible = near && this.quality !== 'low';
-      lamp.light.intensity = c.lamp * 95 * flicker;
-      lamp.glow.material.opacity = c.lamp * 0.5 * flicker;
-      lamp.pool.material.opacity = c.lamp * 0.3 * flicker;
-      lamp.coneMat.opacity = c.lamp * 0.09 * flicker;
-    });
     this.world.setWindowLit(c.windowLit * 0.95);
     // entrance porches follow the street lamps; facades get a faint night lift
     this.world.porches?.update(c.lamp, camX, camZ, this.indoor > 0.5);
@@ -562,18 +541,6 @@ export class Environment {
     // notice boards and posters: slightly backlit when the street lamps turn on
     for (const mat of this.world.posterMats) mat.emissiveIntensity = 0.1 + 0.45 * c.lamp;
     this.ambientLevel = c.lamp;
-
-    // kiosk always lit, brighter in the evening
-    if (this.world.kiosk) {
-      const level = 0.35 + 0.65 * clamp(c.lamp + 0.15, 0, 1);
-      this.world.kiosk.light.intensity = 5 + 16 * level;
-      this.world.kiosk.glow.material.opacity = 0.22 + 0.5 * level;
-      this.world.kiosk.windowMat.color.setRGB(0.22 + 0.78 * level, 0.19 + 0.62 * level, 0.13 + 0.36 * level);
-    }
-    if (this.world.garlandMats) {
-      // the fir lights turn on only when the street lamps are on
-      this.world.garlandLevel = clamp(c.lamp * 1.2, 0, 1);
-    }
 
     // precipitation
     this.snowLayers.forEach((layer) => {

@@ -29,8 +29,8 @@ await wait(800);
 
 // a few fixed looks at the town and the land
 for (const [name, x, z, yaw] of [
-  ['avenue', 7.2, 19.5, 0.08],
-  ['courtyard', -8, -30, Math.PI / 2],
+  ['avenue', 7.6, 8, 0.08],
+  ['courtyard', 50, 90, Math.PI / 2],
   ['port-road', 300, 90, -Math.PI / 2],
 ]) {
   await page.evaluate((x, z, yaw) => window.__game.player.teleport(x, z, yaw), x, z, yaw);
@@ -58,9 +58,11 @@ await page.screenshot({ path: `${OUT}/driving.png` });
 const after = await page.evaluate(() => ({ z: window.__game.driving.car.z, speed: window.__game.driving.car.speed }));
 console.log(`→ drove ${(after.z - before.z).toFixed(1)} m, ${after.speed.toFixed(1)} m/s (${before.cars} cars)`);
 if (after.z - before.z < 3) fail('[drive] the car did not move');
+// brake until it actually stands still (the software renderer runs slow)
 await page.keyboard.down('Space');
-await wait(3500);
+await page.waitForFunction(() => Math.abs(window.__game.driving.car.speed) < 0.5, { timeout: 60000 });
 await page.keyboard.up('Space');
+await wait(300);
 await page.keyboard.press('KeyE');
 await wait(2500);
 if (await page.evaluate(() => window.__game.driving.active)) fail('[drive] could not get out of the car');
