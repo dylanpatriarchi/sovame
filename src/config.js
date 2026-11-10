@@ -113,22 +113,6 @@ export const TIME_PRESETS = [
 ];
 
 export const SEASONS = {
-  autumn: {
-    id: 'autumn',
-    label: 'Late autumn',
-    hint: 'Leaves, mud and first frost',
-    tempShift: 4,
-    snowAmount: 0.3,
-    leavesAmount: 1,
-    foliage: 1,
-    mounds: 0.28,
-    litter: 1,
-    footprint: 0.4,
-    fogMul: 1.0,
-    wind: 0.85,
-    groundTex: 'autumn',
-    snowEdge: 0.35,
-  },
   winter: {
     id: 'winter',
     label: 'Winter',

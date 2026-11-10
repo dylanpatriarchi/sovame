@@ -108,8 +108,7 @@ export function buildTerrain(ctx) {
 
   /* ------------------------------------------------ ground */
   const groundMat = new THREE.MeshStandardMaterial({
-    map: world.season === 'winter' ? T.groundWinter : T.groundAutumn,
-    color: world.season === 'winter' ? 0xffffff : 0xf0ece4,
+    map: T.groundWinter,
     roughness: 0.88,
   });
   world.materials.ground = groundMat;

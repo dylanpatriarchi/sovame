@@ -146,7 +146,6 @@ export class World {
   initTextures() {
     this.textures = {
       groundWinter: TX.makeGroundTexture('winter'),
-      groundAutumn: TX.makeGroundTexture('autumn'),
       asphalt: TX.makeAsphaltTexture({ dashes: true }),
       asphaltPlain: TX.makeAsphaltTexture({ dashes: false }),
       asphaltWinter: TX.makeAsphaltTexture({ dashes: true, winter: true }),
@@ -160,7 +159,6 @@ export class World {
       snowEdge: TX.makeSnowEdgeTexture(),
       ice: TX.makeIceTexture(),
       roofWinter: TX.makeRoofTexture(true),
-      roofAutumn: TX.makeRoofTexture(false),
       snowLedge: TX.makeSnowLedgeTexture(),
       tvGlow: TX.makeTvGlowTexture(),
       rust: TX.makeRustTexture(),
@@ -174,7 +172,6 @@ export class World {
     this.textures.brick.repeat.set(3, 6);
     this.textures.corrugated.repeat.set(1, 1);
     this.textures.roofWinter.repeat.set(3, 3);
-    this.textures.roofAutumn.repeat.set(3, 3);
     this.textures.metalScratch.repeat.set(1, 1);
 
     this.materials.rust = new THREE.MeshStandardMaterial({ map: this.textures.rust, roughness: 0.9, metalness: 0.25 });
@@ -223,9 +220,11 @@ export class World {
       },
       /** Object visible only in the given season. */
       seasonable(season, object) {
+        // autumn is gone: its leftovers are still built (the old scatter
+        // passes share one random stream) but never shown
         if (season === 'autumn') self.autumnOnly.push(object);
         else self.winterOnly.push(object);
-        object.visible = self.season === season;
+        object.visible = season === 'winter';
         return object;
       },
       addUpdater(fn) {
@@ -324,34 +323,19 @@ export class World {
 
   /* ---------------------------------------------------------- seasons/lights */
 
+  /** Applies the (only) season's amounts to the snow cover. */
   setSeason(key) {
     this.season = key;
     const s = SEASONS[key];
-    const gm = this.materials.ground;
-    if (gm) {
-      gm.map = key === 'winter' ? this.textures.groundWinter : this.textures.groundAutumn;
-      gm.color.setHex(key === 'winter' ? 0xffffff : 0xf0ece4);
-      gm.needsUpdate = true;
-    }
-    for (const m of this.roofMats) {
-      m.map = key === 'winter' ? this.textures.roofWinter : this.textures.roofAutumn;
-      m.needsUpdate = true;
-    }
-    for (const m of this.roadMats) {
-      m.map = key === 'winter' ? (m.userData.winterTex ?? this.textures.asphaltWinter) : (m.userData.autumnTex ?? this.textures.asphalt);
-      if (m.userData.winterRough) m.roughnessMap = key === 'winter' ? m.userData.winterRough : m.userData.autumnRough;
-      m.needsUpdate = true;
-    }
     if (this.materials.snowEdge) this.materials.snowEdge.opacity = s.snowEdge;
-    for (const o of this.autumnOnly) o.visible = key === 'autumn';
-    for (const o of this.winterOnly) o.visible = key === 'winter';
-    if (this.snowMounds) this.snowMounds.count = Math.max(1, Math.floor(this.snowMounds.userData.total * s.mounds));
-    if (this.leafLitter) this.leafLitter.count = Math.max(0, Math.floor(this.leafLitter.userData.total * (key === 'autumn' ? 1 : s.litter)));
-    // the northern expansion keeps its own instanced meshes (seeded apart)
-    if (this.snowMoundsNorth) this.snowMoundsNorth.count = Math.max(1, Math.floor(this.snowMoundsNorth.userData.total * s.mounds));
-    if (this.snowMoundsWest) this.snowMoundsWest.count = Math.max(1, Math.floor(this.snowMoundsWest.userData.total * s.mounds));
-    if (this.snowMoundsSouth) this.snowMoundsSouth.count = Math.max(1, Math.floor(this.snowMoundsSouth.userData.total * s.mounds));
-    if (this.leafLitterNorth) this.leafLitterNorth.count = Math.max(0, Math.floor(this.leafLitterNorth.userData.total * (key === 'autumn' ? 1 : s.litter)));
+    for (const o of this.autumnOnly) o.visible = false;
+    for (const o of this.winterOnly) o.visible = true;
+    for (const mounds of [this.snowMounds, this.snowMoundsNorth, this.snowMoundsWest, this.snowMoundsSouth]) {
+      if (mounds) mounds.count = Math.max(1, Math.floor(mounds.userData.total * s.mounds));
+    }
+    for (const litter of [this.leafLitter, this.leafLitterNorth]) {
+      if (litter) litter.count = Math.max(0, Math.floor(litter.userData.total * s.litter));
+    }
   }
 
   setWindowLit(value) {

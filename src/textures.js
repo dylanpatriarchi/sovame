@@ -1133,26 +1133,6 @@ export function makeCorrugatedTexture(size = 256) {
   return toTexture(canvas);
 }
 
-/** Birch bark: white with black streaks. */
-export function makeBirchTexture(size = 128) {
-  const rng = new Rng(66);
-  const canvas = makeCanvas(size, size);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#dcdcd4';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 40; i++) {
-    ctx.fillStyle = `rgba(${rng.int(40, 90)},${rng.int(40, 88)},${rng.int(38, 84)},${rng.float(0.35, 0.95)})`;
-    const w = rng.float(6, 34);
-    const h = rng.float(1.5, 5);
-    ctx.fillRect(rng.float(0, size), rng.float(0, size), w, h);
-  }
-  for (let i = 0; i < 600; i++) {
-    ctx.fillStyle = `rgba(${rng.int(120, 190)},${rng.int(120, 190)},${rng.int(116, 184)},${rng.float(0.05, 0.2)})`;
-    ctx.fillRect(rng.float(0, size), rng.float(0, size), 1.5, 1.5);
-  }
-  return toTexture(canvas);
-}
-
 export function makeBarkTexture(size = 128) {
   const rng = new Rng(67);
   const canvas = makeCanvas(size, size);

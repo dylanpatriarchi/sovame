@@ -22,7 +22,8 @@ function loadSettings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...SETTINGS_DEFAULTS };
-    return { ...SETTINGS_DEFAULTS, ...JSON.parse(raw) };
+    // it is always winter here; older saves may still say otherwise
+    return { ...SETTINGS_DEFAULTS, ...JSON.parse(raw), season: 'winter' };
   } catch {
     return { ...SETTINGS_DEFAULTS };
   }
@@ -191,11 +192,7 @@ async function boot() {
   /* --------------------------------------------------- state */
 
   function applySetting(key, value, live) {
-    if (key === 'season') {
-      env.setSeason(value);
-      player.setFootprintStyle(player.surface, value);
-      ui.setZone(null);
-    } else if (key === 'time') {
+    if (key === 'time') {
       env.setTime(value);
     } else if (key === 'snow') {
       env.setSnowAmount(value);

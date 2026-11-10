@@ -290,3 +290,18 @@ National Geographic / Evgenia Arbugaeva (Tiksi, Dikson).
   scatter machinery (`legacyColliders`, `collidesHistoric`,
   `heightAtHistoric`, `addLegacyGhostRect`, `north` flags), unused
   texture makers, `WORLD.bounds*`, the far-detail groups.
+- 2026-11-10 — committed `39556e5` (interiors + vegetation cut). Then
+  **Phase 0 cuts, second pass**: the autumn season is gone (config, the
+  settings chip, autumn ground/roof textures, `World.setSeason`
+  simplified; saved settings are coerced to winter). The untracked
+  `tools/_*.mjs` probes were deleted with the owner's OK.
+  Decided to keep all four time presets: daylight is where the painted
+  facades read best.
+  **Deliberately not cut**: the legacy scatter machinery
+  (`legacyColliders`, `collidesHistoric`, `heightAtHistoric`,
+  `addLegacyGhostRect`, `north` flags, `WORLD.bounds*`) and the
+  autumn-only puddle/litter passes in `terrain.js` (still built,
+  never shown). They all hang off the one shared RNG stream: pulling
+  them out moves every old prop. They go when the town layout is
+  rewritten as data (per-object seeds) — that is the next real step,
+  not a cut.

@@ -114,7 +114,7 @@ export function buildBuildings(ctx) {
   const TX = ctx.TEXTURES;
 
   const roofMat = new THREE.MeshStandardMaterial({
-    map: world.season === 'winter' ? T.roofWinter : T.roofAutumn,
+    map: T.roofWinter,
     roughness: 0.95,
   });
   world.roofMats.push(roofMat);
