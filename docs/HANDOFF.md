@@ -272,3 +272,21 @@ National Geographic / Evgenia Arbugaeva (Tiksi, Dikson).
   **Next**: Phase 0 cuts (interiors/flats/windowview, autumn, legacy
   scatter machinery), town streets as ribbons, town-name stele, aurora,
   draw-call diet, radio toggle from the driver's seat.
+- 2026-11-10 — committed `f386168` (everything up to here), then
+  **Phase 0 cuts, first pass**:
+  - deleted `src/world/interiors.js`, `src/world/flats.js`,
+    `src/windowview.js` and all their wiring in `main.js` (doors, floors,
+    portal renders, interior layer); `World.interiorAt` and the landing
+    smoke spot are gone. `Environment.setIndoors` / `Sound.setIndoors`
+    stay for the future real stairwell.
+  - deleted `src/world/vegetation.js` (and the tree scatter helpers in
+    `west.js` / `south.js`); crows live in `src/world/crows.js` with
+    their own seed.
+  - `tools/smoke.mjs` rewritten for the new game (boot, three views, a
+    short drive, tea at a bench; exits 1 on console errors);
+    `tools/playtest.mjs` removed (it walked the old stairwells).
+    `tools/tour.mjs` and `tools/drive-test.mjs` were not re-run.
+  Still to cut: autumn season and the extra time presets, the legacy
+  scatter machinery (`legacyColliders`, `collidesHistoric`,
+  `heightAtHistoric`, `addLegacyGhostRect`, `north` flags), unused
+  texture makers, `WORLD.bounds*`, the far-detail groups.

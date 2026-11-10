@@ -396,36 +396,3 @@ export function buildWestProps(ctx, { makeSwing }) {
   ctx.addZone('Универсам', 'Supermarket', -132, -112, 53, 70);
   ctx.addZone('Западный микрорайон', 'Western district', X0, -104, Z0, Z1);
 }
-
-/** Tree lists of the cluster: birch clumps in the courtyards, poplars on
- * the street verges, spruces along the west fence. */
-export function scatterWestTrees(okPlace) {
-  const rng = new Rng(808080);
-  const lists = { birch: [], poplar: [], spruce: [] };
-  const onPath = (x, z) => WEST_WALK_PATHS.some((p) => x >= p.x0 - 0.8 && x <= p.x1 + 0.8 && z >= p.z0 - 0.8 && z <= p.z1 + 0.8);
-  const scatter = (list, count, x0, x1, z0, z1, radius = 1.4) => {
-    let tries = 0;
-    let placed = 0;
-    while (placed < count && tries < count * 30) {
-      tries++;
-      const x = rng.float(x0, x1);
-      const z = rng.float(z0, z1);
-      if (onPath(x, z) || !okPlace(x, z, radius)) continue;
-      list.push({ x, z });
-      placed++;
-    }
-  };
-  // courtyards (between the rows of blocks)
-  scatter(lists.birch, 12, -162, -110, -22, 10);
-  scatter(lists.birch, 10, -232, -182, -26, 8);
-  scatter(lists.birch, 10, -162, -110, 88, 122);
-  scatter(lists.birch, 8, -232, -182, 90, 132);
-  scatter(lists.birch, 6, -162, -110, -66, -38);
-  scatter(lists.birch, 6, -232, -182, -72, -44);
-  // verges just outside the street's sidewalks
-  scatter(lists.poplar, 8, SX - R - SW - 3.2, SX - R - SW - 1.2, Z0 + 6, Z1 - 6);
-  scatter(lists.poplar, 8, SX + R + SW + 1.2, SX + R + SW + 3.2, Z0 + 6, Z1 - 6);
-  // a spruce line along the west fence
-  scatter(lists.spruce, 10, X0 + 2.5, X0 + 6, Z0 + 6, Z1 - 6, 2.0);
-  return lists;
-}

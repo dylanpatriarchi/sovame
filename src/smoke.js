@@ -55,22 +55,6 @@ export function smokeSpots(world) {
       stand: { x: bus.x - 0.2, z: bus.z + 0.4, yaw: Math.PI / 2 },
     });
   }
-  // stairwell landing window, standing (the courtyard stairwell of building 7)
-  const interior = world.interiors.find((i) => i.id === 'b7-court') ?? world.interiors[0];
-  if (interior) {
-    const cx = (interior.bounds.x0 + interior.bounds.x1) / 2;
-    const cz = (interior.bounds.z0 + interior.bounds.z1) / 2;
-    spots.push({
-      id: 'smoke:landing',
-      x: cx,
-      z: cz + 2.6,
-      y: world.heightAt(cx, cz + 2.6), // only on the landing, not from the floor below
-      radius: 2.3,
-      seat: { x: cx + 0.35, z: cz + 2.28, yaw: Math.PI, eyeY: null, pitch: -0.2 },
-      stand: null,
-      indoor: true,
-    });
-  }
   // benches out of town: the lookout, the lighthouse, the port mole
   for (const spot of world.spots ?? []) spots.push(spot);
   return spots;

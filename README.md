@@ -24,7 +24,8 @@ npm run preview  # serve the production build
 | `E` | turn the kiosk radio on/off (within ~7 m) |
 | `E` (by a car) | get in / out of any parked car — then `W` `S` throttle and brake/reverse, `A` `D` steer, `Space` handbrake |
 | `V` | driver's seat ↔ chase camera |
-| `F` | have a smoke at a quiet spot (courtyard bench, bus stop, stairwell landing); `F` again to stop |
+| `F` | have a smoke at a spot (courtyard bench, bus stop, the lookout, the lighthouse, the port mole); `F` again to stop |
+| `G` | tea from the thermos at the same spots; `G` again to stop |
 | `Esc` | pause / release the mouse |
 
 `npm run drive` (with the dev server up) gets into a car, drives, crashes and

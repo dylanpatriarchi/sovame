@@ -7,7 +7,7 @@ import * as TX from '../textures.js';
 import { buildTerrain } from './terrain.js';
 import { buildBuildings } from './buildings.js';
 import { buildProps } from './props.js';
-import { buildVegetation } from './vegetation.js';
+import { buildCrows } from './crows.js';
 import { buildPeople } from './people.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
@@ -56,7 +56,6 @@ export class World {
     this.lamps = [];
     this.updaters = [];
     this.points = {};
-    this.interiors = [];
     this.interactables = [];
 
     this.initMaterials();
@@ -90,13 +89,10 @@ export class World {
       // routes are validated lazily on the first update, once the trees
       // planted by the next stage have registered their colliders too
       ['Passers-by', () => buildPeople(this.ctx)],
-      ['Crows over bare ground', () => this.buildTreeless()],
-      // the teleport stairwells and flats are switched off (they stood in
-      // boxes out east, where the bay is now); a real stairwell comes later
+      ['Crows over bare ground', () => buildCrows(this.ctx)],
       [
         'Roads out of town',
         () => {
-          this.flats = [];
           buildRoads(this.ctx);
           buildArctic(this.ctx);
         },
@@ -113,31 +109,6 @@ export class World {
     this.colliders = this.colliders.filter((c) => !c.buildOnly);
     for (const car of this.cars ?? []) car.updateCollider();
     onProgress?.(1, 'Ready');
-  }
-
-  /**
-   * Nothing grows this far north. The old vegetation pass still runs (the
-   * crows live in it and its seeded draws keep later stages where they
-   * were), but every tree, spruce and bush it plants — and their trunk
-   * colliders — is taken straight back out. Goes away with the town
-   * rebuild (docs/HANDOFF.md, phase 2).
-   */
-  buildTreeless() {
-    const groups = [this.group, this.farDetails, this.westDetails, this.southDetails];
-    const before = groups.map((g) => new Set(g.children));
-    const colliders = this.colliders.length;
-    const legacy = this.legacyColliders.length;
-    buildVegetation(this.ctx);
-    groups.forEach((g, i) => {
-      for (const child of [...g.children]) {
-        if (!before[i].has(child) && child.isMesh) g.remove(child);
-      }
-    });
-    this.autumnOnly = this.autumnOnly.filter((o) => o.parent);
-    this.winterOnly = this.winterOnly.filter((o) => o.parent);
-    this.colliders.length = colliders;
-    this.legacyColliders.length = legacy;
-    this.treeSpots = [];
   }
 
   /* ---------------------------------------------------------- materials */
@@ -194,13 +165,11 @@ export class World {
       tvGlow: TX.makeTvGlowTexture(),
       rust: TX.makeRustTexture(),
       corrugated: TX.makeCorrugatedTexture(),
-      birch: TX.makeBirchTexture(),
       bark: TX.makeBarkTexture(),
       brick: TX.makeBrickTexture(),
       metalScratch: TX.makeMetalTexture(),
       manhole: TX.makeManholeTexture(),
     };
-    this.textures.birch.repeat.set(1, 3);
     this.textures.bark.repeat.set(1, 2);
     this.textures.brick.repeat.set(3, 6);
     this.textures.corrugated.repeat.set(1, 1);
@@ -212,7 +181,6 @@ export class World {
     this.materials.corrugated = new THREE.MeshStandardMaterial({ map: this.textures.corrugated, roughness: 0.72, metalness: 0.4 });
     this.materials.brick = new THREE.MeshStandardMaterial({ map: this.textures.brick, roughness: 0.95 });
     this.materials.metalTexture = new THREE.MeshStandardMaterial({ map: this.textures.metalScratch, roughness: 0.6, metalness: 0.5 });
-    this.materials.birch = new THREE.MeshStandardMaterial({ map: this.textures.birch, roughness: 0.9 });
     this.materials.bark = new THREE.MeshStandardMaterial({ map: this.textures.bark, roughness: 0.95 });
   }
 
@@ -316,19 +284,6 @@ export class World {
       if (!best || zone.area < best.area) best = zone;
     }
     return best;
-  }
-
-  /** The stairwell or flat interior containing the point, if any. */
-  interiorAt(x, z) {
-    for (const it of this.flats ?? []) {
-      const b = it.bounds;
-      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
-    }
-    for (const it of this.interiors) {
-      const b = it.bounds;
-      if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return it;
-    }
-    return null;
   }
 
   /** Checks whether a circle of radius r collides with the environment. */

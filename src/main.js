@@ -5,10 +5,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { World } from './world/index.js';
-import { INTERIOR_LAYER, LAND_H, stairwellView } from './world/interiors.js';
-import { flatView, numberFlats, setFlatLight } from './world/flats.js';
-import { WindowViews } from './windowview.js';
-import { allEntrances } from './world/entrances.js';
 import { Environment } from './environment.js';
 import { Player } from './player.js';
 import { Sound } from './audio.js';
@@ -67,8 +63,6 @@ async function boot() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.08, 1500);
   camera.position.set(2.4, 1.9, 44);
-  // stairwell interiors live on their own layer, lit only by their own bulbs
-  camera.layers.enable(INTERIOR_LAYER);
 
   // post chain: bloom only haloes genuinely bright sources (windows, lamps, moon)
   const composer = new EffectComposer(renderer);
@@ -80,7 +74,7 @@ async function boot() {
   renderer.info.autoReset = false;
 
   const sound = new Sound({ volume: settings.volume });
-  const state = { mode: 'loading', elapsed: 0, introT: 0, interior: null, transitioning: false, smoking: false };
+  const state = { mode: 'loading', elapsed: 0, introT: 0, transitioning: false, smoking: false };
 
   const ui = new UI({
     settings,
@@ -98,13 +92,10 @@ async function boot() {
 
   const world = new World({ season: settings.season, quality });
   scene.add(world.group);
-  // interior windows look at the real district (portal renders)
-  const windowViews = new WindowViews({ renderer, scene, quality });
-  world.windowViews = windowViews;
 
   await world.build((fraction, label) => ui.setProgress(0.08 + fraction * 0.62, label));
 
-  // interaction registry: the kiosk radio plus one in/out pair per stairwell
+  // interaction registry: the kiosk radio, the spots, the cars
   const radio = world.points.radio;
   if (radio) {
     world.interactables.push({
@@ -119,103 +110,6 @@ async function boot() {
       },
     });
   }
-  // every entrance door of every block opens: the three furnished
-  // stairwells answer for all of them (the one behind its own door, the
-  // others picked by a stable hash) and remember which door you came in by
-  for (const door of world.interiors.length ? allEntrances() : []) {
-    const own = world.interiors.find((it) => Math.hypot(it.doorOut.x - door.pad.x, it.doorOut.z - door.pad.z) < 0.1);
-    const hash = Math.abs(Math.round(door.x * 7.3 + door.z * 13.1));
-    const interior = own ?? world.interiors[hash % world.interiors.length];
-    const caption = `Entrance ${door.number} · building ${door.spec.number}`;
-    world.interactables.push({
-      id: `door-${door.spec.id}-${door.cell}-${door.side}`,
-      x: door.pad.x,
-      z: door.pad.z,
-      radius: 2.4,
-      prompt: () => 'E — enter the stairwell',
-      onUse: () => {
-        interior.outSpawn = door.out;
-        interior.caption = caption;
-        // the stairwell now stands behind this very door: its window, floor
-        // numbers and flats follow the block, the entrance and the floor
-        interior.address = { spec: door.spec, x: door.x, side: door.side, entrance: door.number };
-        interior.floor = 1;
-        interior.drawFloor?.(1);
-        numberFlats(world, interior);
-        useDoor(interior, true);
-      },
-    });
-  }
-  for (const interior of world.interiors) {
-    world.interactables.push({
-      id: `${interior.id}:exit`,
-      x: interior.doorIn.x,
-      z: interior.doorIn.z,
-      radius: 1.5,
-      prompt: () => 'E — step outside',
-      onUse: () => useDoor(interior, false),
-    });
-    // the flight going up from the landing, and back down a floor
-    const scx = (interior.bounds.x0 + interior.bounds.x1) / 2;
-    const scz = (interior.bounds.z0 + interior.bounds.z1) / 2;
-    const floors = () => interior.address?.spec.floors ?? 5;
-    world.interactables.push({
-      id: `${interior.id}:up`,
-      x: scx + 1.42,
-      z: scz + 2.3,
-      y: LAND_H,
-      radius: 0.95,
-      facing: { x: 0, z: -1 },
-      available: () => interior.floor < floors(),
-      prompt: () => `E — up to floor ${interior.floor + 1}`,
-      onUse: () => changeFloor(interior, 1),
-    });
-    world.interactables.push({
-      id: `${interior.id}:down`,
-      x: scx - 1.42,
-      z: scz + 2.3,
-      y: LAND_H,
-      radius: 0.95,
-      facing: { x: 0, z: -1 },
-      available: () => interior.floor > 1,
-      prompt: () => `E — down to floor ${interior.floor - 1}`,
-      onUse: () => changeFloor(interior, -1),
-    });
-  }
-  // one flat behind a padded door on each landing, with a kitchen radio
-  const radioPrompt = () => (sound.radioOn ? 'E — turn off the radio' : 'E — turn on the radio');
-  for (const flat of world.flats) {
-    world.interactables.push({
-      id: `${flat.id}:enter`,
-      x: flat.doorOut.x,
-      z: flat.doorOut.z,
-      y: flat.doorOut.y,
-      radius: 1.1,
-      facing: flat.doorFacing,
-      prompt: () => `E — go into flat ${flat.number}`,
-      onUse: () => useDoor(flat, true),
-    });
-    world.interactables.push({
-      id: `${flat.id}:exit`,
-      x: flat.doorIn.x,
-      z: flat.doorIn.z,
-      radius: 1.0,
-      prompt: () => 'E — back to the stairwell',
-      onUse: () => useDoor(flat, false),
-    });
-    world.interactables.push({
-      id: `${flat.id}:radio`,
-      x: flat.radio.x + 0.9,
-      z: flat.radio.z - 0.6,
-      radius: 1.5,
-      prompt: radioPrompt,
-      onUse: () => {
-        sound.toggleRadio();
-        sound.ui('tick');
-      },
-    });
-  }
-
   const env = new Environment({
     scene,
     renderer,
@@ -241,10 +135,9 @@ async function boot() {
       y: spot.y,
       radius: spot.radius,
       available: () => smoke.available(spot),
-      prompt: () => (spot.indoor ? 'F — have a smoke' : 'F — have a smoke · G — tea from the thermos'),
+      prompt: () => 'F — have a smoke · G — tea from the thermos',
       onUse: () => startSmoke(spot),
     });
-    if (spot.indoor) continue;
     world.interactables.push({
       id: `${spot.id}:tea`,
       key: 'KeyG',
@@ -271,7 +164,7 @@ async function boot() {
       // measured from the bodywork, not the car's center
       distanceTo: (x, z) => car.distanceTo(x, z),
       radius: 1.3,
-      available: () => !driving.active && !state.interior,
+      available: () => !driving.active,
       prompt: () => 'E — get in the car',
       onUse: () => enterCar(car),
     });
@@ -330,17 +223,11 @@ async function boot() {
     composer.setPixelRatio(pixelRatio);
     composer.setSize(window.innerWidth, window.innerHeight);
     env.setQuality(quality);
-    windowViews.setQuality(quality);
   }
 
   function enterWorld() {
     leaveCarNow();
     state.mode = 'playing';
-    state.interior = null;
-    setFlatLight(world, null);
-    windowViews.setView(null);
-    sound.setIndoors(false);
-    env.setIndoors(false);
     player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnYaw);
     player.enabled = true;
     ui.showScreen('none');
@@ -370,11 +257,6 @@ async function boot() {
     leaveCarNow();
     state.mode = 'title';
     state.introT = 0;
-    state.interior = null;
-    setFlatLight(world, null);
-    windowViews.setView(null);
-    sound.setIndoors(false);
-    env.setIndoors(false);
     player.enabled = false;
     player.releaseLock();
     ui.showScreen('start');
@@ -403,64 +285,6 @@ async function boot() {
       }
     }
     return best;
-  }
-
-  /** Steps through a door: fade to black, teleport, fade back. A flat's
-   * outside is its stairwell, a stairwell's outside is the district. */
-  function useDoor(interior, entering) {
-    if (state.transitioning) return;
-    state.transitioning = true;
-    sound.ui('tick');
-    ui.fadeTransition(() => {
-      const spawn = entering ? interior.inSpawn : interior.outSpawn;
-      player.teleport(spawn.x, spawn.z, spawn.yaw);
-      player.pitch = entering ? 0.03 : -0.02;
-      state.interior = entering ? interior : (interior.parent ?? null);
-      sound.setIndoors(!!state.interior);
-      env.setIndoors(!!state.interior);
-      setFlatLight(world, state.interior?.kind === 'flat' ? state.interior : null, state.interior);
-      refreshView();
-      lastPrompt = null;
-      updateZone();
-    }).finally(() => {
-      state.transitioning = false;
-    });
-  }
-
-  /** One flight up or down: the same landing, another floor of the block. */
-  function changeFloor(interior, delta) {
-    if (state.transitioning) return;
-    state.transitioning = true;
-    sound.ui('tick');
-    ui.fadeTransition(() => {
-      setFloor(interior, interior.floor + delta);
-      const scx = (interior.bounds.x0 + interior.bounds.x1) / 2;
-      const scz = (interior.bounds.z0 + interior.bounds.z1) / 2;
-      player.teleport(scx + 0.25, scz + 2.55, delta > 0 ? Math.PI * 0.85 : Math.PI * 1.15);
-      player.pitch = 0.02;
-      lastPrompt = null;
-      updateZone();
-    }).finally(() => {
-      state.transitioning = false;
-    });
-  }
-
-  function setFloor(interior, floor) {
-    interior.floor = floor;
-    interior.drawFloor?.(floor);
-    numberFlats(world, interior);
-    refreshView();
-  }
-
-  /** Points the interior windows at the real block, or back to the painted
-   * views. With a live view the weather outside keeps falling past them. */
-  function refreshView() {
-    const it = state.interior;
-    const view = !it ? null : it.kind === 'flat' ? flatView(it) : stairwellView(it);
-    windowViews.setView(view);
-    env.setIndoors(!!it && !view);
-    // indoors only the bulbs bloom: lamp-lit walls would veil the window
-    bloomPass.threshold = it ? 1.8 : 1.0;
   }
 
   /** Into the driver's seat: a short fade, the door, the starter. */
@@ -555,12 +379,6 @@ async function boot() {
   }
 
   function updateZone() {
-    if (state.interior) {
-      const it = state.interior;
-      if (it.kind === 'flat') ui.setZone(`Квартира ${it.number}`, it.caption);
-      else ui.setZone('Подъезд', it.address ? `${it.caption} · floor ${it.floor}` : it.caption);
-      return;
-    }
     const zone = world.zoneAt(player.position.x, player.position.z);
     ui.setZone(zone ? zone.name : null, zone ? zone.sub : null);
   }
@@ -643,7 +461,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, windowViews, changeFloor, setFloor };
+  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving };
 
   /* --------------------------------------------------- loop */
 
@@ -676,20 +494,11 @@ async function boot() {
       sound.engineUpdate(0, 0);
     }
 
-    // from inside, the world outside is seen (and simulated) around the
-    // real window: snow, lamps and passers-by gather there
-    if (state.mode === 'playing' && state.interior && !state.interior.kind && state.interior.floor > 1 && player.position.y < 0.4) {
-      // walked all the way down to the hall
-      setFloor(state.interior, 1);
-      updateZone();
-    }
-    const viewCam = windowViews.update(camera);
-    env.update(dt, state.elapsed, viewCam ?? camera);
-    world.update(dt, state.elapsed, viewCam ?? camera);
-    world.people?.update(dt, state.elapsed, viewCam?.position ?? player.position, env.temperature);
+    env.update(dt, state.elapsed, camera);
+    world.update(dt, state.elapsed, camera);
+    world.people?.update(dt, state.elapsed, player.position, env.temperature);
     sound.updateWind(env.wind.gust);
-    // inside a flat the music comes from the kitchen radio
-    sound.update(dt, state.elapsed, camera.position, state.interior?.radio ?? world.points.radio);
+    sound.update(dt, state.elapsed, camera.position, world.points.radio);
 
     if (state.mode === 'playing') {
       zoneTimer += dt;
@@ -709,21 +518,7 @@ async function boot() {
       }
     }
 
-    windowViews.render();
-    // indoors the district is only ever seen through the windows (rendered
-    // just above): keep it out of the main pass, behind the sealed walls
-    let hidden = null;
-    if (state.interior) {
-      hidden = [];
-      for (const child of world.group.children) {
-        if (child.visible && !child.isLight && !child.layers.isEnabled(INTERIOR_LAYER)) {
-          child.visible = false;
-          hidden.push(child);
-        }
-      }
-    }
     composer.render();
-    if (hidden) for (const child of hidden) child.visible = true;
   }
 
   requestAnimationFrame(frame);
