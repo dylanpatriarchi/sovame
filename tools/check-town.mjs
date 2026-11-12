@@ -4,7 +4,6 @@
 //   node tools/check-town.mjs
 import * as T from '../src/world/town.js';
 
-const PAD = { x0: -250, x1: 250, z0: -210, z1: 200 };
 const PORCH = 2.8;
 const problems = [];
 const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
@@ -22,7 +21,7 @@ const streets = T.STREETS.map((s) => ({ id: s.id, rect: T.streetRect(s, T.SIDEWA
 
 for (const s of solids) {
   const r = s.full;
-  if (r.x0 < PAD.x0 || r.x1 > PAD.x1 || r.z0 < PAD.z0 || r.z1 > PAD.z1) problems.push(`${s.id} leaves the pad ${fmt(r)}`);
+  if (!T.PADS.some((p) => r.x0 >= p.x0 && r.x1 <= p.x1 && r.z0 >= p.z0 && r.z1 <= p.z1)) problems.push(`${s.id} is not on a pad ${fmt(r)}`);
   for (const st of streets) if (overlap(r, st.rect)) problems.push(`${s.id} ${fmt(r)} stands on ${st.id} ${fmt(st.rect)}`);
 }
 for (let i = 0; i < solids.length; i++) {
@@ -44,7 +43,7 @@ for (const p of points) {
   for (const s of solids) if (overlap(box, s.full)) problems.push(`${p.id} is inside ${s.id}`);
   if (p.id !== 'kiosk') for (const st of streets) if (overlap(box, st.rect)) problems.push(`${p.id} is on ${st.id}`);
 }
-for (const c of T.PARKED.filter((c) => c.curb && Math.abs(c.x) < 250)) {
+for (const c of T.PARKED.filter((c) => c.curb)) {
   if (!T.STREETS.some((s) => inside(T.streetRect(s), c.x, c.z))) problems.push(`curb car (${c.x},${c.z}) is not on a street`);
 }
 
@@ -70,15 +69,6 @@ for (const run of T.PIPES) {
       const along = st.axis === 'z' ? ax === bx : az === bz;
       if (along && overlap(r, sr)) problems.push(`pipe (${ax},${az})→(${bx},${bz}) runs along ${st.id}`);
     }
-  }
-}
-
-// walks: every point clear of the walls
-for (const [name, walk] of Object.entries(T.WALKS)) {
-  for (const p of walk.points) {
-    const x = Array.isArray(p) ? p[0] : p.x;
-    const z = Array.isArray(p) ? p[1] : p.z;
-    for (const s of solids) if (inside(s.full, x, z)) problems.push(`walk ${name} point (${x},${z}) is inside ${s.id}`);
   }
 }
 

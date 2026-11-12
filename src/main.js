@@ -13,9 +13,10 @@ import { Sound } from './audio.js';
 import { UI } from './ui.js';
 import { Smoke } from './smoke.js';
 import { Driving } from './driving.js';
+import { readSave, writeSave, clearSave } from './save.js';
 import { Interactions } from './interactions.js';
 import { isTouch, loadSettings, saveSettings, resolveQuality } from './settings.js';
-import { PLAYER } from './config.js';
+import { PLAYER, TIME_PRESETS } from './config.js';
 import { clamp } from './util.js';
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -89,7 +90,7 @@ async function boot() {
 
   const smoke = new Smoke({ scene, camera, world, env, sound });
   const driving = new Driving({ camera, world, player, sound, env });
-  const actions = new Interactions({ world, player, ui, sound, smoke, driving, state });
+  const actions = new Interactions({ world, player, ui, sound, smoke, driving, state, env });
   player.setFootprintStyle('snow', settings.season);
   ui.setProgress(0.94, 'Final touches');
   await nextFrame();
@@ -142,10 +143,88 @@ async function boot() {
     env.setQuality(quality);
   }
 
+  /* --------------------------------------------------- the saved game */
+
+  const round = (v) => Math.round(v * 100) / 100;
+  const berth = (v) => [round(v.x), round(v.z), round(v.heading)];
+
+  /** Everything needed to put the game back the way it was left. */
+  function snapshot() {
+    const seat = state.smoking ? smoke.active?.stand : null;
+    return {
+      player: { x: round(seat?.x ?? player.position.x), z: round(seat?.z ?? player.position.z), yaw: round(player.yaw), pitch: round(player.pitch) },
+      room: world.inside ? { id: world.inside.id, door: world.doors.indexOf(actions.lastDoor) } : null,
+      driving: driving.active ? { boat: !!driving.car.boat, id: driving.car.id } : null,
+      cars: world.cars.map(berth),
+      boats: world.boats.map(berth),
+      time: TIME_PRESETS[env.timeIndex].id,
+      radio: { ...actions.radioSets },
+    };
+  }
+
+  function saveGame() {
+    if (state.started) writeSave(snapshot());
+  }
+
+  function restore(save) {
+    save.cars?.forEach(([x, z, heading], i) => {
+      const car = world.cars[i];
+      if (!car) return;
+      Object.assign(car, { x, z, heading, vx: 0, vz: 0, speed: 0, y: world.heightAt(x, z) });
+      car.updateCollider();
+      car.sync();
+    });
+    save.boats?.forEach(([x, z, heading], i) => {
+      const boat = world.boats[i];
+      if (boat?.afloat(x, z, heading)) Object.assign(boat, { x, z, heading, speed: 0 });
+    });
+    if (save.time) env.setTime(save.time);
+    Object.assign(actions.radioSets, save.radio ?? {});
+    const door = save.room ? world.doors[save.room.door] : null;
+    if (door?.inside) actions.enterRoomNow(door);
+    const p = save.player;
+    player.teleport(p.x, p.z, p.yaw);
+    player.pitch = p.pitch ?? 0;
+    const vehicle = save.driving ? (save.driving.boat ? world.boats : world.cars)[save.driving.id] : null;
+    if (vehicle) driving.enter(vehicle);
+  }
+
+  setInterval(() => state.mode === 'playing' && saveGame(), 8000);
+  window.addEventListener('pagehide', saveGame);
+  window.addEventListener('beforeunload', saveGame);
+  document.addEventListener('visibilitychange', () => document.hidden && saveGame());
+  // a saved game changes what the title offers
+  const startBtn = document.getElementById('btn-start');
+  const newBtn = document.getElementById('btn-new');
+  const offerSave = () => {
+    const has = !!readSave();
+    startBtn.textContent = has ? 'Continue' : 'Enter the district';
+    newBtn.classList.toggle('hidden', !has);
+  };
+  newBtn.addEventListener('click', () => {
+    state.started = false;
+    clearSave();
+    location.reload();
+  });
+  offerSave();
+
   function enterWorld() {
     actions.leaveCarNow();
+    actions.leaveRoomNow();
     state.mode = 'playing';
+    sound.init();
+    sound.resume();
+    const save = readSave();
     player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnYaw);
+    if (save) {
+      try {
+        restore(save);
+      } catch (error) {
+        console.warn('saved game could not be restored', error);
+        clearSave();
+      }
+    }
+    state.started = true;
     player.enabled = true;
     ui.showScreen('none');
     ui.el.hints?.classList.remove('fade');
@@ -170,8 +249,12 @@ async function boot() {
   }
 
   function toTitle() {
+    saveGame();
+    state.started = false;
+    offerSave();
     if (state.smoking) actions.endSmoke(false);
     actions.leaveCarNow();
+    actions.leaveRoomNow();
     state.mode = 'title';
     state.introT = 0;
     player.enabled = false;
@@ -251,7 +334,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, radioSets: actions.radioSets };
+  window.__game = { save: saveGame, renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, radioSets: actions.radioSets };
 
   /* --------------------------------------------------- loop */
 
@@ -286,7 +369,6 @@ async function boot() {
 
     env.update(dt, state.elapsed, camera);
     world.update(dt, state.elapsed, camera);
-    world.people?.update(dt, state.elapsed, player.position, env.temperature);
     sound.updateWind(env.wind.gust);
     sound.update(dt, state.elapsed, camera.position, actions.updateRadio(camera.position));
 

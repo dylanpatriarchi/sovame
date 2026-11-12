@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { facadePaint } from '../textures.js';
-import { BLOCKS, CELL_W, FLOOR_H } from './town.js';
+import { BLOCKS, CELL_W, FLOOR_H, zoneKey } from './town.js';
 import { blockMatrix } from './blocks.js';
 
 /** Height of the gap: the band the facade texture leaves dark. */
@@ -24,6 +24,8 @@ function box(w, h, d, x, y, z, color) {
 export function buildPiles(ctx) {
   const { world } = ctx;
   const parts = [];
+  // one mesh per stretch of town, so what is behind you is not drawn
+  const zones = new Map();
   const beamH = PILE_H * 0.2;
   for (const block of BLOCKS) {
     // modelled around the block's own origin, then set down
@@ -57,11 +59,16 @@ export function buildPiles(ctx) {
       parts.push(box(0.16, beamH, spec.d + 0.2, x - side * 0.02, PILE_H - beamH / 2, spec.z, paint));
     }
     const matrix = blockMatrix(block);
-    for (let k = mark; k < parts.length; k++) parts[k].applyMatrix4(matrix);
+    const key = zoneKey(block.x, block.z);
+    if (!zones.has(key)) zones.set(key, []);
+    for (let k = mark; k < parts.length; k++) zones.get(key).push(parts[k].applyMatrix4(matrix));
   }
-  const mesh = new THREE.Mesh(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
-  mesh.name = 'piles';
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  world.group.add(mesh);
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+  for (const [key, list] of zones) {
+    const mesh = new THREE.Mesh(mergeGeometries(list, false), material);
+    mesh.name = `piles-${key}`;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    world.group.add(mesh);
+  }
 }

@@ -3,10 +3,11 @@
 // cars, the radio in the dashboard. main.js owns the modes (title, playing,
 // paused); this owns everything that happens while playing.
 import { smokeSpots } from './smoke.js';
+import { TIME_PRESETS } from './config.js';
 
 export class Interactions {
-  constructor({ world, player, ui, sound, smoke, driving, state }) {
-    Object.assign(this, { world, player, ui, sound, smoke, driving, state });
+  constructor({ world, player, ui, sound, smoke, driving, state, env }) {
+    Object.assign(this, { world, player, ui, sound, smoke, driving, state, env });
     /** One broadcast, two sets: the kiosk's and the one in the dashboard. */
     this.radioSets = { kiosk: false, car: false };
     this.lastPrompt = null;
@@ -48,6 +49,62 @@ export class Interactions {
         });
       }
     }
+    // every door in town says what it is: the few that open stand open
+    // with a lit plate over them, the rest are locked
+    for (const door of world.doors ?? []) {
+      const where = door.label === 'home' ? 'E — go home' : `E — go in · ${door.label}`;
+      list.push({
+        id: door.inside ? `door-${door.inside}` : 'door-locked',
+        x: door.x,
+        z: door.z,
+        // an open door calls from the foot of the steps, a locked one
+        // only answers when you are standing at it
+        y: door.inside ? undefined : door.y,
+        radius: door.inside ? 2.6 : 1.2,
+        available: () => !world.inside,
+        prompt: () => (door.inside ? where : door.public ? `${door.label} — закрыто · closed` : 'Заперто · locked'),
+        onUse: () => (door.inside ? this.enterRoom(door) : this.sound.ui('tick')),
+      });
+    }
+    for (const room of world.roomList ?? []) {
+      list.push({
+        id: `exit-${room.id}`,
+        x: room.door.x,
+        z: room.door.z,
+        radius: 1.3,
+        available: () => world.inside === room,
+        prompt: () => 'E — go outside',
+        onUse: () => this.leaveRoom(),
+      });
+      for (const use of room.uses) {
+        list.push({
+          id: `${room.id}-${use.id}`,
+          x: use.x,
+          z: use.z,
+          radius: use.radius,
+          available: () => world.inside === room,
+          prompt: () => 'E — lie down for a few hours',
+          onUse: () => this.sleep(),
+        });
+      }
+    }
+    // the boats: E to take the helm, from the shore or the ice beside one
+    for (const boat of world.boats ?? []) {
+      list.push({
+        id: `boat-${boat.id}`,
+        get x() {
+          return boat.x;
+        },
+        get z() {
+          return boat.z;
+        },
+        distanceTo: (x, z) => boat.distanceTo(x, z),
+        radius: 4.2,
+        available: () => !driving.active,
+        prompt: () => 'E — take the boat',
+        onUse: () => this.enterCar(boat),
+      });
+    }
     // every parked car: E to get in (the prompt follows the car around)
     for (const car of world.cars ?? []) {
       list.push({
@@ -62,7 +119,7 @@ export class Interactions {
         distanceTo: (x, z) => car.distanceTo(x, z),
         radius: 1.3,
         available: () => !driving.active,
-        prompt: () => 'E — get in the car',
+        prompt: () => `E — get in the ${car.model}`,
         onUse: () => this.enterCar(car),
       });
     }
@@ -111,6 +168,58 @@ export class Interactions {
     const wanted = inCar || this.radioSets.kiosk;
     if (this.sound.radioOn !== wanted) this.sound.toggleRadio(wanted);
     return inCar ? listener : this.world.points.radio;
+  }
+
+  /* ------------------------------------------------------- doors */
+
+  /** Through a door that opens: the room is somewhere else entirely. */
+  enterRoom(door) {
+    if (this.state.transitioning || this.world.inside) return;
+    this.sound.door();
+    this.fade(() => this.enterRoomNow(door));
+  }
+
+  /** Inside without the fade (also how a saved game comes back indoors). */
+  enterRoomNow(door) {
+    const { world, player } = this;
+    const room = world.rooms[door.inside];
+    world.inside = room;
+    room.group.visible = true;
+    this.lastDoor = door;
+    player.teleport(room.spawn.x, room.spawn.z, room.spawn.yaw);
+    player.pitch = 0;
+    this.env.setIndoors(true);
+    this.sound.setIndoors(true);
+  }
+
+  leaveRoom() {
+    if (this.state.transitioning || !this.world.inside) return;
+    this.sound.door();
+    this.fade(() => {
+      const door = this.lastDoor;
+      this.leaveRoomNow();
+      this.player.teleport(door.x, door.z, door.yaw);
+      this.player.pitch = 0;
+    });
+  }
+
+  /** Out of doors again without ceremony (back to the title, a restart). */
+  leaveRoomNow() {
+    const { world } = this;
+    if (!world.inside) return;
+    world.inside.group.visible = false;
+    world.inside = null;
+    this.env.setIndoors(false);
+    this.sound.setIndoors(false);
+  }
+
+  /** On the sofa at home: the day moves on to its next part. */
+  sleep() {
+    if (this.state.transitioning) return;
+    this.fade(() => {
+      const next = TIME_PRESETS[(this.env.timeIndex + 1) % TIME_PRESETS.length];
+      this.env.setTime(next.id);
+    });
   }
 
   /* ------------------------------------------------------- cars */
@@ -182,7 +291,7 @@ export class Interactions {
     const { driving, state } = this;
     let text = null;
     if (driving.active) {
-      text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? `E — get out · V — camera · R — radio ${this.radioSets.car ? 'off' : 'on'}` : null;
+      text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? driving.car.boat ? 'E — step ashore (close to land) · V — camera' : `E — get out · V — camera · R — radio ${this.radioSets.car ? 'off' : 'on'}` : null;
     } else {
       const it = state.smoking ? null : this.nearest();
       text = it && !state.transitioning ? it.prompt() : null;

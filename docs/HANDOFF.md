@@ -108,7 +108,7 @@ longer applies: all of it is deleted.
   `blockMatrix`) → `streets.js` (land, asphalt, sidewalks cut at junctions,
   square, ploughed snow) → `roads.js` → `arctic.js` (plant, port, pipes,
   aerials, lamps; calls `furniture.js` with its merge `kit`) →
-  `vehicles.js` → `people.js` + `crows.js`.
+  `vehicles.js` → `crows.js`.
 - A block is modelled around its own origin; `toWorld` / `rectToWorld` /
   `blockMatrix` put it in the world. Anything new on a block must do the
   same or it breaks on `rot: 1` blocks.
@@ -373,6 +373,82 @@ longer applies: all of it is deleted.
   - **Docs**: `docs/graphics-plan.md` rewritten for the Arctic game (it
     is the contract CONTRIBUTING points at); `docs/improvement-plan.md`
     deleted (pre-pivot, all done or void); README updated.
+- 2026-11-10 — **Cars rebuilt, passers-by removed** (branch
+  `fix/cars-and-people`, owner: "still NPCs walking, buggy cars with
+  unrealistic interiors").
+  - **No pedestrians**: `people.js`, `WALKS`/`WALKERS` in `town.js`,
+    `PEOPLE` in `config.js` and the walks check in `check-town` are gone.
+    Crows are the only thing that moves besides the player.
+  - **Parked cars are solid again**: `Car` sets its collider in the
+    constructor (it used to stay at 1e6 until the car was first driven,
+    so you could walk and drive through every parked car).
+  - **Sedan is a shell, not a slab** (`sedanParts`): side skins with
+    arches, hood, boot lid, cowl, pillars with tumblehome, roof; a floor
+    pan, arch liners and bulkheads so no daylight shows. Glass is thin
+    single-sided panes (`quad`), tinted from the street, clear from the
+    seat. A separate matt `cabin` mesh (`cabinMaterial`, gives back 30 %
+    of its own colour so it does not go black under the roof): seats
+    with head restraints, rear bench, door cards, dash with binnacle,
+    dials, radio, glovebox, wheel, gear lever, handbrake, pedals, mirror,
+    visors, headlining. Outside: four round lamps on a black grille,
+    chrome bumpers with overriders, plates, three-colour tail clusters,
+    rubbing strips, handles, one door mirror, aerial, mud flaps; wheels
+    with a round tyre, steel rim and chrome cap.
+  - **Van**: the shell is bevelled 6 cm outward, which had buried the
+    windshield, rear glass, grille and lamps; all moved proud of it. The
+    cab is lined (floor, door cards, quarter panels, seat cushions) in
+    its own `cabin` mesh.
+  - Verified: `check:town`, build, `npm run smoke`, `npm run drive`.
+- 2026-11-10 — **Doors that open, south district** (same branch, work
+  paused mid-way at the owner's request; nothing committed).
+  - **South district** (`town.js`): avenue, Stroiteley and Portovaya run
+    on to z −556; three new cross streets (Polyarnaya, Yuzhnaya,
+    Geologov); blocks `s01`–`s31`, cinema, bathhouse, canteen, a second
+    grocery; lanes, pipes, garages, benches, cars. `TOWN_PAD.z0` is −600.
+    `check:town` passes (64 blocks, 10 public buildings, 10 streets).
+  - **Rooms** (`src/world/interiors.js`): a grocery and the home flat,
+    built far away under the tundra with baked vertex light;
+    `world.rooms`, `world.inside`, `heightAt` knows their floor.
+    `entrances.js` fills `world.doors`; a door that opens stands ajar
+    with a lit doorway and a lightbox (ОТКРЫТО / ДОМ · кв. 24), every
+    other door prompts "Заперто · locked". `Interactions.enterRoom /
+    leaveRoom / sleep` (the sofa at home moves the day on). `PUBLIC`
+    entries take `inside: 'shop'`; `HOME` names the flat's door.
+  - **Seen working** in a probe: entering and leaving the flat and the
+    grocery, the locked prompt, the south district on screen.
+  - **Budget**: roofs and end walls are merged across the town
+    (`wallParts` in `blocks.js`), porches and piles are split by
+    `zoneKey` so the far half of town is culled, wheels are lighter and
+    cullable, and cars past 70 m lose cabin and glass (past 420 m they
+    are not drawn). ~210–310 calls and < 600k triangles in town.
+- 2026-11-12 — **The bay, boats, a saved game** (owner: a boat, other
+  islands with other towns, save on closing the tab, realistic marker
+  posts, the car must be a Lada, no walking people).
+  - **Open water**: `iceEdge(z)` / `isWater(x, z)` in `land.js`. Fast ice
+    hugs the mainland, the port keeps a channel open, everything beyond
+    is water (a strip mesh over the ice sheet, re-cut as the camera moves
+    in z). `World.collides` is true on water, so nobody walks or drives
+    onto it.
+  - **Islands**: `PADS` in `town.js` (the town plus Медвежий and Рудный).
+    `padDistance` is the distance to the nearest pad; east of x 900 the
+    land is `seaBed`: a stony rim round each pad, then a beach. The
+    settlements are ordinary town data (blocks `i01`–`i05`, `r01`–`r04`,
+    a street each, shops that open, a club, a mine office).
+  - **Boats** (`src/world/boats.js`): `Boat` has the same interface as
+    `Car`, so `Driving` takes it as is; `exitSpots` finds dry ground
+    within 9 m. One moored off the mole, one on each island's west
+    beach, stern to the shore.
+  - **Saved game** (`src/save.js`, `snapshot` / `restore` in `main.js`):
+    player, room, vehicle being driven, every car and boat, time of day,
+    radio. Written every 8 s while playing, on `pagehide`,
+    `beforeunload`, when the tab is hidden and on "Back to title". The
+    title offers Continue / New game.
+  - **Marker posts** (`roads.js`): `world.posts.hit(car)`; a post leans
+    when nudged, goes flat with a bounce when hit at speed, costs the
+    car 3 % of its speed. Not saved.
+  - **Lada**: chrome `LADA 1500` on the boot lid, prompts name the car.
+  - **Tests**: `npm run smoke` now also checks the doors, a post, the
+    boat and a save/reload round trip; `npm run drive` passes.
   Nothing is left on the list. Ideas, not debts: a spatial hash for
   collisions if the rect count grows, more yards with lanes west of
   Строителей, a second town down the coast road.

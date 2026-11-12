@@ -95,160 +95,317 @@ function profile(points, width, bevel = 0.035, arches = false) {
   return plain(geo);
 }
 
-/** Shared geometry of the sedan, built once and cloned per car. */
+/** A flat four-cornered panel (a pane of glass, a slanted skin). */
+function quad(a, b, c, d) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], 2));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A box tilted about x, then set down: decks, seat backs, the dash top. */
+function tilted(w, h, d, x, y, z, rx) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.rotateX(rx);
+  g.translate(x, y, z);
+  return g;
+}
+
+/** A disc or a short drum facing along z (dials, lamps, knobs). */
+function drum(r, len, x, y, z, seg = 14) {
+  const g = new THREE.CylinderGeometry(r, r, len, seg);
+  g.rotateX(Math.PI / 2);
+  g.translate(x, y, z);
+  return g;
+}
+
+/**
+ * Shared geometry of the sedan, built once and cloned per car. It is a real
+ * shell: skins, decks and a floor round an open cabin, glass as thin panes,
+ * and inside everything a driver has in front of them.
+ *   body  — painted in the car's colour
+ *   trim  — chrome, rubber, lamp housings (glossy)
+ *   cabin — seats, dash, door cards, carpet (matt)
+ */
 function sedanParts() {
   const halfL = LENGTH / 2;
-  // lower body: trunk, waist line, hood; the bottom edge carries the arches
-  const body = profile(
-    [
-      [halfL - 0.02, 0.32],
-      [halfL, 0.74],
-      [halfL - 0.12, 0.86],
-      [0.9, 0.95],
-      [-1.15, 0.95],
-      [-halfL + 0.25, 0.9],
-      [-halfL, 0.78],
-      [-halfL + 0.03, 0.32],
-    ],
-    WIDTH,
-    0.04,
-    true
-  );
-  // the greenhouse: tinted glass volume narrower than the body (tumblehome)
-  const glass = profile(
-    [
-      [0.88, 0.95],
-      [0.3, 1.33],
-      [-0.72, 1.33],
-      [-1.13, 0.95],
-    ],
-    1.38,
-    0
-  );
-  glass.translate(0, 0.005, 0);
-
-  // painted frame of the greenhouse: roof, pillars, waist moulding
-  const frame = [];
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
-  frame.push(box(1.42, 0.06, 1.06, 0, 1.35, -0.21));
-  for (const s of [-1, 1]) {
-    const x = s * 0.69;
-    frame.push(bar(V(x, 0.95, 0.87), V(x, 1.34, 0.31), 0.06, 0.07)); // A
-    frame.push(bar(V(x, 0.95, -0.16), V(x, 1.34, -0.16), 0.06, 0.1)); // B
-    frame.push(bar(V(x, 0.95, -1.12), V(x, 1.34, -0.72), 0.06, 0.14)); // C
-    frame.push(box(0.04, 0.05, 2.0, x, 0.955, -0.12)); // window sill
-  }
-  frame.push(box(1.36, 0.06, 0.06, 0, 1.33, 0.3)); // windshield header
-  frame.push(box(1.36, 0.06, 0.08, 0, 1.33, -0.72)); // rear header
+  const HW = WIDTH / 2; // outer half width at the waist
+  const IN = HW - 0.05; // inner face of the side skins
+  const WAIST = 0.93;
+  const ROOF = 1.37;
+  /** half width of the greenhouse at the waist and at the roof (tumblehome) */
+  const GW = 0.72;
+  const GR = 0.6;
+  const Z_COWL = 0.9; // foot of the windshield
+  const Z_A = 0.32; // top of the windshield
+  const Z_B = -0.17;
+  const Z_C = -0.76; // top of the rear window
+  const Z_DECK = -1.14; // foot of the rear window
 
-  // trim: chrome, rubber, lamps housings, plates, interior — vertex colored
+  /* ---- painted shell */
+  const body = [];
+  const skin = profile(
+    [
+      [halfL - 0.03, 0.34],
+      [halfL, 0.7],
+      [halfL - 0.09, 0.86],
+      [Z_COWL, WAIST],
+      [Z_DECK, WAIST],
+      [-halfL + 0.1, 0.88],
+      [-halfL, 0.74],
+      [-halfL + 0.04, 0.34],
+    ],
+    0.05,
+    0.012,
+    true,
+  );
+  for (const s of [-1, 1]) body.push(skin.clone().translate(s * (HW - 0.025), 0, 0));
+  // hood and trunk lid follow the fall of the wings
+  const hoodLen = halfL - 0.09 - Z_COWL;
+  body.push(tilted(IN * 2, 0.04, hoodLen + 0.02, 0, (0.86 + WAIST) / 2 - 0.015, Z_COWL + hoodLen / 2, Math.atan2(WAIST - 0.86, hoodLen)));
+  const lidLen = halfL - 0.1 + Z_DECK;
+  body.push(tilted(IN * 2, 0.04, lidLen + 0.02, 0, (0.88 + WAIST) / 2 - 0.015, Z_DECK - lidLen / 2, -Math.atan2(WAIST - 0.88, lidLen)));
+  // nose and tail panels, the valances under the bumpers
+  body.push(box(IN * 2, 0.5, 0.04, 0, 0.6, halfL - 0.045));
+  body.push(box(IN * 2, 0.5, 0.04, 0, 0.6, -halfL + 0.05));
+  // cowl and rear deck: the ledges the two big panes stand on
+  body.push(box(IN * 2, 0.03, 0.12, 0, WAIST - 0.005, Z_COWL + 0.02));
+  body.push(box(IN * 2, 0.03, 0.1, 0, WAIST - 0.005, Z_DECK - 0.02));
+  // shoulders: the step in from the door skins to the foot of the glass
+  for (const s of [-1, 1]) body.push(box(HW - GW + 0.03, 0.035, Z_COWL - Z_DECK, s * (GW + (HW - GW) / 2 - 0.005), WAIST - 0.01, (Z_COWL + Z_DECK) / 2));
+  // greenhouse: pillars leaning in, roof rails, the roof itself
+  for (const s of [-1, 1]) {
+    body.push(bar(V(s * GW, WAIST, Z_COWL - 0.02), V(s * GR, ROOF - 0.02, Z_A), 0.055, 0.075)); // A
+    body.push(bar(V(s * GW, WAIST, Z_B), V(s * GR, ROOF - 0.02, Z_B), 0.05, 0.085)); // B
+    body.push(bar(V(s * GW, WAIST, Z_DECK + 0.06), V(s * GR, ROOF - 0.02, Z_C - 0.02), 0.055, 0.2)); // C
+    body.push(box(0.06, 0.05, Z_A - Z_C + 0.1, s * GR, ROOF - 0.015, (Z_A + Z_C) / 2)); // rail
+  }
+  body.push(box(GR * 2, 0.035, Z_A - Z_C + 0.1, 0, ROOF, (Z_A + Z_C) / 2));
+  body.push(box(GR * 2 - 0.2, 0.02, Z_A - Z_C - 0.1, 0, ROOF + 0.022, (Z_A + Z_C) / 2)); // the roof's slight crown
+
+  /* ---- glass: thin panes between the pillars */
+  const glass = [];
+  glass.push(quad([-GW + 0.03, WAIST, Z_COWL - 0.02], [GW - 0.03, WAIST, Z_COWL - 0.02], [GR - 0.03, ROOF - 0.03, Z_A], [-GR + 0.03, ROOF - 0.03, Z_A]));
+  glass.push(quad([GW - 0.03, WAIST, Z_DECK + 0.02], [-GW + 0.03, WAIST, Z_DECK + 0.02], [-GR + 0.03, ROOF - 0.03, Z_C], [GR - 0.03, ROOF - 0.03, Z_C]));
+  for (const s of [-1, 1]) {
+    const a = s * (GW + 0.002);
+    const b = s * (GR + 0.002);
+    const front = [[a, WAIST, Z_B + 0.04], [a, WAIST, Z_COWL - 0.07], [b, ROOF - 0.04, Z_A - 0.02], [b, ROOF - 0.04, Z_B + 0.04]];
+    const rear = [[a, WAIST, Z_DECK + 0.14], [a, WAIST, Z_B - 0.04], [b, ROOF - 0.04, Z_B - 0.04], [b, ROOF - 0.04, Z_C - 0.06]];
+    for (const p of [front, rear]) glass.push(s < 0 ? quad(...p) : quad(p[1], p[0], p[3], p[2]));
+  }
+
+  /* ---- chrome, rubber, lamp housings */
   const trim = [];
-  const CHROME = 0xb9bec2;
-  const BLACK = 0x17191b;
-  const DARK = 0x2a2c2e;
-  const SEAT = 0x4a3326;
-  const PLATE = 0xd9dad2;
-  for (const z of [halfL + 0.06, -halfL - 0.06]) {
-    trim.push(colorize(box(1.66, 0.11, 0.08, 0, 0.45, z), CHROME)); // bumper
-    for (const x of [-0.42, 0.42]) trim.push(colorize(box(0.07, 0.2, 0.1, x, 0.47, z + Math.sign(z) * 0.02), CHROME)); // overriders
-    trim.push(colorize(box(0.52, 0.12, 0.02, 0, 0.34, z + Math.sign(z) * 0.04), PLATE)); // plate
+  const CHROME = 0xc4c8cc;
+  const BLACK = 0x121416;
+  const DARK = 0x24262a;
+  const PLATE = 0xe2e2da;
+  for (const dir of [1, -1]) {
+    const z = dir * (halfL + 0.055);
+    trim.push(colorize(box(WIDTH + 0.02, 0.085, 0.07, 0, 0.44, z), CHROME)); // bumper blade
+    for (const s of [-1, 1]) {
+      trim.push(colorize(box(0.07, 0.085, 0.2, s * (HW + 0.0), 0.44, z - dir * 0.09), CHROME)); // wrap-round ends
+      trim.push(colorize(box(0.08, 0.17, 0.09, s * 0.44, 0.45, z + dir * 0.012), BLACK)); // rubber overriders
+    }
+    // number plate: white, a black edge, a row of dark characters
+    trim.push(colorize(box(0.5, 0.115, 0.012, 0, 0.6 - (dir < 0 ? 0.0 : 0.26), z + dir * (dir < 0 ? -0.04 : 0.04)), PLATE));
+    for (let k = 0; k < 6; k++) trim.push(colorize(box(0.045, 0.06, 0.004, -0.19 + k * 0.075 + (k > 0 && k < 4 ? 0.01 : 0), 0.6 - (dir < 0 ? 0.0 : 0.26), z + dir * (dir < 0 ? -0.033 : 0.047)), BLACK));
   }
-  trim.push(colorize(box(1.04, 0.2, 0.03, 0, 0.65, halfL - 0.005), DARK)); // grille
-  trim.push(colorize(box(1.1, 0.03, 0.04, 0, 0.765, halfL), CHROME));
-  trim.push(colorize(box(1.1, 0.03, 0.04, 0, 0.54, halfL), CHROME));
+  // the face: a black grille panel edge to edge, four round lamps in chrome
+  // bezels, a chrome surround, the badge
+  const zf = halfL - 0.02;
+  trim.push(colorize(box(1.46, 0.2, 0.02, 0, 0.67, zf), 0x1b1d20));
+  for (let k = 0; k < 5; k++) trim.push(colorize(box(0.78, 0.01, 0.025, 0, 0.6 + k * 0.035, zf + 0.004), 0x4a4d52));
+  trim.push(colorize(box(1.5, 0.018, 0.035, 0, 0.778, zf), CHROME));
+  trim.push(colorize(box(1.5, 0.018, 0.035, 0, 0.562, zf), CHROME));
+  trim.push(colorize(box(0.08, 0.06, 0.03, 0, 0.67, zf + 0.008), 0x8a1f1a));
   for (const s of [-1, 1]) {
-    // door handles, rubbing strip, mirror
-    for (const z of [0.28, -0.62]) trim.push(colorize(box(0.03, 0.03, 0.14, s * 0.81, 0.84, z), CHROME));
-    trim.push(colorize(box(0.02, 0.03, 3.3, s * 0.815, 0.66, 0.05), CHROME));
-    trim.push(colorize(box(0.05, 0.08, 0.13, s * 0.86, 1.04, 0.7), DARK));
-    trim.push(colorize(box(0.12, 0.02, 0.03, s * 0.8, 1.0, 0.72), DARK));
-    // wiper
-    trim.push(colorize(bar(V(s * 0.05, 0.98, 0.84), V(s * 0.5, 1.0, 0.78), 0.02, 0.02), BLACK));
+    // amber indicators at the corners, under the lamps
+    trim.push(colorize(box(0.17, 0.05, 0.02, s * 0.6, 0.53, zf + 0.002), 0xd88a2a));
+    // door seams, handles, the rubbing strip along the flank
+    for (const z of [Z_COWL - 0.04, Z_B, Z_DECK + 0.12]) trim.push(colorize(box(0.006, 0.56, 0.012, s * (HW + 0.002), 0.64, z), BLACK));
+    for (const z of [Z_B + 0.14, Z_DECK + 0.28]) trim.push(colorize(box(0.025, 0.028, 0.13, s * (HW + 0.012), 0.83, z), CHROME));
+    trim.push(colorize(box(0.014, 0.022, 3.2, s * (HW + 0.006), 0.63, 0.0), CHROME));
+    trim.push(colorize(box(0.012, 0.05, 2.5, s * (HW + 0.004), 0.4, 0), BLACK)); // sill
+    // chrome round the side glass and along the gutter
+    trim.push(colorize(box(0.016, 0.018, Z_COWL - Z_DECK - 0.1, s * (GW + 0.012), WAIST + 0.012, (Z_COWL + Z_DECK) / 2), CHROME));
+    trim.push(colorize(box(0.02, 0.016, Z_A - Z_C + 0.14, s * (GR + 0.035), ROOF - 0.03, (Z_A + Z_C) / 2), CHROME));
+    // mud flaps behind the wheels
+    for (const z of [AXLE_Z - 0.4, -AXLE_Z - 0.4]) trim.push(colorize(box(0.22, 0.2, 0.012, s * (HW - 0.14), 0.26, z), BLACK));
+    // wipers parked on the glass
+    trim.push(colorize(bar(V(s * 0.08 + 0.2, WAIST + 0.03, Z_COWL - 0.03), V(s * 0.08 - 0.22, WAIST + 0.07, Z_COWL - 0.09), 0.016, 0.016), BLACK));
   }
-  // interior: dark trim over the body top (the cabin seen from the seat),
-  // a low dash, the thin-rimmed wheel
-  trim.push(colorize(box(1.36, 0.01, 2.0, 0, 0.997, -0.12), 0x24221f));
-  trim.push(colorize(box(1.3, 0.1, 0.34, 0, 0.99, 0.66), DARK));
-  trim.push(colorize(box(1.32, 0.03, 0.22, 0, 1.045, 0.62), BLACK));
-  trim.push(colorize(box(0.34, 0.08, 0.02, DRIVER_EYE.x, 1.0, 0.49), 0x111214)); // gauges
+  // one door mirror, on the driver's side, as they came
+  trim.push(colorize(box(0.1, 0.07, 0.03, HW + 0.07, 1.02, Z_COWL - 0.2), CHROME));
+  trim.push(colorize(bar(V(HW - 0.02, 0.97, Z_COWL - 0.18), V(HW + 0.07, 1.0, Z_COWL - 0.2), 0.016, 0.016), CHROME));
+  // aerial on the wing, filler cap, exhaust, boot lock
+  trim.push(colorize(bar(V(-HW + 0.1, 0.9, 1.3), V(-HW + 0.12, 1.55, 1.18), 0.008, 0.008), CHROME));
+  trim.push(colorize(drum(0.05, 0.012, 0, 0, 0, 10).rotateY(Math.PI / 2).translate(-HW - 0.002, 0.78, -1.5), DARK));
+  trim.push(colorize(drum(0.025, 0.16, -0.42, 0.27, -halfL - 0.02, 8), 0x4a4640));
+  trim.push(colorize(drum(0.018, 0.012, 0, 0.78, -halfL + 0.025, 8), CHROME));
+  // the underside: a pan from bumper to bumper and liners in the arches, so
+  // the shell never shows daylight where a real car has none
+  trim.push(colorize(box(IN * 2, 0.03, LENGTH - 0.16, 0, 0.3, 0), BLACK));
+  for (const s of [-1, 1]) {
+    for (const z of [AXLE_Z, -AXLE_Z]) {
+      trim.push(colorize(box(0.03, 0.46, 0.84, s * (HW - 0.33), 0.53, z), BLACK));
+      trim.push(colorize(box(0.3, 0.03, 0.84, s * (HW - 0.19), 0.76, z), BLACK));
+      for (const e of [-1, 1]) trim.push(colorize(box(0.3, 0.46, 0.03, s * (HW - 0.19), 0.53, z + e * 0.42), BLACK));
+    }
+  }
+  // bulkheads closing the engine bay and the boot off from the cabin
+  trim.push(colorize(box(IN * 2, 0.62, 0.03, 0, 0.62, Z_COWL + 0.02), BLACK));
+  trim.push(colorize(box(IN * 2, 0.62, 0.03, 0, 0.62, Z_DECK - 0.02), BLACK));
+
+  /* ---- cabin (matt) */
+  const cabin = [];
+  const VINYL = 0x5a4232; // seats and door cards: dark brown leatherette
+  const VINYL2 = 0x73563f;
+  const CARPET = 0x2e2c2a;
+  const DASH = 0x2c2e32;
+  const LINER = 0xb4ad9c;
+  const DX = DRIVER_EYE.x;
+  cabin.push(colorize(box(IN * 2, 0.03, Z_COWL - Z_DECK, 0, 0.33, (Z_COWL + Z_DECK) / 2), CARPET));
+  cabin.push(colorize(box(0.2, 0.13, 1.5, 0, 0.4, 0.1), CARPET)); // transmission tunnel
+  cabin.push(colorize(box(GR * 2 - 0.06, 0.012, Z_A - Z_C, 0, ROOF - 0.024, (Z_A + Z_C) / 2), LINER)); // headlining
+  for (const s of [-1, 1]) {
+    // door cards with an armrest, a pull and a window winder
+    cabin.push(colorize(box(0.03, 0.58, Z_COWL - Z_DECK - 0.04, s * (IN - 0.012), 0.63, (Z_COWL + Z_DECK) / 2), VINYL));
+    cabin.push(colorize(box(0.035, 0.1, Z_COWL - Z_DECK - 0.1, s * (IN - 0.016), 0.87, (Z_COWL + Z_DECK) / 2), DASH));
+    for (const z of [0.3, -0.62]) {
+      cabin.push(colorize(box(0.07, 0.05, 0.34, s * (IN - 0.05), 0.66, z), VINYL2));
+      cabin.push(colorize(drum(0.022, 0.03, 0, 0, 0, 8).rotateY(Math.PI / 2).translate(s * (IN - 0.04), 0.74, z + 0.26), CHROME));
+    }
+    // front seat: cushion, raked back, head restraint on two stems
+    const x = s * 0.36;
+    cabin.push(colorize(tilted(0.5, 0.14, 0.5, x, 0.5, -0.12, 0.08), VINYL));
+    cabin.push(colorize(tilted(0.5, 0.6, 0.1, x, 0.86, -0.43, -0.2), VINYL));
+    cabin.push(colorize(tilted(0.4, 0.5, 0.02, x, 0.86, -0.375, -0.2), VINYL2)); // lighter centre panel
+    cabin.push(colorize(box(0.26, 0.15, 0.09, x, 1.24, -0.5), VINYL));
+    for (const e of [-0.07, 0.07]) cabin.push(colorize(box(0.012, 0.1, 0.012, x + e, 1.15, -0.5), CHROME));
+    cabin.push(colorize(tilted(0.34, 0.012, 0.14, s * 0.3, ROOF - 0.05, Z_A - 0.09, 0.25), LINER)); // sun visor
+  }
+  // rear bench and the parcel shelf behind it
+  cabin.push(colorize(tilted(IN * 2 - 0.1, 0.15, 0.5, 0, 0.5, -0.84, 0.08), VINYL));
+  cabin.push(colorize(tilted(IN * 2 - 0.1, 0.5, 0.1, 0, 0.78, -1.08, -0.22), VINYL));
+  cabin.push(colorize(box(GW * 2, 0.02, 0.16, 0, WAIST - 0.03, Z_DECK + 0.03), DASH));
+  // the dash: a deep padded top, a flat face with the binnacle on the
+  // driver's side, the radio and heater in the middle, a glovebox lid
+  const ZD = 0.56; // the face you look at
+  cabin.push(colorize(box(IN * 2, 0.05, Z_COWL - ZD + 0.04, 0, 0.955, (Z_COWL + ZD) / 2), DASH));
+  cabin.push(colorize(box(IN * 2, 0.24, 0.03, 0, 0.83, ZD), 0x4a3d30));
+  cabin.push(colorize(box(IN * 2, 0.05, 0.1, 0, 0.7, ZD + 0.03), DASH)); // lower rail
+  cabin.push(colorize(box(0.48, 0.17, 0.02, DX, 0.845, ZD - 0.02), 0x0c0d0e)); // binnacle panel
+  cabin.push(colorize(tilted(0.52, 0.03, 0.12, DX, 0.945, ZD - 0.05, -0.12), DASH)); // its hood
+  for (const [ox, r] of [[-0.11, 0.062], [0.11, 0.062]]) {
+    cabin.push(colorize(drum(r, 0.008, DX + ox, 0.85, ZD - 0.032), 0xd8d6cc)); // dial faces
+    cabin.push(colorize(drum(r + 0.008, 0.006, DX + ox, 0.85, ZD - 0.028), CHROME));
+    cabin.push(colorize(box(0.006, r * 0.85, 0.004, DX + ox + 0.012, 0.865, ZD - 0.038).rotateZ(0), 0xb5301f)); // needle
+  }
+  for (const ox of [-0.2, 0, 0.2]) cabin.push(colorize(drum(0.022, 0.008, DX + ox, 0.785, ZD - 0.032, 10), 0xd8d6cc)); // small gauges
+  // radio: a chrome-edged face, a tuning scale, two knobs
+  cabin.push(colorize(box(0.24, 0.085, 0.02, 0, 0.86, ZD - 0.02), CHROME));
+  cabin.push(colorize(box(0.13, 0.03, 0.006, 0, 0.87, ZD - 0.032), 0xe6d9a8));
+  for (const ox of [-0.095, 0.095]) cabin.push(colorize(drum(0.016, 0.03, ox, 0.86, ZD - 0.04, 10), BLACK));
+  for (let k = 0; k < 3; k++) cabin.push(colorize(box(0.02, 0.012, 0.03, -0.06 + k * 0.06, 0.775, ZD - 0.03), CHROME)); // heater levers
+  cabin.push(colorize(box(0.42, 0.13, 0.008, -DX - 0.04, 0.83, ZD - 0.02), 0x3d3228)); // glovebox lid
+  cabin.push(colorize(drum(0.012, 0.012, -DX - 0.04, 0.875, ZD - 0.028, 8), CHROME));
+  for (const ox of [-0.5, 0.5]) cabin.push(colorize(box(0.12, 0.03, 0.02, ox, 0.925, ZD - 0.012), 0x0a0b0c)); // vents
+  // wheel: thin rim, two spokes, a horn pad, on a raked column with a stalk
   {
-    const wheel = new THREE.TorusGeometry(0.18, 0.014, 6, 24);
-    wheel.rotateX(-0.55);
-    wheel.translate(DRIVER_EYE.x, 0.95, 0.34);
-    trim.push(colorize(wheel, BLACK));
-    trim.push(colorize(bar(V(DRIVER_EYE.x, 0.95, 0.34), V(DRIVER_EYE.x, 0.86, 0.6), 0.04, 0.04), BLACK));
-    const spoke = box(0.34, 0.018, 0.018, 0, 0, 0);
-    spoke.rotateX(-0.55);
-    spoke.translate(DRIVER_EYE.x, 0.95, 0.34);
-    trim.push(colorize(spoke, BLACK));
+    const rake = -0.42;
+    const hub = V(DX, 0.9, 0.36);
+    const rim = new THREE.TorusGeometry(0.185, 0.013, 8, 28);
+    rim.rotateX(rake);
+    rim.translate(hub.x, hub.y, hub.z);
+    cabin.push(colorize(rim, 0x1d1e21));
+    for (const a of [0.25, Math.PI - 0.25]) {
+      const spoke = new THREE.BoxGeometry(0.18, 0.022, 0.012);
+      spoke.translate(0.09, 0, 0);
+      spoke.rotateZ(a + Math.PI);
+      spoke.rotateX(rake);
+      spoke.translate(hub.x, hub.y, hub.z);
+      cabin.push(colorize(spoke, 0x1d1e21));
+    }
+    const pad = new THREE.CylinderGeometry(0.05, 0.055, 0.03, 12);
+    pad.rotateX(Math.PI / 2 + rake);
+    pad.translate(hub.x, hub.y, hub.z);
+    cabin.push(colorize(pad, 0x2a2b2e));
+    cabin.push(colorize(bar(hub, V(DX, 0.79, ZD + 0.04), 0.045, 0.045), DASH));
+    cabin.push(colorize(bar(V(DX - 0.02, 0.87, 0.43), V(DX - 0.2, 0.9, 0.4), 0.012, 0.012), BLACK));
   }
-  // the cabin floor is the body's top (the waist line), so only the seat
-  // backs and head restraints show above it, as through real side glass
-  for (const x of [-0.36, 0.36]) {
-    const back = new THREE.BoxGeometry(0.48, 0.3, 0.1);
-    back.rotateX(-0.16);
-    back.translate(x, 1.06, -0.46);
-    trim.push(colorize(back, SEAT));
-    trim.push(colorize(box(0.24, 0.13, 0.08, x, 1.25, -0.5), SEAT));
-  }
-  trim.push(colorize(box(1.3, 0.2, 0.08, 0, 1.04, -1.08), SEAT));
+  // gear lever with its knob and gaiter, handbrake between the seats
+  cabin.push(colorize(bar(V(0, 0.46, 0.22), V(0.02, 0.72, 0.14), 0.014, 0.014), CHROME));
+  cabin.push(colorize(new THREE.SphereGeometry(0.026, 8, 6).translate(0.02, 0.73, 0.137), BLACK));
+  cabin.push(colorize(box(0.09, 0.05, 0.09, 0, 0.48, 0.22), DASH));
+  cabin.push(colorize(bar(V(0, 0.47, -0.2), V(0, 0.56, 0.02), 0.022, 0.022), BLACK));
+  // pedals, because the eye goes looking for them
+  for (const [ox, w] of [[-0.15, 0.06], [-0.03, 0.06], [0.1, 0.05]]) cabin.push(colorize(tilted(w, 0.08, 0.012, DX + ox, 0.45, 0.8, 0.5), BLACK));
+  // rear-view mirror on the header
+  cabin.push(colorize(box(0.2, 0.055, 0.02, 0, ROOF - 0.1, Z_A - 0.06), DASH));
+  cabin.push(colorize(box(0.18, 0.04, 0.004, 0, ROOF - 0.1, Z_A - 0.072), 0x9aa6b0));
+  cabin.push(colorize(box(0.016, 0.06, 0.016, 0, ROOF - 0.055, Z_A - 0.05), DASH));
 
-  // lamps: round headlights, flat tail clusters (their own emissive mesh)
+  /* ---- lamps (their own emissive mesh; unlit copies sit in the trim) */
   const lamps = [];
-  for (const x of [-0.58, 0.58]) {
-    const head = new THREE.CylinderGeometry(0.085, 0.085, 0.04, 14);
-    head.rotateX(Math.PI / 2);
-    head.translate(x, 0.66, halfL + 0.005);
-    lamps.push(colorize(head, 0xfff3d6));
-    lamps.push(colorize(box(0.3, 0.13, 0.03, x * 1.08, 0.7, -halfL + 0.005), 0xff2a18));
-    // unlit lenses, part of the trim (the glowing copy shows when driven)
-    trim.push(colorize(head.clone().translate(0, 0, -0.004), 0x8f8a7c));
-    trim.push(colorize(box(0.3, 0.13, 0.03, x * 1.08, 0.7, -halfL + 0.001), 0x5a1810));
-  }
-  for (const x of [-0.58, 0.58]) {
-    const rim = new THREE.TorusGeometry(0.09, 0.012, 4, 14);
-    rim.translate(x, 0.66, halfL + 0.02);
-    trim.push(colorize(rim, CHROME));
+  for (const s of [-1, 1]) {
+    for (const ox of [0.47, 0.64]) {
+      const head = drum(0.066, 0.03, s * ox, 0.67, zf + 0.012);
+      lamps.push(colorize(head, 0xfff3d6));
+      trim.push(colorize(head.clone().translate(0, 0, -0.004), 0xa8a595));
+      const ring = new THREE.TorusGeometry(0.07, 0.009, 5, 16);
+      ring.translate(s * ox, 0.67, zf + 0.026);
+      trim.push(colorize(ring, CHROME));
+    }
+    // tail cluster: red outboard, amber, a white reversing lamp inboard
+    const zt = -halfL + 0.026;
+    for (const [ox, w, lit, dim] of [[0.66, 0.16, 0xff2a18, 0x6a1a12], [0.52, 0.1, 0xff8a20, 0x7a4a16], [0.43, 0.06, 0xfff0e0, 0x8a8880]]) {
+      lamps.push(colorize(box(w, 0.13, 0.02, s * ox, 0.68, zt - 0.006), lit === 0xfff0e0 ? 0x2a2826 : lit));
+      trim.push(colorize(box(w, 0.13, 0.02, s * ox, 0.68, zt), dim));
+    }
+    trim.push(colorize(box(0.36, 0.15, 0.012, s * 0.58, 0.68, zt + 0.012), CHROME));
   }
 
-  // snow load: roof pillow, hood and trunk
+  // snow load: a pillow on the roof, drifts on the hood and the boot lid
   const snow = [];
   {
     const roof = new THREE.SphereGeometry(1, 12, 4, 0, TAU, 0, Math.PI / 2);
-    roof.scale(0.66, 0.1, 0.5);
-    roof.translate(0, 1.37, -0.21);
+    roof.scale(GR * 0.98, 0.09, (Z_A - Z_C) / 2 + 0.02);
+    roof.translate(0, ROOF + 0.02, (Z_A + Z_C) / 2);
     snow.push(plain(roof));
-    const hood = box(1.38, 0.05, 0.95, 0, 0.93, 1.45);
-    hood.rotateX(0.04);
-    snow.push(hood);
-    snow.push(box(1.3, 0.05, 0.55, 0, 0.94, -1.55));
+    snow.push(tilted(IN * 2 - 0.12, 0.045, hoodLen - 0.2, 0, 0.92, Z_COWL + hoodLen / 2 + 0.06, Math.atan2(WAIST - 0.86, hoodLen)));
+    snow.push(tilted(IN * 2 - 0.14, 0.045, lidLen - 0.14, 0, 0.93, Z_DECK - lidLen / 2 - 0.02, -Math.atan2(WAIST - 0.88, lidLen)));
   }
 
-  // wheel: tire, dark steel rim, chrome hubcap (axis along x)
+  // wheel (axis along x): a rounded tyre, a dished steel rim, a chrome cap
   const wheelParts = [];
   {
-    const tire = new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.18, 18);
-    tire.rotateZ(Math.PI / 2);
-    wheelParts.push(colorize(tire, 0x151617));
-    const rim = new THREE.CylinderGeometry(0.19, 0.19, 0.19, 14);
+    const tyre = new THREE.TorusGeometry(WHEEL_R - 0.085, 0.085, 7, 16);
+    tyre.rotateY(Math.PI / 2);
+    tyre.scale(1.08, 1, 1);
+    wheelParts.push(colorize(tyre, 0x121314));
+    const rim = new THREE.CylinderGeometry(0.175, 0.175, 0.15, 12);
     rim.rotateZ(Math.PI / 2);
-    wheelParts.push(colorize(rim, 0x3b3e40));
-    const cap = new THREE.CylinderGeometry(0.12, 0.13, 0.2, 12);
-    cap.rotateZ(Math.PI / 2);
+    wheelParts.push(colorize(rim, 0x55595c));
+    const lip = new THREE.TorusGeometry(0.172, 0.012, 4, 14);
+    lip.rotateY(Math.PI / 2);
+    for (const s of [-1, 1]) wheelParts.push(colorize(lip.clone().translate(s * 0.075, 0, 0), CHROME));
+    const cap = new THREE.SphereGeometry(0.105, 8, 5);
+    cap.scale(0.9, 1, 1);
     wheelParts.push(colorize(cap, CHROME));
-    // a lug bar so the spin reads
-    wheelParts.push(colorize(box(0.205, 0.04, 0.22, 0, 0, 0), 0x2b2d2f));
+    // slots in the rim so the spin reads
+    for (let k = 0; k < 6; k++) {
+      const slot = box(0.16, 0.03, 0.045, 0, 0.135, 0);
+      slot.rotateX((k / 6) * TAU);
+      wheelParts.push(colorize(slot, 0x1a1b1c));
+    }
   }
 
   const merge = (list) => mergeGeometries(list.map(plain), false);
-  return {
-    body: mergeGeometries([body, ...frame.map(plain)], false),
-    glass,
-    trim: merge(trim),
-    lamps: merge(lamps),
-    snow: merge(snow),
-    wheel: merge(wheelParts),
-  };
+  return { body: merge(body), glass: merge(glass), trim: merge(trim), cabin: merge(cabin), lamps: merge(lamps), snow: merge(snow), wheel: merge(wheelParts) };
 }
 
 /** The UAZ-452 van, the "loaf": one tall rounded box on the same running
@@ -284,13 +441,13 @@ function vanParts(wheel) {
     g.translate(x, y, z);
     glassParts.push(g);
   };
-  pane(1.36, 0.6, 0, 1.5, halfL - 0.225, 0, -0.47);
+  pane(1.36, 0.6, 0, 1.531, halfL - 0.185, 0, -0.47);
   for (const s of [-1, 1]) {
     pane(0.62, 0.48, s * (W + 0.006), 1.5, 0.95, (s * Math.PI) / 2);
     pane(0.7, 0.4, s * (W + 0.006), 1.52, -0.1, (s * Math.PI) / 2);
     pane(0.7, 0.4, s * (W + 0.006), 1.52, -1.0, (s * Math.PI) / 2);
   }
-  for (const x of [-0.36, 0.36]) pane(0.5, 0.36, x, 1.55, -halfL - 0.006, Math.PI);
+  for (const x of [-0.36, 0.36]) pane(0.5, 0.36, x, 1.55, -halfL - 0.066, Math.PI);
   const trim = [];
   const CHROME = 0xb9bec2;
   const BLACK = 0x17191b;
@@ -300,8 +457,8 @@ function vanParts(wheel) {
     trim.push(colorize(box(0.52, 0.12, 0.02, 0, 0.5, z + Math.sign(z) * 0.06), 0xd9dad2));
   }
   // the loaf's face: a small oval grille between two round lamps
-  trim.push(colorize(box(0.7, 0.2, 0.03, 0, 0.9, halfL + 0.005), DARK));
-  for (let k = 0; k < 4; k++) trim.push(colorize(box(0.66, 0.015, 0.035, 0, 0.83 + k * 0.045, halfL + 0.008), CHROME));
+  trim.push(colorize(box(0.7, 0.2, 0.03, 0, 0.9, halfL + 0.065), DARK));
+  for (let k = 0; k < 4; k++) trim.push(colorize(box(0.66, 0.015, 0.035, 0, 0.83 + k * 0.045, halfL + 0.068), CHROME));
   // waist stripe and door seams
   for (const s of [-1, 1]) {
     trim.push(colorize(box(0.02, 0.07, LENGTH - 0.2, s * (W + 0.002), 1.16, 0), 0xd8d4c4));
@@ -309,49 +466,63 @@ function vanParts(wheel) {
     for (const z of [0.72, -0.4]) trim.push(colorize(box(0.03, 0.03, 0.14, s * (W + 0.02), 1.08, z), CHROME));
     trim.push(colorize(box(0.05, 0.16, 0.1, s * (W + 0.12), 1.42, 1.42), DARK));
     trim.push(colorize(box(0.14, 0.02, 0.03, s * (W + 0.05), 1.4, 1.44), DARK));
-    trim.push(colorize(bar(V(s * 0.08, 1.3, halfL - 0.09), V(s * 0.5, 1.33, halfL - 0.1), 0.02, 0.02), BLACK));
+    trim.push(colorize(bar(V(s * 0.08, 1.33, halfL - 0.07), V(s * 0.5, 1.36, halfL - 0.085), 0.02, 0.02), BLACK));
   }
+  const cabin = [];
   // cab seen from the seat: flat dash, the big thin wheel almost level
-  trim.push(colorize(box(1.5, 0.08, 0.3, 0, 1.12, 1.5), DARK));
-  trim.push(colorize(box(0.3, 0.07, 0.02, VAN_EYE.x, 1.19, 1.37), 0x111214));
+  cabin.push(colorize(box(1.5, 0.08, 0.3, 0, 1.12, 1.5), DARK));
+  cabin.push(colorize(box(0.3, 0.07, 0.02, VAN_EYE.x, 1.19, 1.37), 0x111214));
   {
     const rim = new THREE.TorusGeometry(0.2, 0.015, 6, 24);
     rim.rotateX(-1.05);
     rim.translate(VAN_EYE.x, 1.22, 1.2);
-    trim.push(colorize(rim, BLACK));
-    trim.push(colorize(bar(V(VAN_EYE.x, 1.22, 1.2), V(VAN_EYE.x, 1.0, 1.36), 0.04, 0.04), BLACK));
+    cabin.push(colorize(rim, BLACK));
+    cabin.push(colorize(bar(V(VAN_EYE.x, 1.22, 1.2), V(VAN_EYE.x, 1.0, 1.36), 0.04, 0.04), BLACK));
   }
-  trim.push(colorize(box(0.5, 0.5, 0.1, VAN_EYE.x, 1.15, 0.52), 0x4a3326));
-  trim.push(colorize(box(0.5, 0.5, 0.1, -VAN_EYE.x, 1.15, 0.52), 0x4a3326));
+  cabin.push(colorize(box(0.5, 0.5, 0.1, VAN_EYE.x, 1.15, 0.52), 0x4a3326));
+  cabin.push(colorize(box(0.5, 0.5, 0.1, -VAN_EYE.x, 1.15, 0.52), 0x4a3326));
   // what you see of the cab from inside: pillars, header, headlining, sills
   for (const s of [-1, 1]) {
-    trim.push(colorize(bar(V(s * 0.74, 1.14, halfL - 0.1), V(s * 0.74, 1.84, halfL - 0.46), 0.055, 0.06), 0x3a3f38));
-    trim.push(colorize(box(0.05, 0.1, 0.9, s * 0.8, 1.22, 1.0), 0x3a3f38));
-    trim.push(colorize(box(0.05, 0.08, 0.9, s * 0.8, 1.8, 1.0), 0x3a3f38));
-    trim.push(colorize(box(0.06, 0.6, 0.07, s * 0.8, 1.5, 0.6), 0x3a3f38));
+    cabin.push(colorize(bar(V(s * 0.74, 1.14, halfL - 0.1), V(s * 0.74, 1.84, halfL - 0.46), 0.055, 0.06), 0x565c50));
+    cabin.push(colorize(box(0.05, 0.1, 0.9, s * 0.8, 1.22, 1.0), 0x565c50));
+    cabin.push(colorize(box(0.05, 0.08, 0.9, s * 0.8, 1.8, 1.0), 0x565c50));
+    cabin.push(colorize(box(0.06, 0.6, 0.07, s * 0.8, 1.5, 0.6), 0x565c50));
   }
-  trim.push(colorize(box(1.56, 0.08, 0.08, 0, 1.85, halfL - 0.47), 0x3a3f38));
-  trim.push(colorize(box(1.56, 0.03, 1.6, 0, 1.9, 0.7), 0x4a4a44));
-  trim.push(colorize(box(1.56, 1.0, 0.04, 0, 1.4, 0.2), 0x33372f));
+  cabin.push(colorize(box(1.56, 0.08, 0.08, 0, 1.85, halfL - 0.47), 0x565c50));
+  cabin.push(colorize(box(1.56, 0.03, 1.6, 0, 1.9, 0.7), 0x4a4a44));
+  cabin.push(colorize(box(1.56, 1.0, 0.04, 0, 1.4, 0.2), 0x4a5044));
+  // the cab is lined: floor, door cards under the glass, the panel below
+  // the dash, the quarter panels beside the windshield, seat cushions
+  const LINING = 0x565c50;
+  cabin.push(colorize(box(1.6, 0.04, 1.8, 0, 0.74, 1.08), 0x1c1c1b));
+  cabin.push(colorize(box(1.6, 0.42, 0.04, 0, 0.93, halfL - 0.07), LINING));
+  for (const s of [-1, 1]) {
+    cabin.push(colorize(box(0.04, 0.52, 1.74, s * 0.8, 1.0, 1.07), LINING));
+    cabin.push(colorize(box(0.06, 0.05, 0.4, s * 0.76, 1.1, 0.95), 0x24262a)); // armrest
+    const q = [[s * 0.8, 1.26, 1.26], [s * 0.8, 1.26, 1.86], [s * 0.8, 1.77, 1.61], [s * 0.8, 1.77, 1.26]];
+    cabin.push(colorize(quad(...q), LINING), colorize(quad(q[1], q[0], q[3], q[2]), LINING));
+    cabin.push(colorize(box(0.5, 0.12, 0.5, s * VAN_EYE.x, 0.94, 0.78), 0x4a3326));
+    cabin.push(colorize(box(0.44, 0.16, 0.44, s * VAN_EYE.x, 0.82, 0.78), 0x24262a));
+  }
   // the engine cover between the seats
-  trim.push(colorize(box(0.4, 0.5, 0.9, 0, 0.95, 0.9), 0x2e2a26));
+  cabin.push(colorize(box(0.4, 0.5, 0.9, 0, 0.95, 0.9), 0x45403a));
 
   const lamps = [];
   for (const x of [-0.55, 0.55]) {
     const head = new THREE.CylinderGeometry(0.1, 0.1, 0.04, 14);
     head.rotateX(Math.PI / 2);
-    head.translate(x, 0.9, halfL + 0.012);
+    head.translate(x, 0.9, halfL + 0.072);
     lamps.push(colorize(head, 0xfff3d6));
-    lamps.push(colorize(box(0.1, 0.2, 0.03, x * 1.3, 0.95, -halfL - 0.004), 0xff2a18));
+    lamps.push(colorize(box(0.1, 0.2, 0.03, x * 1.3, 0.95, -halfL - 0.066), 0xff2a18));
     trim.push(colorize(head.clone().translate(0, 0, -0.004), 0x8f8a7c));
-    trim.push(colorize(box(0.1, 0.2, 0.03, x * 1.3, 0.95, -halfL - 0.001), 0x5a1810));
+    trim.push(colorize(box(0.1, 0.2, 0.03, x * 1.3, 0.95, -halfL - 0.062), 0x5a1810));
     const ring = new THREE.TorusGeometry(0.105, 0.014, 4, 14);
-    ring.translate(x, 0.9, halfL + 0.025);
+    ring.translate(x, 0.9, halfL + 0.085);
     trim.push(colorize(ring, CHROME));
   }
   const snow = [box(WIDTH - 0.1, 0.07, LENGTH - 1.1, 0, 1.98, -0.3)];
   const merge = (list) => mergeGeometries(list.map(plain), false);
-  return { body, glass: merge(glassParts), trim: merge(trim), lamps: merge(lamps), snow: merge(snow), wheel, eye: VAN_EYE, lift: 0.1 };
+  return { body, glass: merge(glassParts), trim: merge(trim), cabin: merge(cabin), lamps: merge(lamps), snow: merge(snow), wheel, eye: VAN_EYE, lift: 0.1 };
 }
 
 /* ---------------------------------------------------------- the car */
@@ -398,7 +569,14 @@ export class Car {
     // into this car's copy of the body
     const painted = colorize(parts.body.clone(), color);
     add(mergeGeometries([painted, parts.trim], false), mats.trim);
-    add(parts.glass, mats.glass, false);
+    // what only reads from close by: the cabin, the glass, the badge
+    this.fine = [];
+    if (parts.cabin) this.fine.push(add(parts.cabin, mats.cabin, false));
+    const glass = add(parts.glass, mats.glass, false);
+    glass.renderOrder = 2;
+    this.fine.push(glass);
+    if (parts.badge) this.fine.push(add(parts.badge, mats.badge, false));
+    this.model = parts.model ?? 'car';
     this.lampMat = mats.lamps.clone();
     this.setLights(0);
     this.lamps = add(parts.lamps, this.lampMat, false);
@@ -407,7 +585,8 @@ export class Car {
 
     this.wheels = new THREE.InstancedMesh(parts.wheel, mats.trim, 4);
     this.wheels.castShadow = false;
-    this.wheels.frustumCulled = false;
+    // the four wheels never leave the car: one fixed sphere in its frame
+    this.wheels.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, WHEEL_R, 0), 2.3);
     this.root.add(this.wheels);
     this.wheelPos = [
       [TRACK / 2, WHEEL_R, AXLE_Z, true],
@@ -419,10 +598,8 @@ export class Car {
     // the collider rect is ours: refreshed while moving, out of the way
     // while someone is behind the wheel
     this.collider = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, car: this };
-    // stays parked far away until the world is built: the build-time
-    // scatter passes keep seeing the historic footprints (see buildVehicles)
-    this.collider.minX = this.collider.maxX = this.collider.minZ = this.collider.maxZ = 1e6;
     world.colliders.push(this.collider);
+    this.updateCollider();
     this.sync();
   }
 
@@ -478,10 +655,6 @@ export class Car {
       const cx = x + off * s;
       const cz = z + off * c;
       if (this.world.collides(cx, cz, CAR.radius)) return true;
-      for (const p of this.world.people?.list ?? []) {
-        const pp = p.position;
-        if ((pp.x - cx) ** 2 + (pp.z - cz) ** 2 < (CAR.radius + 0.35) ** 2) return true;
-      }
     }
     return false;
   }
@@ -591,6 +764,12 @@ export class Car {
     // body language: squat under throttle, dive under brakes, lean in turns
     this.pitch = damp(this.pitch, clamp(-a * 0.006, -0.05, 0.035), 5, dt);
     this.roll = damp(this.roll, clamp(yawRate * vLong * 0.004, -0.06, 0.06), 4, dt);
+    // marker posts give way: a knock, a little speed lost
+    if (this.world.posts?.hit(this)) {
+      this.vx *= 0.97;
+      this.vz *= 0.97;
+      this.impact = Math.max(this.impact, 0.6);
+    }
     this.y = damp(this.y, this.world.heightAt(this.x, this.z), 10, dt);
     const fx = Math.sin(heading);
     const fz = Math.cos(heading);
@@ -619,16 +798,65 @@ export class Car {
 
 /* ---------------------------------------------------------- placement */
 
+/** Chrome script on the boot lid. */
+function badgeMaterial(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 48;
+  const c = canvas.getContext('2d');
+  c.font = 'italic bold 38px sans-serif';
+  c.textBaseline = 'middle';
+  c.fillStyle = '#e9edf0';
+  c.fillText(text, 4, 26, 248);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.4, roughness: 0.3, metalness: 0.7 });
+}
+
+/** Matt cabin material. A cabin sits in its own shadow and would go black
+ * under the roof, so it gives back a share of its own colour, the way the
+ * light bouncing round a real one does. */
+function cabinMaterial() {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * 0.3;');
+  };
+  mat.customProgramCacheKey = () => 'cabin';
+  return mat;
+}
+
 export function buildVehicles(ctx) {
   const { world, materials: M } = ctx;
   const parts = sedanParts();
   const van = vanParts(parts.wheel);
   const mats = {
-    glass: new THREE.MeshStandardMaterial({ color: 0x1a2229, roughness: 0.12, metalness: 0.4, transparent: true, opacity: 0.82 }),
+    // thin panes facing out: a tint over the cabin from the street, clear
+    // from the seat
+    glass: new THREE.MeshStandardMaterial({ color: 0x0f181e, roughness: 0.08, metalness: 0.5, transparent: true, opacity: 0.62, depthWrite: false }),
+    // vinyl, carpet, padded dash: nothing in the cabin shines
+    cabin: cabinMaterial(),
     trim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.48, metalness: 0.35 }),
     lamps: new THREE.MeshBasicMaterial({ vertexColors: true }),
     snow: M.snow,
   };
+  // read from behind the car, where +x is on your left
+  const bz = -LENGTH / 2 + 0.022;
+  parts.badge = quad([-0.22, 0.775, bz], [-0.6, 0.775, bz], [-0.6, 0.84, bz], [-0.22, 0.84, bz]);
+  mats.badge = badgeMaterial('LADA 1500');
+  parts.model = 'Lada';
+  van.model = 'UAZ';
+  // far cars are a few pixels: past shouting distance they lose the cabin
+  // and the glass, and well beyond that they are not drawn at all
+  ctx.addUpdater(() => {
+    const { viewX = 0, viewZ = 0 } = world;
+    for (const car of world.cars) {
+      const d2 = (car.x - viewX) ** 2 + (car.z - viewZ) ** 2;
+      car.root.visible = car.driven || d2 < 420 * 420;
+      const near = car.driven || d2 < 70 * 70;
+      for (const mesh of car.fine) mesh.visible = near;
+    }
+  });
   world.cars = PARKED.map((spec, i) => {
     const car = new Car(world, spec.van ? van : parts, mats, { ...spec, id: i });
     world.group.add(car.root);

@@ -7,24 +7,38 @@ import { clamp, smoothstep } from '../util.js';
 import { hash2, noise2 } from './noise.js';
 import { ROUTES, SEA_Y, SOPKA, coastX, initRoutes, routeAt } from './routes.js';
 
+import { PADS } from './town.js';
+
 /** The flat pad the town is built on (m). */
-export const TOWN_PAD = { x0: -250, x1: 250, z0: -210, z1: 200 };
+export const TOWN_PAD = PADS[0];
+const ISLANDS = PADS.filter((p) => p.island);
+/** How far an island's shore runs out from its pad. */
+const ISLAND_SHORE = 120;
 /** Width of the ramp from the pad up into the hills. */
 const PAD_BLEND = 220;
 /** Height queries and the near mesh share this grid, so wheels and boots
  * meet exactly the surface that is drawn. */
 const CELL = 6;
 
-/** Distance (m) from the town pad; 0 on it. */
-export function padDistance(x, z) {
-  const dx = Math.max(TOWN_PAD.x0 - x, 0, x - TOWN_PAD.x1);
-  const dz = Math.max(TOWN_PAD.z0 - z, 0, z - TOWN_PAD.z1);
+function rectDistance(p, x, z) {
+  const dx = Math.max(p.x0 - x, 0, x - p.x1);
+  const dz = Math.max(p.z0 - z, 0, z - p.z1);
   return Math.hypot(dx, dz);
+}
+
+/** Distance (m) from the nearest pad (the town or an island); 0 on one. */
+export function padDistance(x, z) {
+  // everything east of the mainland shore belongs to the islands
+  if (x < 900) return rectDistance(TOWN_PAD, x, z);
+  let best = Infinity;
+  for (const p of ISLANDS) best = Math.min(best, rectDistance(p, x, z));
+  return best;
 }
 
 /** The terrain before any road is cut into it: broad hills, rolls,
  * hummocks, the sopka west of town, the sea bed east of the shore. */
 function landBase(x, z) {
+  if (x >= 900) return seaBed(x, z);
   const d = padDistance(x, z);
   if (d <= 0) return 0;
   const k = smoothstep(0, PAD_BLEND, d);
@@ -41,6 +55,18 @@ function landBase(x, z) {
   // the shore: the land sinks under the bay ice
   const s = smoothstep(-150, 24, x - coastX(z));
   return land * (1 - s) * (1 - s) - 5 * s;
+}
+
+/** Out in the bay: the sea bed, and the islands standing up out of it —
+ * a low stony rim round each pad, then a beach running down under the
+ * water. */
+function seaBed(x, z) {
+  const d = padDistance(x, z);
+  if (d <= 0) return 0;
+  if (d >= ISLAND_SHORE) return -5;
+  const t = smoothstep(0, ISLAND_SHORE, d);
+  const rim = Math.sin(Math.PI * clamp(d / 70, 0, 1)) * (0.9 + 1.5 * (noise2(x / 60, z / 60, 83) * 0.5 + 0.5));
+  return rim * (1 - t) - 5 * t + noise2(x / 23, z / 23, 89) * 0.35 * (1 - t);
 }
 
 /** The exact terrain height, with the roads cut and filled into it. */
@@ -77,9 +103,21 @@ export function landHeight(x, z) {
   return Math.max(bilinear(x, z), SEA_Y);
 }
 
-/** True over the frozen bay. */
+/** How far the fast ice reaches out from the mainland shore. The port
+ * keeps a channel open, so the mole ends in open water. */
+export function iceEdge(z) {
+  return coastX(z) + 150 + noise2(z / 210, 4.4, 97) * 34 - 112 * Math.exp(-(((z - 60) / 90) ** 2));
+}
+
+/** True over open water: the bay beyond the fast ice. */
+export function isWater(x, z) {
+  if (x < 440) return false;
+  return x > iceEdge(z) && padDistance(x, z) > 0 && bilinear(x, z) < SEA_Y;
+}
+
+/** True over the frozen bay (and every frozen lake inland). */
 export function isIce(x, z) {
-  return padDistance(x, z) > 0 && bilinear(x, z) < SEA_Y;
+  return padDistance(x, z) > 0 && bilinear(x, z) < SEA_Y && !isWater(x, z);
 }
 
 export { SEA_Y, ROUTES };
@@ -436,6 +474,43 @@ export class Land {
     sea.frustumCulled = false;
     this.sea = sea;
     group.add(sea);
+    // open water beyond the fast ice: a dark strip laid over the ice sheet
+    // from the ice edge out to sea, re-cut as the camera moves along it
+    const ROWS = 240;
+    this.waterStep = 40;
+    const wgeo = new THREE.BufferGeometry();
+    this.waterPos = new THREE.BufferAttribute(new Float32Array((ROWS + 1) * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    wgeo.setAttribute('position', this.waterPos);
+    const widx = [];
+    for (let r = 0; r < ROWS; r++) widx.push(r * 2, r * 2 + 2, r * 2 + 1, r * 2 + 2, r * 2 + 3, r * 2 + 1);
+    wgeo.setIndex(widx);
+    const normals = new Float32Array((ROWS + 1) * 2 * 3);
+    for (let i = 0; i < (ROWS + 1) * 2; i++) normals[i * 3 + 1] = 1;
+    wgeo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    this.waterRows = ROWS;
+    this.waterTime = { value: 0 };
+    const waterMat = new THREE.MeshStandardMaterial({ color: 0x15364a, roughness: 0.22, metalness: 0.35 });
+    waterMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.waterTime;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWaterPos;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWaterPos = (modelMatrix * vec4(position, 1.0)).xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWaterPos;')
+        // a short chop: the normal rocks with two crossing wave trains
+        .replace(
+          '#include <normal_fragment_begin>',
+          `#include <normal_fragment_begin>
+          vec2 wp = vWaterPos.xz;
+          float wa = sin(wp.x * 0.9 + uTime * 1.3) + sin(wp.y * 1.3 - uTime * 1.1) + sin((wp.x + wp.y) * 0.37 + uTime * 0.7);
+          float wb = cos(wp.x * 1.1 - uTime * 0.9) + cos(wp.y * 0.8 + uTime * 1.4) + cos((wp.x - wp.y) * 0.45 - uTime * 0.6);
+          normal = normalize(normal + (viewMatrix * vec4(wa * 0.05, 0.0, wb * 0.05, 0.0)).xyz);`,
+        )
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * (0.25 + 0.12 * sin(vWaterPos.x * 0.21 + vWaterPos.z * 0.17 + uTime));');
+    };
+    this.water = new THREE.Mesh(wgeo, waterMat);
+    this.water.frustumCulled = false;
+    this.water.receiveShadow = false;
+    this.waterZ = NaN;
+    group.add(this.water);
     this.scatter = new Scatter(group);
     this.update(0, 0);
   }
@@ -449,6 +524,22 @@ export class Land {
     // whole texture tiles, so the ice never slides under your wheels
     this.sea.position.x = Math.round(x / this.seaTile) * this.seaTile;
     this.sea.position.z = Math.round(z / this.seaTile) * this.seaTile;
+    const wz = Math.round(z / this.waterStep) * this.waterStep;
+    if (wz !== this.waterZ) {
+      this.waterZ = wz;
+      const half = (this.waterRows / 2) * this.waterStep;
+      for (let r = 0; r <= this.waterRows; r++) {
+        const rz = wz - half + r * this.waterStep;
+        this.waterPos.setXYZ(r * 2, iceEdge(rz), SEA_Y + 0.05, rz);
+        this.waterPos.setXYZ(r * 2 + 1, 9000, SEA_Y + 0.05, rz);
+      }
+      this.waterPos.needsUpdate = true;
+    }
+  }
+
+  /** Moves the chop on the open water. */
+  tick(t) {
+    this.waterTime.value = t;
   }
 }
 

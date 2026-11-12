@@ -1,5 +1,5 @@
 // The town, as data. Streets, blocks, public buildings, heating mains,
-// benches, parked cars, captions and the walks people take — everything a
+// benches, parked cars and captions — everything a
 // builder needs to know about where things are. No three.js in here: the
 // layout can be checked from node (tools/check-town.mjs).
 //
@@ -12,17 +12,35 @@ export const FLOOR_H = 3.0;
 export const BLOCK_D = 12;
 export const SIDEWALK = 3.2;
 
+/**
+ * Flat ground at y = 0 that things are built on: the town, and the pads of
+ * the two island settlements out in the bay. The land shapes itself round
+ * them (land.js).
+ */
+export const PADS = [
+  { id: 'town', x0: -250, x1: 250, z0: -600, z1: 200 },
+  { id: 'medvezhiy', x0: 1400, x1: 1640, z0: 120, z1: 330, island: true },
+  { id: 'rudny', x0: 1180, x1: 1400, z0: -900, z1: -700, island: true },
+];
+
 /* ---------------------------------------------------------- streets */
 
 /** axis 'z': runs north-south at x = `at`; axis 'x': east-west at z = `at`. */
 export const STREETS = [
-  { id: 'kosmonavtov', name: 'Улица Космонавтов', sub: 'Cosmonauts avenue', axis: 'z', at: 0, from: -200, to: 190, half: 6 },
-  { id: 'stroiteley', name: 'Улица Строителей', sub: 'Builders street', axis: 'z', at: -170, from: -158, to: 156, half: 6 },
-  { id: 'portovaya', name: 'Портовая улица', sub: 'Port street', axis: 'z', at: 118, from: -158, to: 134, half: 6 },
+  { id: 'kosmonavtov', name: 'Улица Космонавтов', sub: 'Cosmonauts avenue', axis: 'z', at: 0, from: -556, to: 190, half: 6 },
+  { id: 'stroiteley', name: 'Улица Строителей', sub: 'Builders street', axis: 'z', at: -170, from: -556, to: 156, half: 6 },
+  { id: 'portovaya', name: 'Портовая улица', sub: 'Port street', axis: 'z', at: 118, from: -556, to: 134, half: 6 },
   { id: 'mira', name: 'Улица Мира', sub: 'Peace street', axis: 'x', at: 44, from: -244, to: 124, half: 6 },
   { id: 'zavodskaya', name: 'Заводская улица', sub: 'Factory street', axis: 'x', at: 128, from: 0, to: 124, half: 6 },
   { id: 'shkolnaya', name: 'Школьная улица', sub: 'School street', axis: 'x', at: -152, from: -176, to: 124, half: 6 },
   { id: 'severnaya', name: 'Северная улица', sub: 'North street', axis: 'x', at: 150, from: -176, to: 0, half: 6 },
+  // the south district
+  { id: 'polyarnaya', name: 'Полярная улица', sub: 'Polar street', axis: 'x', at: -290, from: -176, to: 124, half: 6 },
+  { id: 'yuzhnaya', name: 'Южная улица', sub: 'South street', axis: 'x', at: -420, from: -176, to: 124, half: 6 },
+  { id: 'geologov', name: 'Улица Геологов', sub: 'Geologists street', axis: 'x', at: -550, from: -176, to: 124, half: 6 },
+  // the islands: one street each
+  { id: 'rybatskaya', name: 'Рыбацкая улица', sub: 'Fishermen street', axis: 'x', at: 225, from: 1410, to: 1630, half: 6 },
+  { id: 'shakhtyorskaya', name: 'Шахтёрская улица', sub: 'Miners street', axis: 'z', at: 1290, from: -890, to: -710, half: 6 },
 ];
 
 /** Carriageway of a street as a rect. */
@@ -43,6 +61,11 @@ export const DRIVEWAYS = [
   { x0: -44, x1: -39, z0: 50, z1: 110 },
   { x0: 6, x1: 18, z0: -86, z1: -80 },
   { x0: -46, x1: -41, z0: -146, z1: -112 },
+  // south district courts
+  { x0: 35.5, x1: 40.5, z0: -340, z1: -296 },
+  { x0: -41, x1: -36, z0: -340, z1: -296 },
+  { x0: 35.5, x1: 40.5, z0: -470, z1: -426 },
+  { x0: -41, x1: -36, z0: -470, z1: -426 },
 ];
 
 /**
@@ -92,6 +115,11 @@ const STR = 'ул. СТРОИТЕЛЕЙ';
 const SHK = 'ул. ШКОЛЬНАЯ';
 const PORT = 'ул. ПОРТОВАЯ';
 const SEV = 'ул. СЕВЕРНАЯ';
+const POL = 'ул. ПОЛЯРНАЯ';
+const YUZH = 'ул. ЮЖНАЯ';
+const GEO = 'ул. ГЕОЛОГОВ';
+const RYB = 'ул. РЫБАЦКАЯ';
+const SHA = 'ул. ШАХТЁРСКАЯ';
 
 /**
  * Panel blocks, grouped by the courtyard they wall in. The long blocks stand
@@ -141,8 +169,65 @@ export const BLOCKS = [
   block('b30', -60, -178, 0, 48, 9, SHK, '11'),
   block('b31', 40, -178, 0, 44, 5, SHK, '5'),
   block('b32', -130, -178, 0, 40, 5, SHK, '15'),
-  block('b33', 96, -178, 0, 30, 5, SHK, '1'),
+  block('b33', 92, -178, 0, 30, 5, SHK, '1'),
+
+  // ---- the south district (микрорайон Южный), built a decade later:
+  // three bands of courts between Polyarnaya, Yuzhnaya and Geologov
+  // band 1, east of the avenue: the cinema court
+  block('s01', 26, -226, 1, 40, 5, KOSM, '2'),
+  block('s02', 98, -226, 1, 40, 5, PORT, '1'),
+  block('s03', 62, -266, 0, 44, 9, POL, '4'),
+  // band 1, west
+  block('s04', -26, -226, 1, 40, 5, KOSM, '1'),
+  block('s05', -144, -226, 1, 40, 9, STR, '2'),
+  block('s06', -62, -266, 0, 44, 5, POL, '7'),
+  block('s07', -112, -266, 0, 40, 5, POL, '11'),
+  // band 2, east
+  block('s08', 26, -352, 1, 52, 9, KOSM, '2а'),
+  block('s09', 98, -352, 1, 44, 5, PORT, '1а'),
+  block('s10', 62, -312, 0, 40, 5, POL, '3'),
+  block('s11', 62, -396, 0, 44, 5, YUZH, '4'),
+  // band 2, west: the bathhouse court
+  block('s12', -26, -352, 1, 48, 5, KOSM, '1а'),
+  block('s13', -144, -352, 1, 52, 9, STR, '2а'),
+  block('s14', -62, -312, 0, 40, 5, POL, '8'),
+  block('s15', -110, -312, 0, 40, 9, POL, '12'),
+  block('s16', -86, -396, 0, 52, 5, YUZH, '9'),
+  // band 3, east
+  block('s17', 26, -485, 1, 48, 5, KOSM, '2б'),
+  block('s18', 98, -485, 1, 52, 9, PORT, '1б'),
+  block('s19', 62, -442, 0, 40, 5, YUZH, '3'),
+  block('s20', 62, -528, 0, 44, 9, GEO, '4', { slogan: 'МИРУ — МИР' }),
+  // band 3, west: the canteen court
+  block('s21', -26, -485, 1, 52, 9, KOSM, '1б'),
+  block('s22', -144, -485, 1, 44, 5, STR, '2б'),
+  block('s23', -86, -442, 0, 48, 5, YUZH, '10'),
+  block('s24', -62, -528, 0, 40, 5, GEO, '7'),
+  block('s25', -110, -528, 0, 40, 5, GEO, '11'),
+  // beyond Stroiteley and Portovaya, facing the tundra and the bay
+  block('s26', -206, -240, 1, 48, 5, STR, '4'),
+  block('s27', -206, -352, 1, 52, 9, STR, '4а'),
+  block('s28', -206, -485, 1, 48, 5, STR, '4б'),
+  block('s29', 146, -240, 1, 44, 5, PORT, '4'),
+  block('s30', 146, -352, 1, 48, 9, PORT, '6'),
+  block('s31', 146, -485, 1, 44, 5, PORT, '8'),
+
+  // ---- Bear island: the fishing settlement Рыбачий, two rows on a street
+  block('i01', 1460, 262, 0, 44, 5, RYB, '2'),
+  block('i02', 1530, 262, 0, 40, 5, RYB, '4'),
+  block('i03', 1595, 262, 0, 36, 5, RYB, '6'),
+  block('i04', 1470, 188, 0, 40, 5, RYB, '1'),
+  block('i05', 1585, 188, 0, 44, 5, RYB, '5'),
+  // ---- Rudny island: the mine's settlement, either side of its street
+  block('r01', 1262, -760, 1, 44, 5, SHA, '3'),
+  block('r02', 1262, -840, 1, 40, 5, SHA, '7'),
+  block('r03', 1318, -750, 1, 40, 5, SHA, '2'),
+  block('r04', 1318, -830, 1, 48, 9, SHA, '6'),
 ];
+
+/** Which stretch of town a point is in: merged meshes are split by this
+ * (about 200 m a side) so the renderer can cull the ones out of view. */
+export const zoneKey = (x, z) => `${Math.floor((x + 250) / 250)}:${Math.floor((z + 600) / 200)}`;
 
 /* ---------------------------------------------------------- frames */
 
@@ -194,18 +279,36 @@ export function blockDoors(spec) {
  * says which way the entrance looks ('+x', '-x', '+z', '-z').
  */
 export const PUBLIC = [
-  { id: 'shop', kind: 'shop', sign: 'ПРОДУКТЫ', x: 62, z: 64, w: 22, d: 10, floors: 1, front: '-z', street: MIRA, number: '7' },
+  { id: 'shop', kind: 'shop', sign: 'ПРОДУКТЫ', x: 62, z: 64, w: 22, d: 10, floors: 1, front: '-z', street: MIRA, number: '7', inside: 'shop' },
   { id: 'kindergarten', kind: 'kindergarten', sign: 'ДЕТСКИЙ САД № 5', x: 62, z: -4, w: 20, d: 12, floors: 2, front: '+z', street: KOSM, number: '10а' },
   { id: 'culture', kind: 'culture', sign: 'ДОМ КУЛЬТУРЫ «ПОЛЯРНИК»', x: 86, z: -84, w: 38, d: 18, floors: 3, front: '-x', street: PORT, number: '2' },
   { id: 'school', kind: 'school', sign: 'ШКОЛА № 3', x: -76, z: -100, w: 54, d: 14, floors: 3, front: '+z', street: SHK, number: '10' },
-  { id: 'univermag', kind: 'shop', sign: 'УНИВЕРСАМ', x: -140, z: 66, w: 24, d: 14, floors: 1, front: '-z', street: MIRA, number: '19' },
+  { id: 'univermag', kind: 'shop', sign: 'УНИВЕРСАМ', x: -140, z: 66, w: 24, d: 14, floors: 1, front: '-z', street: MIRA, number: '19', inside: 'shop' },
   { id: 'clinic', kind: 'clinic', sign: 'ПОЛИКЛИНИКА', x: -212, z: 160, w: 16, d: 30, floors: 2, front: '+x', street: STR, number: '28' },
+  // the south district
+  { id: 'cinema', kind: 'cinema', sign: 'КИНОТЕАТР «АВРОРА»', x: 62, z: -226, w: 26, d: 16, floors: 2, front: '-z', street: KOSM, number: '2в' },
+  { id: 'banya', kind: 'bath', sign: 'БАНЯ', x: -86, z: -356, w: 22, d: 14, floors: 1, front: '+z', street: POL, number: '10' },
+  { id: 'canteen', kind: 'canteen', sign: 'СТОЛОВАЯ № 2', x: -86, z: -486, w: 24, d: 12, floors: 1, front: '+z', street: YUZH, number: '12' },
+  { id: 'gastronom', kind: 'shop', sign: 'ГАСТРОНОМ', x: 62, z: -486, w: 22, d: 12, floors: 1, front: '+z', street: YUZH, number: '5', inside: 'shop' },
 ];
 
 /** Footprint of a public building (its `w` runs along x unless it fronts x). */
 export function publicRect(p, grow = 0) {
   return { x0: p.x - p.w / 2 - grow, x1: p.x + p.w / 2 + grow, z0: p.z - p.d / 2 - grow, z1: p.z + p.d / 2 + grow };
 }
+
+PUBLIC.push(
+  { id: 'rybkoop', kind: 'shop', sign: 'РЫБКООП', x: 1525, z: 190, w: 20, d: 10, floors: 1, front: '+z', street: RYB, number: '3', inside: 'shop' },
+  { id: 'club', kind: 'club', sign: 'КЛУБ РЫБАКОВ', x: 1530, z: 300, w: 22, d: 12, floors: 1, front: '-z', street: RYB, number: '4а' },
+  { id: 'rudny-shop', kind: 'shop', sign: 'ПРОДУКТЫ', x: 1355, z: -790, w: 10, d: 20, floors: 1, front: '-x', street: SHA, number: '4', inside: 'shop' },
+  { id: 'mine-office', kind: 'clinic', sign: 'РУДОУПРАВЛЕНИЕ', x: 1215, z: -800, w: 14, d: 26, floors: 2, front: '+x', street: SHA, number: '5' },
+);
+
+/**
+ * Home: the one flat in town that is yours. A door of a block, by its
+ * entrance number and the side it faces (see blockDoors).
+ */
+export const HOME = { block: 'b06', number: 2, side: -1, flat: 'кв. 24' };
 
 /* ---------------------------------------------------------- places */
 
@@ -220,6 +323,10 @@ export const PLAYGROUNDS = [
   { x: -66, z: -8 },
   { x: -72, z: 98 },
   { x: -98, z: -124 },
+  { x: 62, z: -354 },
+  { x: -56, z: -356 },
+  { x: -56, z: -486 },
+  { x: 1575, z: 300 },
 ];
 
 export const KIOSK = { x: -13.4, z: -62, front: '+x' };
@@ -243,6 +350,16 @@ export const PIPES = [
     [-156, -139],
     [-236, -139],
   ],
+  // the south district's main and its west branch
+  [
+    [13, -139],
+    [13, -572],
+  ],
+  [
+    [13, -278],
+    [-156, -278],
+    [-156, -572],
+  ],
 ];
 
 /** Tin garage rows inside the town: [x0, z, count, facing]. */
@@ -250,6 +367,8 @@ export const GARAGE_ROWS = [
   [-238, -124, 12, 1],
   [-238, 34, 0, 1],
   [28, -200, 0, 1],
+  [-150, -578, 14, 1],
+  [30, -578, 12, 1],
 ].filter((r) => r[2] > 0);
 
 /**
@@ -263,6 +382,12 @@ export const BENCHES = [
   { id: 'spot:yard-nw', x: -62, z: 106, yaw: Math.PI },
   { id: 'spot:square', x: 36, z: -70, yaw: Math.PI * 0.8 },
   { id: 'spot:school', x: -52, z: -76, yaw: Math.PI / 2 },
+  { id: 'spot:cinema', x: 62, z: -246, yaw: Math.PI },
+  { id: 'spot:yard-south-east', x: 52, z: -368, yaw: 0 },
+  { id: 'spot:yard-banya', x: -70, z: -374, yaw: Math.PI / 2 },
+  { id: 'spot:yard-canteen', x: -100, z: -504, yaw: 0.4 },
+  { id: 'spot:island-fishers', x: 1500, z: 244, yaw: 0 },
+  { id: 'spot:island-mine', x: 1342, z: -740, yaw: -Math.PI / 2 },
 ];
 
 /* ---------------------------------------------------------- cars */
@@ -290,6 +415,23 @@ export const PARKED = [
   { x: 72, z: -58, heading: Math.PI / 2, color: 0x3e5a6e },
   { x: -100, z: -80, heading: Math.PI / 2 - 0.04, color: 0x8a8f94 },
   { x: 40, z: -196, heading: Math.PI / 2, color: 0x6a5a40 },
+  // the south district: at the kerb and in the courts
+  { x: 4.75, z: -240, heading: 0, color: 0x7a2f30, curb: true },
+  { x: -4.75, z: -330, heading: Math.PI, color: 0x4f6a5a, curb: true },
+  { x: 4.75, z: -470, heading: 0, color: 0xb0a890, curb: true },
+  { x: 70, z: -285.4, heading: Math.PI / 2, color: 0x59657a, curb: true },
+  { x: -70, z: -424.6, heading: -Math.PI / 2, color: 0x8a7a62, curb: true, van: true },
+  { x: -165.3, z: -380, heading: 0, color: 0x6d3a30, curb: true },
+  { x: 50, z: -338, heading: 0.04, color: 0x3e5a6e },
+  { x: 53.2, z: -338, heading: -0.03, color: 0xc9c2a8 },
+  { x: -120, z: -340, heading: 0, color: 0x5a5f63 },
+  { x: -116.8, z: -340, heading: 0.05, color: 0x8c2f28 },
+  { x: 84, z: -468, heading: Math.PI / 2, color: 0x6b4a3a },
+  { x: -120, z: -468, heading: Math.PI / 2 + 0.04, color: 0x54585e },
+  // the islands: what came over on the barge
+  { x: 1450, z: 229.6, heading: Math.PI / 2, color: 0x6f7a68, curb: true, van: true },
+  { x: 1605, z: 300, heading: 0.1, color: 0x8a7a62 },
+  { x: 1294.75, z: -800, heading: 0, color: 0x4a6076, curb: true },
   // UAZ vans in the garage lane and out on the port mole
   { x: 166, z: 24.6, heading: Math.PI / 2, color: 0xb9b39c, van: true },
   { x: 572, z: 50, heading: Math.PI / 2 - 0.3, color: 0x54687a, van: true },
@@ -303,54 +445,12 @@ export const ZONES = [
   ['Двор детского сада', 'Kindergarten yard', 34, 90, -28, 16],
   ['Школьный двор', 'School yard', -110, -40, -132, -64],
   ['Промзона', 'Industrial zone', 128, 250, -150, 60],
+  ['Микрорайон Южный', 'South district', -250, 250, -600, -210],
+  ['Двор кинотеатра', 'Cinema yard', 34, 90, -256, -200],
+  ['Остров Медвежий', 'Bear island', 1270, 1770, -10, 460],
+  ['Посёлок Рыбачий', 'Fishing settlement', 1400, 1640, 120, 330],
+  ['Остров Рудный', 'Rudny island', 1050, 1530, -1030, -570],
+  ['Посёлок Рудный', 'Mine settlement', 1180, 1400, -900, -700],
   ['Нефтебаза', 'Fuel depot', 150, 250, 150, 200],
 ];
 
-/* ---------------------------------------------------------- people */
-
-/**
- * Walks. A point is [x, z] or { x, z, wait, face: [dx, dz] }; the people
- * module checks every point and segment against the built world and bends
- * a route round anything in its way.
- */
-export const WALKS = {
-  avenue: {
-    mode: 'loop',
-    points: [
-      [7.6, -140], [7.6, -60], [7.6, 30], [7.6, 120], [7.6, 180],
-      [-7.6, 180], [-7.6, 120], [-7.6, 30], [-7.6, -60], [-7.6, -140],
-    ],
-  },
-  mira: {
-    mode: 'pingpong',
-    points: [{ x: 110, z: 51.6, wait: 2 }, [40, 51.6], [-40, 51.6], [-120, 51.6], { x: -160, z: 51.6, wait: 3 }],
-  },
-  kiosk: {
-    mode: 'pingpong',
-    points: [{ x: -7.6, z: -20, wait: 2 }, [-7.6, -56], { x: -10.6, z: -62, wait: 7, face: [-1, 0] }],
-  },
-  busStop: { mode: 'idle', points: [{ x: -9.6, z: 67.5, face: [1, 0] }] },
-  yard: {
-    mode: 'pingpong',
-    points: [{ x: 40, z: -8, wait: 3 }, [40, 8], [56, 10], { x: 74, z: 10, wait: 2 }],
-  },
-  square: {
-    mode: 'pingpong',
-    points: [{ x: 22, z: -60, wait: 2 }, [36, -78], { x: 52, z: -92, wait: 4, face: [-1, 0] }, [70, -100]],
-  },
-  school: {
-    mode: 'pingpong',
-    points: [{ x: -7.6, z: -80, wait: 1 }, [-14, -84], [-40, -84], { x: -60, z: -86, wait: 3, face: [0, -1] }],
-  },
-};
-
-export const WALKERS = [
-  { walk: 'avenue', variant: 0, speed: 1.35, scale: 1.03, phase: 0.7, start: 0.33 },
-  { walk: 'avenue', variant: 2, speed: 1.2, scale: 0.97, phase: 2.2, start: 0.8 },
-  { walk: 'mira', variant: 1, speed: 1.15, scale: 1.0, phase: 0, start: 0.45 },
-  { walk: 'kiosk', variant: 2, speed: 1.25, scale: 1.04, phase: 2.8, start: 0.55, bag: true },
-  { walk: 'busStop', variant: 1, scale: 0.97, phase: 4.1 },
-  { walk: 'yard', variant: 0, speed: 1.1, scale: 1.01, phase: 3.6, start: 0.4 },
-  { walk: 'square', variant: 2, speed: 1.2, scale: 0.96, phase: 5.2, start: 0.6, bag: true },
-  { walk: 'school', variant: 1, speed: 1.1, scale: 0.95, phase: 1.9, start: 0.3 },
-];
