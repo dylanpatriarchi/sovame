@@ -279,9 +279,9 @@ export function buildArctic(ctx) {
   };
   {
     let placedCount = 0;
-    for (let i = 0; i < 400 && placedCount < 14; i++) {
+    for (let i = 0; i < 600 && placedCount < 24; i++) {
       const x = -238 + hash2(i, 1, 441) * 350;
-      const z = -200 + hash2(i, 2, 441) * 392;
+      const z = -590 + hash2(i, 2, 441) * 782;
       const turned = hash2(i, 3, 441) < 0.5;
       const rx = turned ? 2 : 3.8;
       const rz = turned ? 3.8 : 2;

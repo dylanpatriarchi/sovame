@@ -32,6 +32,10 @@ const PUBLIC_LOOK = {
   culture: { base: '#c4b9a4', lit: 0.5 },
   school: { base: '#c9bfae', lit: 0.25 },
   clinic: { base: '#bfc6c4', lit: 0.4 },
+  cinema: { base: '#c8bda6', lit: 0.55 },
+  bath: { base: '#c2b8a8', lit: 0.5 },
+  canteen: { base: '#bdb6a4', lit: 0.7 },
+  club: { base: '#c6bca8', lit: 0.6 },
 };
 
 function makeSignTexture(text, { fg = '#f4ead2', bg = '#3d1512', font = 'bold 64px sans-serif' } = {}) {
@@ -55,15 +59,26 @@ function makeSignTexture(text, { fg = '#f4ead2', bg = '#3d1512', font = 'bold 64
   return { tex, aspect: canvas.width / canvas.height };
 }
 
-/** A box with three draw groups — the two ends, the roof, the two long
- * faces — and no underside: nobody ever sees it. */
-function wallBox(w, h, d) {
+/**
+ * A building's box, set down in the world and taken apart: the two ends,
+ * the roof and the two long faces (no underside: nobody ever sees it).
+ * Roofs and ends are merged across the town, so a block costs one draw
+ * call for its facades and nothing else.
+ */
+function wallParts(w, h, d, matrix) {
   const g = new THREE.BoxGeometry(w, h, d);
-  g.clearGroups();
-  g.addGroup(0, 12, 0);
-  g.addGroup(12, 6, 1);
-  g.addGroup(24, 12, 2);
-  return g;
+  g.translate(0, h / 2, 0);
+  g.applyMatrix4(matrix);
+  const flat = g.toNonIndexed();
+  const slice = (start, count) => {
+    const out = new THREE.BufferGeometry();
+    for (const name of ['position', 'normal', 'uv']) {
+      const a = flat.attributes[name];
+      out.setAttribute(name, new THREE.BufferAttribute(a.array.slice(start * a.itemSize, (start + count) * a.itemSize), a.itemSize));
+    }
+    return out;
+  };
+  return { ends: slice(0, 12), roof: slice(12, 6), faces: slice(24, 12) };
 }
 
 export function buildBlocks(ctx) {
@@ -115,6 +130,9 @@ export function buildBlocks(ctx) {
     trim.dark.push(bx(w + 1.8, 0.06, d + 1.8, 0, 0.04, 0));
   };
 
+  const roofs = [];
+  const ends = new Map();
+
   /* ------------------------------------------------ panel blocks */
   for (const spec of BLOCKS) {
     const cells = blockCells(spec);
@@ -134,12 +152,16 @@ export function buildBlocks(ctx) {
     const facadeMat = mkMat(
       TX.makeFacadeTextures({ ...common, scale: fine, cells, rng: new Rng(spec.seed), entranceEvery: 4, balconyChance: spec.balcony, litChance: spec.lit, tvCells: tv ? new Set([`${tv.f}:${tv.c}`]) : null }),
     );
-    const sideMat = mkMat(TX.makeFacadeTextures({ ...common, cells: sideCells, rng: new Rng(spec.seed + 101), entranceEvery: 99, balconyChance: 0.08, litChance: spec.lit * 0.8 }));
-
-    const mesh = new THREE.Mesh(wallBox(spec.w, h, spec.d), [sideMat, roofMat, facadeMat]);
+    // end walls come in a few kinds per height and are shared between blocks
+    const endKey = `${spec.floors}:${spec.seed % 3}`;
+    if (!ends.has(endKey)) {
+      ends.set(endKey, { mat: mkMat(TX.makeFacadeTextures({ ...common, cells: sideCells, rng: new Rng(spec.floors * 31 + (spec.seed % 3) + 101), entranceEvery: 99, balconyChance: 0.08, litChance: 0.4 })), parts: [] });
+    }
+    const parts = wallParts(spec.w, h, spec.d, matrix);
+    ends.get(endKey).parts.push(parts.ends);
+    roofs.push(parts.roof);
+    const mesh = new THREE.Mesh(parts.faces, facadeMat);
     mesh.name = `block-${spec.id}`;
-    mesh.position.y = h / 2;
-    mesh.applyMatrix4(matrix);
     ctx.place(mesh);
     const f = footprint(spec, 0.25);
     ctx.addColliderRect(f.x0, f.x1, f.z0, f.z1);
@@ -192,10 +214,12 @@ export function buildBlocks(ctx) {
     const common = { floors: p.floors, base: look.base, plinth: '#8f8b80', entranceEvery: 99, balconyChance: 0, litChance: look.lit, winter: false, street: p.street, number: p.number };
     const zMat = mkMat(TX.makeFacadeTextures({ ...common, cells: Math.max(3, Math.round(p.w / 3.8)), rng: new Rng(seed) }), 0.6);
     const xMat = mkMat(TX.makeFacadeTextures({ ...common, cells: Math.max(3, Math.round(p.d / 3.8)), rng: new Rng(seed + 1) }), 0.6);
-    const mesh = new THREE.Mesh(wallBox(p.w, h, p.d), [xMat, roofMat, zMat]);
+    const parts = wallParts(p.w, h, p.d, new THREE.Matrix4().makeTranslation(p.x, 0, p.z));
+    roofs.push(parts.roof);
+    const mesh = new THREE.Mesh(parts.faces, zMat);
     mesh.name = `public-${p.id}`;
-    mesh.position.set(p.x, h / 2, p.z);
     ctx.place(mesh);
+    ctx.place(new THREE.Mesh(parts.ends, xMat));
     const r = publicRect(p, 0.25);
     ctx.addColliderRect(r.x0, r.x1, r.z0, r.z1);
     framed(new THREE.Matrix4().makeTranslation(p.x, 0, p.z), () => roofEdge(p.w, p.d, h));
@@ -241,6 +265,8 @@ export function buildBlocks(ctx) {
     mesh.receiveShadow = true;
     world.group.add(mesh);
   };
+  bake(roofs, roofMat, 'roofs');
+  for (const [key, { mat, parts }] of ends) bake(parts, mat, `ends-${key}`);
   bake(trim.dark, M.concreteDark, 'trim-dark');
   bake(trim.white, M.concreteWhite, 'trim-white');
   bake(trim.snow, M.snow, 'trim-snow');

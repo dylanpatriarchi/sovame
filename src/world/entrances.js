@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, Rng } from '../util.js';
 import { makeSoftCircleTexture } from '../textures.js';
-import { BLOCKS, PUBLIC, blockDoors } from './town.js';
+import { BLOCKS, PUBLIC, HOME, blockDoors, zoneKey } from './town.js';
 import { blockMatrix, publicFrame } from './blocks.js';
 
 const PAD_TOP = 0.26;
@@ -28,11 +28,14 @@ export function allEntrances() {
   const list = [];
   for (const spec of BLOCKS) {
     const matrix = blockMatrix(spec);
-    for (const door of blockDoors(spec)) list.push({ ...door, matrix });
+    for (const door of blockDoors(spec)) {
+      const home = spec.id === HOME.block && door.number === HOME.number && door.side === HOME.side;
+      list.push({ ...door, matrix, inside: home ? 'flat' : null, label: home ? 'home' : null });
+    }
   }
   for (const p of PUBLIC) {
     const frame = publicFrame(p);
-    list.push({ matrix: frame.matrix, side: frame.side, lx: 0, lz: frame.lz });
+    list.push({ matrix: frame.matrix, side: frame.side, lx: 0, lz: frame.lz, inside: p.inside ?? null, label: p.sign, public: true });
   }
   return list;
 }
@@ -71,12 +74,17 @@ export function buildEntrances(ctx) {
   const glow = [];
   const wash = [];
   const spots = [];
+  // concrete and snow end up in one mesh per stretch of town
+  const zones = new Map();
+  const open = []; // lit doorways of the doors that can be used
+  const signs = [];
+  const doors = [];
 
   for (const e of allEntrances()) {
     const { side, matrix } = e;
     const ox = e.lx;
     const oz = e.lz;
-    const marks = [concrete.length, snow.length, glow.length, wash.length];
+    const marks = [concrete.length, snow.length, glow.length, wash.length, open.length];
     const first = marks.slice();
     const v = new THREE.Vector3();
     const at = (x, z) => v.set(x, 0, z).applyMatrix4(matrix).clone();
@@ -98,8 +106,18 @@ export function buildEntrances(ctx) {
 
     // steel double door with a frame, a transom above, handles, intercom
     const doorColor = new THREE.Color(DOOR_COLORS[rng.int(0, DOOR_COLORS.length - 1)]);
-    concrete.push(part(0.69, 2.08, 0.06, -0.36, PAD_TOP + 1.04, 0.05, side, ox, oz, doorColor));
-    concrete.push(part(0.69, 2.08, 0.06, 0.36, PAD_TOP + 1.04, 0.05, side, ox, oz, doorColor));
+    if (e.inside) {
+      // a door you can use stands open: one leaf swung out, warm light in
+      // the doorway at any hour, a mat on the landing
+      concrete.push(part(0.69, 2.08, 0.06, -0.36, PAD_TOP + 1.04, 0.05, side, ox, oz, doorColor));
+      concrete.push(part(0.06, 2.08, 0.69, 0.7, PAD_TOP + 1.04, 0.4, side, ox, oz, doorColor));
+      open.push(part(0.7, 2.08, 0.02, 0.36, PAD_TOP + 1.04, 0.03, side, ox, oz, new THREE.Color(1.2, 0.8, 0.38)));
+      open.push(part(0.5, 0.012, 0.04, 0.36, PAD_TOP + 0.03, 0.12, side, ox, oz, new THREE.Color(1.2, 0.8, 0.38)));
+      concrete.push(part(0.9, 0.025, 0.55, 0.3, PAD_TOP + 0.012, 0.5, side, ox, oz, new THREE.Color(0x5a2a22)));
+    } else {
+      concrete.push(part(0.69, 2.08, 0.06, -0.36, PAD_TOP + 1.04, 0.05, side, ox, oz, doorColor));
+      concrete.push(part(0.69, 2.08, 0.06, 0.36, PAD_TOP + 1.04, 0.05, side, ox, oz, doorColor));
+    }
     concrete.push(part(1.62, 0.1, 0.1, 0, PAD_TOP + 2.13, 0.05, side, ox, oz, METAL)); // lintel
     concrete.push(part(1.62, 0.1, 0.1, 0, PAD_TOP + 2.64, 0.05, side, ox, oz, METAL)); // transom head
     for (const sx of [-0.78, 0.78]) concrete.push(part(0.08, 2.44, 0.1, sx, PAD_TOP + 1.22, 0.05, side, ox, oz, METAL));
@@ -112,6 +130,7 @@ export function buildEntrances(ctx) {
     const lit = rng.chance(0.86);
     glow.push(part(0.22, 0.07, 0.15, 0, 2.565, 0.32, side, ox, oz, new THREE.Color(lit ? 2.6 : 0.05, lit ? 1.75 : 0.05, lit ? 0.9 : 0.05)));
     const trans = rng.float(0.25, 0.5);
+    if (e.inside) signs.push({ e, text: e.label === 'home' ? `ДОМ · ${HOME.flat}` : 'ОТКРЫТО' });
     glow.push(part(1.44, 0.36, 0.02, 0, PAD_TOP + 2.385, 0.04, side, ox, oz, new THREE.Color(trans, trans * 0.78, trans * 0.48)));
 
     if (lit) {
@@ -121,7 +140,7 @@ export function buildEntrances(ctx) {
       spots.push({ x: p.x, y: 2.35 + RISE, z: p.z });
     }
     // everything so far was built at street level: lift it to the door
-    [concrete, snow, glow, wash].forEach((list, i) => {
+    [concrete, snow, glow, wash, open].forEach((list, i) => {
       for (let k = marks[i]; k < list.length; k++) list[k].translate(0, RISE, 0);
     });
     // the landing (a closed concrete box over the pile gap) and the steps
@@ -152,10 +171,49 @@ export function buildEntrances(ctx) {
       concrete.push(rail);
     }
     // built in the building's own frame: set it down in the world
-    [concrete, snow, glow, wash].forEach((list, i) => {
+    [concrete, snow, glow, wash, open].forEach((list, i) => {
       for (let k = first[i]; k < list.length; k++) list[k].applyMatrix4(matrix);
     });
+    // where you stand to use the door, and the way it faces
+    const stand = at(ox, oz + side * 0.7);
+    const key = zoneKey(stand.x, stand.z);
+    if (!zones.has(key)) zones.set(key, { concrete: [], snow: [] });
+    zones.get(key).concrete.push(...concrete.splice(first[0]));
+    zones.get(key).snow.push(...snow.splice(first[1]));
+    const out = at(ox, oz + side * 1.7).sub(stand);
+    doors.push({ x: stand.x, z: stand.z, y: LANDING, yaw: Math.atan2(-out.x, -out.z), inside: e.inside, label: e.label, public: !!e.public });
   }
+
+  // the lit plate over an open door: ОТКРЫТО on a shop, the flat number at home
+  for (const { e, text } of signs) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const c = canvas.getContext('2d');
+    c.fillStyle = e.label === 'home' ? '#3a2a12' : '#0f3a22';
+    c.fillRect(0, 0, 512, 128);
+    c.strokeStyle = e.label === 'home' ? '#ffcf8a' : '#7dffb0';
+    c.lineWidth = 6;
+    c.strokeRect(8, 8, 496, 112);
+    c.fillStyle = c.strokeStyle;
+    c.font = 'bold 76px sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(text, 256, 68, 470);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    // a lightbox standing on the front edge of the canopy
+    const g = new THREE.PlaneGeometry(2.0, 0.5);
+    g.translate(0, 3.12 + RISE, 1.5);
+    if (e.side < 0) g.rotateY(Math.PI);
+    g.translate(e.lx, 0, e.lz);
+    g.applyMatrix4(e.matrix);
+    const plate = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.5, 1.5, 1.5) }));
+    plate.name = 'door-sign';
+    world.group.add(plate);
+  }
+  world.doors = doors;
 
   const add = (geos, material, { cast = true, receive = true, order = 0 } = {}) => {
     if (!geos.length) return null;
@@ -167,14 +225,18 @@ export function buildEntrances(ctx) {
     return mesh;
   };
 
-  add(concrete, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.15 }));
-  const snowMesh = new THREE.Mesh(mergeGeometries(snow), M.snow);
-  snowMesh.receiveShadow = true;
-  world.group.add(snowMesh);
+  const concreteMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.15 });
+  for (const zone of zones.values()) {
+    add(zone.concrete, concreteMat);
+    const snowMesh = new THREE.Mesh(mergeGeometries(zone.snow), M.snow);
+    snowMesh.receiveShadow = true;
+    world.group.add(snowMesh);
+  }
 
   // the emissive color scales with the lamp level (bulbs off in daylight)
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
   add(glow, glowMat, { cast: false });
+  add(open, new THREE.MeshBasicMaterial({ vertexColors: true }), { cast: false });
   const warm = makeSoftCircleTexture(128, '255,196,130', 2.2);
   const washMat = new THREE.MeshBasicMaterial({
     map: warm,

@@ -104,8 +104,14 @@ that the town can be read from the lookout two thirds of a kilometre away.
   the town, hills and the sopka beyond, the frozen bay to the east, forever
   north and south. Ground rings follow the camera. Roads out of town are data
   (`routes.js`); the land cuts and fills itself under them.
+- **The bay**: fast ice along the mainland shore, open water beyond it
+  (`iceEdge`, `isWater` in `land.js`; the port keeps a channel open), and
+  two islands with a settlement each, standing on their own pads (`PADS`).
+- **Doors**: a door that opens stands ajar with a lit doorway and a
+  lightbox over the canopy; every other door is shut and says so. Rooms
+  are built apart from the town with their light baked in.
 - **The town is data** (`src/world/town.js`): streets, blocks, public buildings,
-  lanes, footpaths, pipes, benches, cars, walks. Each block owns its seed and
+  lanes, footpaths, pipes, benches, cars. Each block owns its seed and
   may stand along either axis. `npm run check:town` validates the plan.
 - **Blocks**: one box per block with a painted facade map (drawn finer on
   quality "high") plus a pebble-dash grain in the shader; real geometry for the
@@ -134,7 +140,7 @@ from the kiosk or from the dashboard (`R` behind the wheel).
 
 - 60 fps on a 2019+ integrated-GPU laptop at 1080p; quality `high` / `medium` /
   `low` / `auto`.
-- **Draw calls < 300 anywhere in town**, triangles < 600k, no network requests
+- **Draw calls < 350 anywhere in town**, triangles < 600k, no network requests
   after load. `npm run smoke` prints both for three views.
 
 ## 11. Module map
@@ -144,6 +150,7 @@ index.html                 canvas, UI overlay, styles
 src/main.js                boot, modes (title / playing / paused), settings, loop
 src/interactions.js        what the player can do: radio, benches, cars, prompts
 src/settings.js            saved settings, quality resolution
+src/save.js                the saved game
 src/config.js              player, time presets, tuning
 src/player.js              first-person movement on foot
 src/driving.js             behind the wheel: cameras, headlights
@@ -163,8 +170,9 @@ src/world/arctic.js        plant, fuel depot, garages, containers, pipes, port, 
 src/world/routes.js        roads out of town, as data
 src/world/roads.js         their surface, marker posts, power line
 src/world/land.js          the height function, ground rings, tundra scatter, sea ice
-src/world/vehicles.js      cars and the UAZ van
-src/world/people.js        passers-by
+src/world/vehicles.js      the Lada and the UAZ van
+src/world/boats.js         boats and their moorings
+src/world/interiors.js     the rooms behind the doors that open
 src/world/crows.js         crows
 tools/                     check-town, smoke, drive-test, town-test and other probes
 ```

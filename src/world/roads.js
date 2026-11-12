@@ -160,12 +160,69 @@ export function buildRoads(ctx) {
   }
   const posts = new THREE.InstancedMesh(postGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), places.length);
   const d = new THREE.Object3D();
-  places.forEach(([x, y, z, r], i) => {
+  const stakes = places.map(([x, y, z, r], i) => {
     d.position.set(x, y - 0.05, z);
     // frost heave: none of them stands quite straight
     d.rotation.set((r - 0.5) * 0.22, r * 6, (hash2(i, 3, 9) - 0.5) * 0.22);
     d.updateMatrix();
     posts.setMatrixAt(i, d.matrix);
+    return { i, x, y: y - 0.05, z, stand: d.quaternion.clone(), down: false, t: 0, lean: 0, axis: new THREE.Vector3() };
+  });
+  // a post is a thin stake in the snow: a car does not stop for it, it
+  // snaps it over. Hit slowly it only leans; at speed it goes flat, bounces
+  // once and stays down.
+  const CELL = 24;
+  const grid = new Map();
+  for (const s of stakes) {
+    const k = `${Math.floor(s.x / CELL)},${Math.floor(s.z / CELL)}`;
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(s);
+  }
+  const falling = new Set();
+  const q = new THREE.Quaternion();
+  world.posts = {
+    stakes,
+    /** Called by a moving car every frame. Returns true when it hit one. */
+    hit(car) {
+      const v = Math.abs(car.speed);
+      if (v < 0.6) return false;
+      let any = false;
+      const gx = Math.floor(car.x / CELL);
+      const gz = Math.floor(car.z / CELL);
+      for (let j = gz - 1; j <= gz + 1; j++) {
+        for (let i = gx - 1; i <= gx + 1; i++) {
+          for (const s of grid.get(`${i},${j}`) ?? []) {
+            if (s.down || car.distanceTo(s.x, s.z) > 0.08) continue;
+            const dir = Math.sign(car.speed) || 1;
+            // falls away from the bumper: about the axis across the car
+            s.axis.set(Math.cos(car.heading) * dir, 0, -Math.sin(car.heading) * dir);
+            s.down = true;
+            s.t = 0;
+            s.lean = v < 2.5 ? 0.25 + v * 0.12 : 1.47;
+            s.rate = 2.5 + v * 0.45;
+            falling.add(s);
+            any = true;
+          }
+        }
+      }
+      return any;
+    },
+  };
+  ctx.addUpdater((dt) => {
+    if (!falling.size) return;
+    for (const s of falling) {
+      s.t += dt * s.rate;
+      // over, a small bounce off the snow, then still
+      const k = Math.min(s.t, 1);
+      const bounce = s.t > 1 && s.lean > 1 ? Math.max(0, Math.sin((s.t - 1) * 5) * 0.12 * Math.exp(-(s.t - 1) * 2.2)) : 0;
+      q.setFromAxisAngle(s.axis, s.lean * (1 - (1 - k) ** 2) - bounce);
+      d.position.set(s.x, s.y, s.z);
+      d.quaternion.copy(q).multiply(s.stand);
+      d.updateMatrix();
+      posts.setMatrixAt(s.i, d.matrix);
+      if (s.t > 3) falling.delete(s);
+    }
+    posts.instanceMatrix.needsUpdate = true;
   });
   posts.name = 'marker-posts';
   posts.frustumCulled = false;

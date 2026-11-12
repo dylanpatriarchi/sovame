@@ -7,13 +7,14 @@ import * as TX from '../textures.js';
 import { buildStreets } from './streets.js';
 import { buildBlocks } from './blocks.js';
 import { buildCrows } from './crows.js';
-import { buildPeople } from './people.js';
 import { buildEntrances, addFacadeLift } from './entrances.js';
 import { buildVehicles } from './vehicles.js';
-import { landHeight } from './land.js';
+import { landHeight, isWater } from './land.js';
 import { buildPiles } from './piles.js';
 import { buildRoads } from './roads.js';
 import { buildArctic } from './arctic.js';
+import { buildInteriors } from './interiors.js';
+import { buildBoats } from './boats.js';
 
 export class World {
   constructor({ season = 'winter', quality = 'high' } = {}) {
@@ -58,10 +59,9 @@ export class World {
       ['Roads out of town', () => buildRoads(this.ctx)],
       ['Plant, port and street lamps', () => buildArctic(this.ctx)],
       ['Parked cars', () => buildVehicles(this.ctx)],
-      ['Passers-by and crows', () => {
-        buildPeople(this.ctx);
-        buildCrows(this.ctx);
-      }],
+      ['Boats at their moorings', () => buildBoats(this.ctx)],
+      ['Crows', () => buildCrows(this.ctx)],
+      ['Rooms behind the doors', () => buildInteriors(this.ctx)],
     ];
     for (let i = 0; i < stages.length; i++) {
       onProgress?.(i / stages.length, stages[i][0]);
@@ -203,6 +203,10 @@ export class World {
   /* ---------------------------------------------------------- queries */
 
   heightAt(x, z) {
+    // the rooms behind the doors have a floor of their own
+    for (const room of this.roomList ?? []) {
+      if (x > room.x0 && x < room.x1 && z > room.z0 && z < room.z1) return room.y;
+    }
     let h = 0;
     for (const r of this.heightRects) {
       if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ && r.h > h) h = r.h;
@@ -230,7 +234,9 @@ export class World {
 
   /** Checks whether a circle of radius r collides with the environment. */
   collides(x, z, r) {
-    // no world edge: past the last block the tundra goes on forever
+    // no world edge: past the last block the tundra goes on forever —
+    // but nobody walks or drives on the open water of the bay
+    if (isWater(x, z)) return true;
     for (const c of this.colliders) {
       const cx = Math.max(c.minX, Math.min(x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(z, c.maxZ));
@@ -257,7 +263,12 @@ export class World {
   /* ---------------------------------------------------------- loop */
 
   update(dt, elapsed, camera) {
+    if (camera) {
+      this.viewX = camera.position.x;
+      this.viewZ = camera.position.z;
+    }
     for (const fn of this.updaters) fn(dt, elapsed);
     if (camera) this.land?.update(camera.position.x, camera.position.z);
+    this.land?.tick(elapsed);
   }
 }

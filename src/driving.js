@@ -43,7 +43,7 @@ export class Driving {
     const car = this.car;
     if (!car || Math.abs(car.speed) > 1.5) return false;
     car.setDriven(false);
-    const spots = [
+    const spots = car.exitSpots ?? [
       [1.45, 0.2],
       [-1.45, 0.2],
       [0, -2.75],
@@ -87,7 +87,7 @@ export class Driving {
     this.shake = Math.max(this.shake - dt * 2.5, car.impact);
     this.sound.engineUpdate?.(Math.abs(car.speed), car.throttle);
 
-    // the player rides along: zones, people and audio follow the car
+    // the player rides along: zones and audio follow the car
     this.player.position.set(car.x, car.y, car.z);
 
     // headlights after dusk, a beam that follows the car

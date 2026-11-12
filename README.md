@@ -24,6 +24,9 @@ npm run preview  # serve the production build
 | `C` | crouch |
 | `E` | turn the kiosk radio on/off (within ~7 m) |
 | `E` (by a car) | get in / out of any parked car — then `W` `S` throttle and brake/reverse, `A` `D` steer, `Space` handbrake |
+| `E` (by a boat) | take the helm of a boat moored off the port mole or on an island beach; `E` again close to land to step ashore |
+| `E` (at a door) | go in where a door stands open under a lit sign (the groceries, your flat); every other door is locked |
+| `E` (on the sofa at home) | lie down: the day moves on to its next part |
 | `V` | driver's seat ↔ chase camera |
 | `R` (in a car) | dashboard radio on/off |
 | `F` | have a smoke at a spot (any bench: the yards, the square, the bus shelter, the lookout, the lighthouse, the port mole); `F` again to stop |
@@ -37,6 +40,11 @@ screenshots in `shots/drive/`.
 Mouse look uses pointer lock. Time of day, snow amount, volume, mouse
 sensitivity, quality and Y-inversion are set from the title or pause screen and
 persisted in `localStorage`.
+
+The game itself is saved too — where you are, what you were driving, where
+every car and boat was left, the time of day — every few seconds and when the
+tab is hidden or closed. The title screen then offers **Continue** and **New
+game**.
 
 ## Smoke test
 
