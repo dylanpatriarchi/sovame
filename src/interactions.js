@@ -3,7 +3,6 @@
 // cars, the radio in the dashboard. main.js owns the modes (title, playing,
 // paused); this owns everything that happens while playing.
 import { smokeSpots } from './smoke.js';
-import { TIME_PRESETS } from './config.js';
 
 export class Interactions {
   constructor({ world, player, ui, sound, smoke, driving, state, env }) {
@@ -213,12 +212,11 @@ export class Interactions {
     this.sound.setIndoors(false);
   }
 
-  /** On the sofa at home: the day moves on to its next part. */
+  /** On the sofa at home: six hours go by. */
   sleep() {
     if (this.state.transitioning) return;
     this.fade(() => {
-      const next = TIME_PRESETS[(this.env.timeIndex + 1) % TIME_PRESETS.length];
-      this.env.setTime(next.id);
+      this.env.setClock(this.env.minutes + 6 * 60);
     });
   }
 

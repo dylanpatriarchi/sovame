@@ -26,6 +26,7 @@ await page.goto(URL_BASE, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => document.getElementById('loading')?.classList.contains('hidden'), { timeout: 180000 });
 await page.click('#btn-start');
 await wait(800);
+const clock0 = await page.evaluate(() => ({ m: window.__game.env.minutes, text: window.__game.env.clock }));
 
 // a few fixed looks at the town and the land
 for (const [name, x, z, yaw] of [
@@ -292,6 +293,25 @@ for (const kind of ['shop', 'flat']) {
     if (sea.x - start.x < 8 || !sea.afloat) fail('[boat] the boat did not get under way');
     await page.screenshot({ path: `${OUT}/at-sea.png` });
   }
+}
+
+// the clock runs, and the sofa moves it on
+{
+  const now = await page.evaluate(() => {
+    const g = window.__game;
+    const out = { m: g.env.minutes, text: g.env.clock };
+    g.env.setClock(3 * 60);
+    return out;
+  });
+  await wait(2500);
+  const night = await page.evaluate(() => ({ stars: +window.__game.env.cur.stars.toFixed(2), text: window.__game.env.clock }));
+  await page.evaluate(() => window.__game.env.setClock(13 * 60 + 30));
+  await wait(2500);
+  const day = await page.evaluate(() => ({ stars: +window.__game.env.cur.stars.toFixed(2), sun: +window.__game.env.cur.sunIntensity.toFixed(2), text: window.__game.env.clock }));
+  await page.screenshot({ path: `${OUT}/midday.png` });
+  console.log(`→ clock: ${clock0.text} → ${now.text}; ${night.text} stars ${night.stars}; ${day.text} stars ${day.stars}, sun ${day.sun}`);
+  if (((now.m - clock0.m + 1440) % 1440) < 20) fail('[clock] the time of day does not move while playing');
+  if (night.stars < 0.5 || day.stars > 0.3) fail('[clock] the sky does not follow the clock');
 }
 
 // the game is saved when the tab goes away and comes back as it was left

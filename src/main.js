@@ -162,7 +162,7 @@ async function boot() {
       driving: driving.active ? { boat: !!driving.car.boat, id: driving.car.id } : null,
       cars: world.cars.map(berth),
       boats: world.boats.map(berth),
-      time: TIME_PRESETS[env.timeIndex].id,
+      minutes: Math.round(env.minutes),
       radio: { ...actions.radioSets },
       errands: errands.snapshot(),
     };
@@ -184,7 +184,8 @@ async function boot() {
       const boat = world.boats[i];
       if (boat?.afloat(x, z, heading)) Object.assign(boat, { x, z, heading, speed: 0 });
     });
-    if (save.time) env.setTime(save.time);
+    if (save.minutes !== undefined) env.setClock(save.minutes);
+    else if (save.time) env.setTime(save.time);
     Object.assign(actions.radioSets, save.radio ?? {});
     errands.restore(save.errands);
     const door = save.room ? world.doors[save.room.door] : null;
@@ -379,6 +380,7 @@ async function boot() {
       sound.engineUpdate(0, 0);
     }
 
+    env.running = state.mode === 'playing';
     env.update(dt, state.elapsed, camera);
     world.update(dt, state.elapsed, camera);
     sound.updateWind(env.wind.gust);

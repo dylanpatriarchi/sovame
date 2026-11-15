@@ -470,3 +470,18 @@ longer applies: all of it is deleted.
   - `npm run smoke` also checks a parcel, the map, a rod and a fish.
   Ideas: parcels that need the boat on purpose, a fish soup at home,
   something to spend roubles on besides the rod.
+- 2026-11-15 — **The Lada's shell, a clock that runs** (same branch):
+  - `vehicles.js`: `shell()` lofts the sedan's lower body through
+    cross-sections every 6 cm (`sheet()` builds a smooth-shaded sheet
+    and turns it to face outward): flanks that tuck under at the sill
+    and roll in at the shoulder, real wheel arches with lips, a crowned
+    bonnet and boot lid, corners rounded in plan. Sill at 0.24, roof at
+    1.41. Door cards and the rear bench stay out of the arches. The old
+    `profile()` slabs are only used by the van now.
+  - `environment.js`: `env.minutes` is the time of day and runs while
+    `env.running` (playing): an hour in 90 s. `DAY` lists the minutes at
+    which the day looks like each of the four presets; `lookAt(minutes)`
+    blends the two neighbours (morning sun mirrored to the east).
+    `setTime(id)` jumps the clock to a preset, `setClock(minutes)`
+    anywhere. The sofa moves it on six hours. The save keeps `minutes`.
+

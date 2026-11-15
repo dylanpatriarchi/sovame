@@ -26,7 +26,7 @@ npm run preview  # serve the production build
 | `E` (by a car) | get in / out of any parked car — then `W` `S` throttle and brake/reverse, `A` `D` steer, `Space` handbrake |
 | `E` (by a boat) | take the helm of a boat moored off the port mole or on an island beach; `E` again close to land to step ashore |
 | `E` (at a door) | go in where a door stands open under a lit sign (the groceries, your flat); every other door is locked |
-| `E` (on the sofa at home) | lie down: the day moves on to its next part |
+| `E` (on the sofa at home) | lie down: six hours go by |
 | `E` (at a shop counter) | take a parcel: carry it to the door under the column of light for a few roubles |
 | `F` (at a shop counter) | buy a winter fishing rod, or sell the catch |
 | `F` (on the bay ice) | drill a hole and fish; `E` when the rod nods, `F` to pack up |
