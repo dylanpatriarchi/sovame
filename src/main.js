@@ -15,6 +15,8 @@ import { Smoke } from './smoke.js';
 import { Driving } from './driving.js';
 import { readSave, writeSave, clearSave } from './save.js';
 import { Interactions } from './interactions.js';
+import { Errands } from './errands.js';
+import { GameMap } from './map.js';
 import { isTouch, loadSettings, saveSettings, resolveQuality } from './settings.js';
 import { PLAYER, TIME_PRESETS } from './config.js';
 import { clamp } from './util.js';
@@ -91,6 +93,9 @@ async function boot() {
   const smoke = new Smoke({ scene, camera, world, env, sound });
   const driving = new Driving({ camera, world, player, sound, env });
   const actions = new Interactions({ world, player, ui, sound, smoke, driving, state, env });
+  const errands = new Errands({ scene, camera, world, player, ui, sound, state, driving, actions });
+  const map = new GameMap({ world, camera, errands });
+  actions.map = map;
   player.setFootprintStyle('snow', settings.season);
   ui.setProgress(0.94, 'Final touches');
   await nextFrame();
@@ -157,8 +162,9 @@ async function boot() {
       driving: driving.active ? { boat: !!driving.car.boat, id: driving.car.id } : null,
       cars: world.cars.map(berth),
       boats: world.boats.map(berth),
-      time: TIME_PRESETS[env.timeIndex].id,
+      minutes: Math.round(env.minutes),
       radio: { ...actions.radioSets },
+      errands: errands.snapshot(),
     };
   }
 
@@ -178,8 +184,10 @@ async function boot() {
       const boat = world.boats[i];
       if (boat?.afloat(x, z, heading)) Object.assign(boat, { x, z, heading, speed: 0 });
     });
-    if (save.time) env.setTime(save.time);
+    if (save.minutes !== undefined) env.setClock(save.minutes);
+    else if (save.time) env.setTime(save.time);
     Object.assign(actions.radioSets, save.radio ?? {});
+    errands.restore(save.errands);
     const door = save.room ? world.doors[save.room.door] : null;
     if (door?.inside) actions.enterRoomNow(door);
     const p = save.player;
@@ -236,13 +244,14 @@ async function boot() {
 
   function pause() {
     state.mode = 'paused';
+    map.toggle(false);
     player.enabled = false;
     ui.showScreen('pause');
   }
 
   function resume() {
     state.mode = 'playing';
-    player.enabled = !state.smoking;
+    player.enabled = !state.smoking && !state.fishing;
     ui.showScreen('none');
     sound.resume();
     player.requestLock();
@@ -253,6 +262,8 @@ async function boot() {
     state.started = false;
     offerSave();
     if (state.smoking) actions.endSmoke(false);
+    errands.stopFishing();
+    map.toggle(false);
     actions.leaveCarNow();
     actions.leaveRoomNow();
     state.mode = 'title';
@@ -334,7 +345,7 @@ async function boot() {
   updateStatus();
 
   // handy for inspecting the scene from the browser console
-  window.__game = { save: saveGame, renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, radioSets: actions.radioSets };
+  window.__game = { save: saveGame, renderer, scene, camera, world, env, player, settings, state, sound, smoke, driving, errands, map, actions, radioSets: actions.radioSets };
 
   /* --------------------------------------------------- loop */
 
@@ -362,11 +373,14 @@ async function boot() {
       if (driving.active) driving.update(dt, player.enabled ? player.keys : {});
       else player.update(dt);
       if (smoke.update(dt, state.elapsed)) actions.endSmoke();
+      errands.update(dt, state.elapsed);
+      map.update(dt, state.elapsed);
     } else if (driving.active) {
       // paused behind the wheel: idle the engine
       sound.engineUpdate(0, 0);
     }
 
+    env.running = state.mode === 'playing';
     env.update(dt, state.elapsed, camera);
     world.update(dt, state.elapsed, camera);
     sound.updateWind(env.wind.gust);

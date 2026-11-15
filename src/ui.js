@@ -24,6 +24,9 @@ export class UI {
       temp: document.querySelector('#status .temp'),
       hints: q('hints'),
       prompt: q('prompt'),
+      task: q('task'),
+      wallet: q('wallet'),
+      toast: q('toast'),
       fade: q('fade'),
       start: q('start'),
       pause: q('pause'),
@@ -255,6 +258,28 @@ export class UI {
     } else {
       this.el.prompt.classList.remove('visible');
     }
+  }
+
+  setWallet(text) {
+    this.el.wallet.textContent = text;
+  }
+
+  /** The errand in hand, with an arrow turned toward it (radians, clockwise). */
+  setTask(text, angle = 0) {
+    this.el.task.classList.toggle('visible', !!text);
+    if (!text) return;
+    this.el.task.querySelector('.label').textContent = text;
+    this.el.task.querySelector('.arrow').style.transform = `rotate(${angle.toFixed(2)}rad)`;
+  }
+
+  /** A line that comes up for a few seconds: what just happened. */
+  toast(title, sub = '') {
+    const el = this.el.toast;
+    el.querySelector('.title').textContent = title;
+    el.querySelector('.sub').textContent = sub;
+    el.classList.add('visible');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => el.classList.remove('visible'), 4200);
   }
 
   /** Fades the view to black, runs `midpoint` while black, then fades back. */

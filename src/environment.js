@@ -115,6 +115,25 @@ class Weather {
   }
 }
 
+const PRESET = Object.fromEntries(TIME_PRESETS.map((p) => [p.id, p]));
+const at = (h, m) => h * 60 + m;
+/**
+ * A day in the polar town, as the minutes at which it looks like one of
+ * the four presets: a long night, a late blue dawn, a few hours of low
+ * sun, the evening the game is named for.
+ */
+const DAY = [
+  [at(0, 0), 'night'],
+  [at(8, 40), 'night'],
+  [at(10, 10), 'dusk'],
+  [at(11, 30), 'sunset'],
+  [at(13, 0), 'afternoon'],
+  [at(15, 20), 'afternoon'],
+  [at(17, 5), 'sunset'],
+  [at(18, 40), 'dusk'],
+  [at(22, 10), 'night'],
+];
+
 export class Environment {
   constructor({ scene, renderer, world, time = 'dusk', season = 'winter', snow = 1, quality = 'high' }) {
     this.scene = scene;
@@ -129,6 +148,9 @@ export class Environment {
     this.indoor = 0;
     this.indoorTarget = 0;
     this.timeIndex = Math.max(0, TIME_PRESETS.findIndex((p) => p.id === time));
+    /** The time of day in minutes; it runs while `running` is set. */
+    this.minutes = Environment.parseClock(TIME_PRESETS[this.timeIndex].clock);
+    this.running = false;
     this.sunDir = new THREE.Vector3(0, 1, 0);
     // immediately align road surfaces, roofs and canopies with the starting season
     this.world.setSeason(season);
@@ -202,6 +224,50 @@ export class Environment {
     return TIME_PRESETS[this.timeIndex];
   }
 
+  /**
+   * The look of this minute of the day: the two moments it lies between
+   * (DAY, below), blended. Same shape as a preset.
+   */
+  lookAt(minutes) {
+    let k = DAY.length - 1;
+    while (k > 0 && DAY[k][0] > minutes) k--;
+    const [m0, id0] = DAY[k];
+    const [m1, id1] = DAY[(k + 1) % DAY.length];
+    const span = (m1 - m0 + 1440) % 1440 || 1440;
+    const f = smoothstep(0, 1, ((minutes - m0 + 1440) % 1440) / span);
+    const a = PRESET[id0];
+    const b = PRESET[id1];
+    this.timeIndex = TIME_PRESETS.indexOf(f < 0.5 ? a : b);
+    const mix = (x, y) => x + (y - x) * f;
+    const hue = (x, y) => new THREE.Color(x).lerp(new THREE.Color(y), f);
+    // before noon the sun stands in the east: the evening sky, mirrored
+    const az = (p) => (minutes < 780 && p.id !== 'night' ? 360 - p.sun.azimuth : p.sun.azimuth);
+    return {
+      baseTemp: mix(a.baseTemp, b.baseTemp),
+      sky: { zenith: hue(a.sky.zenith, b.sky.zenith), horizon: hue(a.sky.horizon, b.sky.horizon), ground: hue(a.sky.ground, b.sky.ground) },
+      sun: {
+        color: hue(a.sun.color, b.sun.color),
+        intensity: mix(a.sun.intensity, b.sun.intensity),
+        elevation: mix(a.sun.elevation, b.sun.elevation),
+        azimuth: mix(az(a), az(b)),
+        glow: mix(a.sun.glow, b.sun.glow),
+      },
+      hemi: { sky: hue(a.hemi.sky, b.hemi.sky), ground: hue(a.hemi.ground, b.hemi.ground), intensity: mix(a.hemi.intensity, b.hemi.intensity) },
+      fog: { color: hue(a.fog.color, b.fog.color), density: mix(a.fog.density, b.fog.density) },
+      lamp: mix(a.lamp, b.lamp),
+      windowLit: mix(a.windowLit, b.windowLit),
+      remnant: mix(a.remnant ?? 0, b.remnant ?? 0),
+      stars: mix(a.stars, b.stars),
+      moon: mix(a.moon, b.moon),
+      exposure: mix(a.exposure ?? 1, b.exposure ?? 1),
+    };
+  }
+
+  /** Puts the clock at a time of day (minutes) or moves it on by some. */
+  setClock(minutes) {
+    this.minutes = ((minutes % 1440) + 1440) % 1440;
+  }
+
   get clock() {
     const total = Math.round(this.cur.clockMinutes) % 1440;
     const h = Math.floor(total / 60);
@@ -210,7 +276,7 @@ export class Environment {
   }
 
   get temperature() {
-    const base = this.preset.baseTemp + SEASONS[this.season].tempShift;
+    const base = (this.look?.baseTemp ?? this.preset.baseTemp) + SEASONS[this.season].tempShift;
     return Math.round(base + this.cur.stars * -1.5);
   }
 
@@ -435,7 +501,9 @@ export class Environment {
 
   setTime(id) {
     const idx = TIME_PRESETS.findIndex((p) => p.id === id);
-    if (idx >= 0) this.timeIndex = idx;
+    if (idx < 0) return;
+    this.timeIndex = idx;
+    this.minutes = Environment.parseClock(TIME_PRESETS[idx].clock);
   }
 
   setSeason(id) {
@@ -478,7 +546,9 @@ export class Environment {
   /* ------------------------------------------------------------ update */
 
   update(dt, elapsed, camera) {
-    const target = this.preset;
+    // an hour of the day goes by in a minute and a half
+    if (this.running) this.minutes = (this.minutes + dt * (60 / 90)) % 1440;
+    const target = (this.look = this.lookAt(this.minutes));
     const c = this.cur;
     const rate = 1.5;
     this.indoor = damp(this.indoor, this.indoorTarget, 5, dt);
@@ -502,10 +572,7 @@ export class Environment {
     c.stars = damp(c.stars, target.stars, rate, dt);
     c.moon = damp(c.moon, target.moon, rate, dt);
     c.cloudOpacity = damp(c.cloudOpacity, 0.5 + target.stars * 0.2, rate, dt);
-    let diff = Environment.parseClock(target.clock) - c.clockMinutes;
-    if (diff > 720) diff -= 1440;
-    if (diff < -720) diff += 1440;
-    c.clockMinutes = (c.clockMinutes + diff * (1 - Math.exp(-rate * dt)) + 1440) % 1440;
+    c.clockMinutes = this.minutes;
 
     // sun/moon direction
     const dir = sunDirection({ sun: { elevation: c.elevation, azimuth: c.azimuth } }, {});

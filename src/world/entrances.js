@@ -30,12 +30,12 @@ export function allEntrances() {
     const matrix = blockMatrix(spec);
     for (const door of blockDoors(spec)) {
       const home = spec.id === HOME.block && door.number === HOME.number && door.side === HOME.side;
-      list.push({ ...door, matrix, inside: home ? 'flat' : null, label: home ? 'home' : null });
+      list.push({ ...door, matrix, inside: home ? 'flat' : null, label: home ? 'home' : null, address: `${spec.street} ${spec.number}, подъезд ${door.number}` });
     }
   }
   for (const p of PUBLIC) {
     const frame = publicFrame(p);
-    list.push({ matrix: frame.matrix, side: frame.side, lx: 0, lz: frame.lz, inside: p.inside ?? null, label: p.sign, public: true });
+    list.push({ matrix: frame.matrix, side: frame.side, lx: 0, lz: frame.lz, inside: p.inside ?? null, label: p.sign, public: true, address: `${p.street} ${p.number}` });
   }
   return list;
 }
@@ -181,7 +181,7 @@ export function buildEntrances(ctx) {
     zones.get(key).concrete.push(...concrete.splice(first[0]));
     zones.get(key).snow.push(...snow.splice(first[1]));
     const out = at(ox, oz + side * 1.7).sub(stand);
-    doors.push({ x: stand.x, z: stand.z, y: LANDING, yaw: Math.atan2(-out.x, -out.z), inside: e.inside, label: e.label, public: !!e.public });
+    doors.push({ x: stand.x, z: stand.z, y: LANDING, yaw: Math.atan2(-out.x, -out.z), inside: e.inside, label: e.label, public: !!e.public, address: e.address });
   }
 
   // the lit plate over an open door: ОТКРЫТО on a shop, the flat number at home

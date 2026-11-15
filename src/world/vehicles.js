@@ -128,16 +128,141 @@ function drum(r, len, x, y, z, seg = 14) {
  *   trim  — chrome, rubber, lamp housings (glossy)
  *   cabin — seats, dash, door cards, carpet (matt)
  */
+/** A sheet through rows of points ([x, y, z], every row as long as the
+ * first), smooth across the rows. `out(nx, ny, nz, x, y, z)` says whether a
+ * normal points the right way; the sheet is turned over if most do not. */
+function sheet(rows, out) {
+  const n = rows[0].length;
+  const pos = [];
+  for (const row of rows) for (const p of row) pos.push(p[0], p[1], p[2]);
+  const build = (flip) => {
+    const index = [];
+    for (let r = 0; r < rows.length - 1; r++) {
+      for (let c = 0; c < n - 1; c++) {
+        const a = r * n + c;
+        const b = a + 1;
+        const d = a + n;
+        const e = d + 1;
+        if (flip) index.push(a, d, b, b, d, e);
+        else index.push(a, b, d, b, e, d);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+    g.setIndex(index);
+    g.computeVertexNormals();
+    return g;
+  };
+  let g = build(false);
+  const nrm = g.attributes.normal;
+  let score = 0;
+  for (let i = 0; i < nrm.count; i++) score += out(nrm.getX(i), nrm.getY(i), nrm.getZ(i), pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]) ? 1 : -1;
+  if (score < 0) g = build(true);
+  return g.toNonIndexed();
+}
+
+/**
+ * The sedan's lower shell, lofted through cross-sections from tail to nose:
+ * flanks that tuck under at the sill and roll in at the shoulder, wheel
+ * arches cut into them, a crowned bonnet and boot lid, corners rounded in
+ * plan. Open between the cowl and the rear deck, where the cabin is.
+ */
+function shell({ halfL, HW, GW, WAIST, Z_COWL, Z_DECK }) {
+  const SILL = 0.24;
+  const R = WHEEL_R + 0.075;
+  const AY = 0.3;
+  const zF = halfL - 0.03;
+  const zR = -halfL + 0.035;
+  const keys = [zF, zR, Z_COWL, Z_DECK];
+  for (const a of [AXLE_Z, -AXLE_Z]) for (let k = -10; k <= 10; k++) keys.push(a + R * Math.sin((k / 10) * (Math.PI / 2)));
+  const stations = [...keys];
+  for (let z = zR + 0.06; z < zF; z += 0.06) if (!keys.some((k) => Math.abs(k - z) < 0.025)) stations.push(z);
+  stations.sort((a, b) => a - b);
+
+  const bottom = (z) => {
+    let y = SILL + 0.1 * Math.min(1, Math.max(0, (Math.abs(z) - AXLE_Z - R) / 0.4)) ** 2;
+    for (const a of [AXLE_Z, -AXLE_Z]) {
+      const d = Math.abs(z - a);
+      if (d <= R + 1e-6) y = Math.max(y, AY + Math.sqrt(Math.max(0, R * R - d * d)));
+    }
+    return y;
+  };
+  const top = (z) => {
+    if (z > Z_COWL) {
+      const t = (z - Z_COWL) / (zF - Z_COWL);
+      return WAIST - 0.06 * t ** 1.4 - 0.04 * Math.max(0, (t - 0.9) / 0.1) ** 2;
+    }
+    if (z < Z_DECK) {
+      const t = (Z_DECK - z) / (Z_DECK - zR);
+      return WAIST - 0.04 * t ** 1.4 - 0.035 * Math.max(0, (t - 0.88) / 0.12) ** 2;
+    }
+    return WAIST;
+  };
+  const half = (z) => HW - 0.06 * Math.min(1, Math.max(0, (Math.abs(z) - (halfL - 0.42)) / 0.385)) ** 2;
+  const flank = (z) => {
+    const yb = bottom(z);
+    const yw = top(z);
+    const hw = half(z);
+    const ys = [yb, yb + 0.05, 0.42, 0.62, 0.8, yw - 0.07, yw - 0.025, yw];
+    for (let k = 1; k < ys.length; k++) ys[k] = Math.min(yw, Math.max(ys[k], ys[k - 1] + 0.002));
+    return ys.map((y) => {
+      const tuck = 0.05 * Math.min(1, Math.max(0, (0.33 - y) / 0.09));
+      const roll = y > 0.8 ? 0.075 * ((y - 0.8) / (yw - 0.8)) ** 1.7 : 0;
+      return [hw - tuck - roll, y, z];
+    });
+  };
+  const crown = (z) => {
+    const yw = top(z);
+    const xs = half(z) - 0.075;
+    return [[xs, yw, z], [xs * 0.66, yw + 0.016, z], [xs * 0.33, yw + 0.023, z], [0, yw + 0.025, z]];
+  };
+  const away = (nx, ny, nz, x, y) => nx * x + ny * (y - 0.6) > 0;
+  const parts = [sheet(stations.map(flank), away)];
+  parts.push(sheet(stations.filter((z) => z >= Z_COWL - 1e-6).map(crown), away));
+  parts.push(sheet(stations.filter((z) => z <= Z_DECK + 1e-6).map(crown), away));
+  // the shoulder: the ledge from the flank in to the foot of the side glass
+  parts.push(sheet(stations.filter((z) => z >= Z_DECK - 1e-6 && z <= Z_COWL + 1e-6).map((z) => [[half(z) - 0.075, WAIST, z], [GW - 0.02, WAIST, z]]), away));
+  // nose and tail: the end section closed to the centre line
+  for (const z of [zF, zR]) {
+    const edge = [...flank(z), ...crown(z).slice(1)];
+    parts.push(sheet([edge, edge.map((p) => [0, p[1], p[2]])], (nx, ny, nz) => nz * z > 0));
+  }
+  const right = mergeGeometries(parts, false);
+  // the other side: mirrored, every triangle turned back over
+  const left = right.clone().scale(-1, 1, 1);
+  for (const name of ['position', 'normal', 'uv']) {
+    const a = left.attributes[name];
+    const tmp = new Array(a.itemSize);
+    for (let i = 0; i < a.count; i += 3) {
+      for (let k = 0; k < a.itemSize; k++) tmp[k] = a.array[(i + 1) * a.itemSize + k];
+      for (let k = 0; k < a.itemSize; k++) a.array[(i + 1) * a.itemSize + k] = a.array[(i + 2) * a.itemSize + k];
+      for (let k = 0; k < a.itemSize; k++) a.array[(i + 2) * a.itemSize + k] = tmp[k];
+    }
+  }
+  // lips round the arches
+  const lips = [];
+  for (const s of [-1, 1]) {
+    for (const a of [AXLE_Z, -AXLE_Z]) {
+      const lip = new THREE.TorusGeometry(R, 0.022, 5, 16, Math.PI);
+      lip.rotateY(Math.PI / 2);
+      lip.scale(0.7, 1, 1);
+      lips.push(plain(lip.translate(s * (HW - 0.004), AY, a)));
+    }
+  }
+  return [right, left, ...lips];
+}
+
 function sedanParts() {
   const halfL = LENGTH / 2;
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const HW = WIDTH / 2; // outer half width at the waist
   const IN = HW - 0.05; // inner face of the side skins
   const WAIST = 0.93;
-  const ROOF = 1.37;
+  const ROOF = 1.41;
   /** half width of the greenhouse at the waist and at the roof (tumblehome) */
   const GW = 0.72;
-  const GR = 0.6;
+  const GR = 0.63;
   const Z_COWL = 0.9; // foot of the windshield
   const Z_A = 0.32; // top of the windshield
   const Z_B = -0.17;
@@ -146,35 +271,12 @@ function sedanParts() {
 
   /* ---- painted shell */
   const body = [];
-  const skin = profile(
-    [
-      [halfL - 0.03, 0.34],
-      [halfL, 0.7],
-      [halfL - 0.09, 0.86],
-      [Z_COWL, WAIST],
-      [Z_DECK, WAIST],
-      [-halfL + 0.1, 0.88],
-      [-halfL, 0.74],
-      [-halfL + 0.04, 0.34],
-    ],
-    0.05,
-    0.012,
-    true,
-  );
-  for (const s of [-1, 1]) body.push(skin.clone().translate(s * (HW - 0.025), 0, 0));
-  // hood and trunk lid follow the fall of the wings
+  body.push(...shell({ halfL, HW, GW, WAIST, Z_COWL, Z_DECK }));
   const hoodLen = halfL - 0.09 - Z_COWL;
-  body.push(tilted(IN * 2, 0.04, hoodLen + 0.02, 0, (0.86 + WAIST) / 2 - 0.015, Z_COWL + hoodLen / 2, Math.atan2(WAIST - 0.86, hoodLen)));
   const lidLen = halfL - 0.1 + Z_DECK;
-  body.push(tilted(IN * 2, 0.04, lidLen + 0.02, 0, (0.88 + WAIST) / 2 - 0.015, Z_DECK - lidLen / 2, -Math.atan2(WAIST - 0.88, lidLen)));
-  // nose and tail panels, the valances under the bumpers
-  body.push(box(IN * 2, 0.5, 0.04, 0, 0.6, halfL - 0.045));
-  body.push(box(IN * 2, 0.5, 0.04, 0, 0.6, -halfL + 0.05));
   // cowl and rear deck: the ledges the two big panes stand on
   body.push(box(IN * 2, 0.03, 0.12, 0, WAIST - 0.005, Z_COWL + 0.02));
   body.push(box(IN * 2, 0.03, 0.1, 0, WAIST - 0.005, Z_DECK - 0.02));
-  // shoulders: the step in from the door skins to the foot of the glass
-  for (const s of [-1, 1]) body.push(box(HW - GW + 0.03, 0.035, Z_COWL - Z_DECK, s * (GW + (HW - GW) / 2 - 0.005), WAIST - 0.01, (Z_COWL + Z_DECK) / 2));
   // greenhouse: pillars leaning in, roof rails, the roof itself
   for (const s of [-1, 1]) {
     body.push(bar(V(s * GW, WAIST, Z_COWL - 0.02), V(s * GR, ROOF - 0.02, Z_A), 0.055, 0.075)); // A
@@ -226,10 +328,10 @@ function sedanParts() {
     // amber indicators at the corners, under the lamps
     trim.push(colorize(box(0.17, 0.05, 0.02, s * 0.6, 0.53, zf + 0.002), 0xd88a2a));
     // door seams, handles, the rubbing strip along the flank
-    for (const z of [Z_COWL - 0.04, Z_B, Z_DECK + 0.12]) trim.push(colorize(box(0.006, 0.56, 0.012, s * (HW + 0.002), 0.64, z), BLACK));
-    for (const z of [Z_B + 0.14, Z_DECK + 0.28]) trim.push(colorize(box(0.025, 0.028, 0.13, s * (HW + 0.012), 0.83, z), CHROME));
+    for (const z of [Z_COWL - 0.04, Z_B, Z_DECK + 0.12]) trim.push(colorize(box(0.006, 0.46, 0.012, s * (HW + 0.002), 0.58, z), BLACK));
+    for (const z of [Z_B + 0.14, Z_DECK + 0.28]) trim.push(colorize(box(0.025, 0.028, 0.13, s * (HW + 0.008), 0.78, z), CHROME));
     trim.push(colorize(box(0.014, 0.022, 3.2, s * (HW + 0.006), 0.63, 0.0), CHROME));
-    trim.push(colorize(box(0.012, 0.05, 2.5, s * (HW + 0.004), 0.4, 0), BLACK)); // sill
+    trim.push(colorize(box(0.012, 0.035, 1.6, s * (HW - 0.018), 0.275, 0), CHROME)); // sill moulding
     // chrome round the side glass and along the gutter
     trim.push(colorize(box(0.016, 0.018, Z_COWL - Z_DECK - 0.1, s * (GW + 0.012), WAIST + 0.012, (Z_COWL + Z_DECK) / 2), CHROME));
     trim.push(colorize(box(0.02, 0.016, Z_A - Z_C + 0.14, s * (GR + 0.035), ROOF - 0.03, (Z_A + Z_C) / 2), CHROME));
@@ -248,7 +350,7 @@ function sedanParts() {
   trim.push(colorize(drum(0.018, 0.012, 0, 0.78, -halfL + 0.025, 8), CHROME));
   // the underside: a pan from bumper to bumper and liners in the arches, so
   // the shell never shows daylight where a real car has none
-  trim.push(colorize(box(IN * 2, 0.03, LENGTH - 0.16, 0, 0.3, 0), BLACK));
+  trim.push(colorize(box(IN * 2 - 0.1, 0.03, LENGTH - 0.2, 0, 0.25, 0), BLACK));
   for (const s of [-1, 1]) {
     for (const z of [AXLE_Z, -AXLE_Z]) {
       trim.push(colorize(box(0.03, 0.46, 0.84, s * (HW - 0.33), 0.53, z), BLACK));
@@ -273,7 +375,9 @@ function sedanParts() {
   cabin.push(colorize(box(GR * 2 - 0.06, 0.012, Z_A - Z_C, 0, ROOF - 0.024, (Z_A + Z_C) / 2), LINER)); // headlining
   for (const s of [-1, 1]) {
     // door cards with an armrest, a pull and a window winder
-    cabin.push(colorize(box(0.03, 0.58, Z_COWL - Z_DECK - 0.04, s * (IN - 0.012), 0.63, (Z_COWL + Z_DECK) / 2), VINYL));
+    // (kept out of the wheel arches, which would show them from outside)
+    cabin.push(colorize(box(0.03, 0.58, 1.62, s * (IN - 0.012), 0.63, 0), VINYL));
+    cabin.push(colorize(box(0.03, 0.15, Z_COWL - Z_DECK - 0.04, s * (IN - 0.012), 0.855, (Z_COWL + Z_DECK) / 2), VINYL));
     cabin.push(colorize(box(0.035, 0.1, Z_COWL - Z_DECK - 0.1, s * (IN - 0.016), 0.87, (Z_COWL + Z_DECK) / 2), DASH));
     for (const z of [0.3, -0.62]) {
       cabin.push(colorize(box(0.07, 0.05, 0.34, s * (IN - 0.05), 0.66, z), VINYL2));
@@ -289,8 +393,10 @@ function sedanParts() {
     cabin.push(colorize(tilted(0.34, 0.012, 0.14, s * 0.3, ROOF - 0.05, Z_A - 0.09, 0.25), LINER)); // sun visor
   }
   // rear bench and the parcel shelf behind it
-  cabin.push(colorize(tilted(IN * 2 - 0.1, 0.15, 0.5, 0, 0.5, -0.84, 0.08), VINYL));
-  cabin.push(colorize(tilted(IN * 2 - 0.1, 0.5, 0.1, 0, 0.78, -1.08, -0.22), VINYL));
+  // (between the arches it is narrower, as the real one is)
+  cabin.push(colorize(tilted(0.92, 0.15, 0.5, 0, 0.5, -0.84, 0.08), VINYL));
+  cabin.push(colorize(tilted(0.92, 0.24, 0.1, 0, 0.66, -1.053, -0.22), VINYL));
+  cabin.push(colorize(tilted(IN * 2 - 0.1, 0.28, 0.1, 0, 0.91, -1.108, -0.22), VINYL));
   cabin.push(colorize(box(GW * 2, 0.02, 0.16, 0, WAIST - 0.03, Z_DECK + 0.03), DASH));
   // the dash: a deep padded top, a flat face with the binnacle on the
   // driver's side, the radio and heater in the middle, a glovebox lid

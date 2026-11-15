@@ -452,3 +452,36 @@ longer applies: all of it is deleted.
   Nothing is left on the list. Ideas, not debts: a spatial hash for
   collisions if the rect count grows, more yards with lanes west of
   Строителей, a second town down the coast road.
+- 2026-11-15 — **Things to do** (branch `feat/things-to-do`; #94 is
+  merged):
+  - `src/errands.js` — `Errands`: parcels (E at a shop counter →
+    a random locked block door > 120 m away, pay 40 ₽ + 0.11 ₽/m, a
+    column of light over the door, a HUD line with a turning arrow),
+    roubles, a winter rod (120 ₽, F at the counter), ice fishing (F on
+    the bay ice with nothing else in reach; E on a bite within 1.5 s),
+    the catch sold at any counter (30 ₽/kg). `prompt()` / `onKey()` are
+    asked first by `Interactions`; `snapshot` / `restore` go into the
+    saved game. `state.fishing` keeps the player still.
+  - `src/map.js` — `GameMap` (M): land / ice / water sampled once on a
+    10 m grid, then streets, blocks, shops that open, boats, home, the
+    parcel and you. The lighthouse is off the top edge.
+  - Doors carry an `address`; the shop room has a `counter`.
+  - `ui.js`: `setWallet`, `setTask(text, angle)`, `toast(title, sub)`.
+  - `npm run smoke` also checks a parcel, the map, a rod and a fish.
+  Ideas: parcels that need the boat on purpose, a fish soup at home,
+  something to spend roubles on besides the rod.
+- 2026-11-15 — **The Lada's shell, a clock that runs** (same branch):
+  - `vehicles.js`: `shell()` lofts the sedan's lower body through
+    cross-sections every 6 cm (`sheet()` builds a smooth-shaded sheet
+    and turns it to face outward): flanks that tuck under at the sill
+    and roll in at the shoulder, real wheel arches with lips, a crowned
+    bonnet and boot lid, corners rounded in plan. Sill at 0.24, roof at
+    1.41. Door cards and the rear bench stay out of the arches. The old
+    `profile()` slabs are only used by the van now.
+  - `environment.js`: `env.minutes` is the time of day and runs while
+    `env.running` (playing): an hour in 90 s. `DAY` lists the minutes at
+    which the day looks like each of the four presets; `lookAt(minutes)`
+    blends the two neighbours (morning sun mirrored to the east).
+    `setTime(id)` jumps the clock to a preset, `setClock(minutes)`
+    anywhere. The sofa moves it on six hours. The save keeps `minutes`.
+

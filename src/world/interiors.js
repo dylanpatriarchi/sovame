@@ -235,7 +235,7 @@ function buildShop() {
   k.box(0.03, 0.9, 0.7, -W / 2 + 0.02, 1.9, 1.9, 0x2b3a30);
   for (let i = 0; i < 5; i++) k.box(0.035, 0.04, 0.5 - (i % 2) * 0.12, -W / 2 + 0.03, 2.2 - i * 0.15, 1.9, 0xd9d6c9);
 
-  return { k, W, D, H, name: 'Продукты', sub: 'Grocery', spawn: { x: 3.6, z: D / 2 - 1.1, yaw: 0 }, door: { x: 3.6, z: D / 2 - 0.4 } };
+  return { k, W, D, H, name: 'Продукты', sub: 'Grocery', spawn: { x: 3.6, z: D / 2 - 1.1, yaw: 0 }, door: { x: 3.6, z: D / 2 - 0.4 }, counter: { x: -1.6, z: -D / 2 + 3.0 } };
 }
 
 /** The way out: a planked door in the +z wall with a frame and a mat. */
@@ -483,6 +483,7 @@ export function buildInteriors(ctx) {
       spawn: here(def.spawn),
       door: here(def.door),
       uses: (def.uses ?? []).map(here),
+      counter: def.counter ? here(def.counter) : null,
     };
   }
   world.roomList = Object.values(world.rooms);

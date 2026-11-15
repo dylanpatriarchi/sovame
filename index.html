@@ -210,6 +210,64 @@
       }
       #prompt.visible { opacity: 1; transform: translateX(-50%) scale(1); }
 
+      #wallet {
+        margin-top: 6px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        color: var(--cream);
+      }
+      #task {
+        position: absolute;
+        left: 50%;
+        top: clamp(18px, 4vh, 44px);
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        background: rgba(8, 11, 15, 0.55);
+        border-left: 3px solid var(--red);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+      }
+      #task.visible { opacity: 1; }
+      #task .arrow { display: inline-block; font-size: 16px; line-height: 1; color: #ffb060; }
+      #toast {
+        position: absolute;
+        left: 50%;
+        top: 22%;
+        transform: translateX(-50%) translateY(-6px);
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.5s ease, transform 0.5s ease;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+        pointer-events: none;
+      }
+      #toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+      #toast .title { font-size: clamp(16px, 1.7vw, 24px); font-weight: 700; letter-spacing: 0.08em; }
+      #toast .sub {
+        margin-top: 4px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--steel);
+      }
+      #map {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        border: 1px solid rgba(236, 227, 211, 0.25);
+        box-shadow: 0 20px 80px rgba(0, 0, 0, 0.7);
+      }
+      #map.hidden { display: none; }
+
       /* fade-to-black used when stepping through a stairwell door */
       #fade {
         position: fixed;
@@ -523,6 +581,7 @@
       <div id="status">
         <div class="clock">18:40</div>
         <div class="temp">−7 °C</div>
+        <div id="wallet"></div>
       </div>
       <div id="hints">
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
@@ -532,9 +591,13 @@
         <span><kbd>E</kbd> use</span>
         <span><kbd>F</kbd> smoke</span>
         <span><kbd>G</kbd> tea</span>
+        <span><kbd>M</kbd> map</span>
         <span><kbd>Esc</kbd> pause</span>
       </div>
       <div id="prompt"></div>
+      <div id="task"><span class="arrow">↑</span><span class="label"></span></div>
+      <div id="toast"><div class="title"></div><div class="sub"></div></div>
+      <canvas id="map" class="hidden"></canvas>
     </div>
 
     <div id="loading" class="screen">
