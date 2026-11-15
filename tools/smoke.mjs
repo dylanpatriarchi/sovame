@@ -174,6 +174,89 @@ for (const kind of ['shop', 'flat']) {
   await wait(2200);
 }
 
+// errands: a parcel from the counter to a door, a rod, a fish, the map
+{
+  const g0 = await page.evaluate(() => {
+    const g = window.__game;
+    const door = g.world.doors.find((d) => d.inside === 'shop');
+    g.actions.enterRoomNow(door);
+    const c = g.world.rooms.shop.counter;
+    g.player.teleport(c.x, c.z, 0);
+    return true;
+  });
+  await wait(700);
+  const counter = await promptText();
+  await page.keyboard.press('KeyE');
+  await wait(400);
+  const job = await page.evaluate(() => {
+    const g = window.__game;
+    const j = g.errands.job;
+    if (!j) return null;
+    g.actions.leaveRoomNow();
+    g.player.teleport(j.door.x, j.door.z, j.door.yaw);
+    return { address: j.door.address, pay: j.pay, task: document.querySelector('#task .label').textContent };
+  });
+  console.log(`→ counter: "${counter}" → ${JSON.stringify(job)}`);
+  if (!job) fail('[errands] E at the counter did not hand out a parcel');
+  else {
+    await wait(900);
+    await page.screenshot({ path: `${OUT}/parcel.png` });
+    await page.keyboard.press('KeyM');
+    await wait(900);
+    await page.screenshot({ path: `${OUT}/map.png` });
+    const open = await page.evaluate(() => !document.getElementById('map').classList.contains('hidden'));
+    if (!open) fail('[map] M did not open the map');
+    await page.keyboard.press('KeyM');
+    const at = await promptText();
+    await page.keyboard.press('KeyE');
+    await wait(400);
+    const paid = await page.evaluate(() => ({ rubles: window.__game.errands.rubles, job: !!window.__game.errands.job }));
+    console.log(`→ parcel: "${at}" → ${paid.rubles} ₽`);
+    if (paid.rubles !== job.pay || paid.job) fail('[errands] the parcel was not paid for at its door');
+  }
+  // a rod over the counter, then out on the bay ice
+  await page.evaluate(() => {
+    const g = window.__game;
+    g.errands.rubles = 200;
+    g.actions.enterRoomNow(g.world.doors.find((d) => d.inside === 'shop'));
+    const c = g.world.rooms.shop.counter;
+    g.player.teleport(c.x, c.z, 0);
+  });
+  await wait(600);
+  await page.keyboard.press('KeyF');
+  await wait(300);
+  const spot = await page.evaluate(async () => {
+    const g = window.__game;
+    const { isIce } = await import('/src/world/land.js');
+    g.actions.leaveRoomNow();
+    for (let x = 500; x < 760; x += 4) {
+      if (isIce(x, 520) && isIce(x - 12, 520) && isIce(x + 12, 520)) {
+        g.player.teleport(x, 520, -Math.PI / 2);
+        return { x, rod: g.errands.rod, rubles: g.errands.rubles };
+      }
+    }
+    return null;
+  });
+  if (!spot?.rod) fail('[errands] F at the counter did not sell a rod');
+  await wait(800);
+  const ice = await promptText();
+  await page.keyboard.press('KeyF');
+  await wait(500);
+  await page.evaluate(() => window.__game.errands.fishing && (window.__game.errands.fishing.wait = 0));
+  await wait(500);
+  const bite = await promptText();
+  await page.screenshot({ path: `${OUT}/fishing.png` });
+  await page.keyboard.press('KeyE');
+  await wait(300);
+  const fish = await page.evaluate(() => window.__game.errands.fish);
+  await page.keyboard.press('KeyF');
+  await wait(300);
+  const free = await page.evaluate(() => window.__game.player.enabled && !window.__game.errands.fishing);
+  console.log(`→ ice: "${ice}" → "${bite}" → ${JSON.stringify(fish)}`);
+  if (fish.length !== 1) fail('[errands] a strike on a bite did not land a fish');
+  if (!free) fail('[errands] F did not pack the rod up');
+}
+
 // the boat off the mole: aboard from the shore, under way, only on water
 {
   const ok = await page.evaluate(() => {
@@ -227,8 +310,9 @@ for (const kind of ['shop', 'flat']) {
   const back = await page.evaluate(() => {
     const g = window.__game;
     const b = g.driving.car;
-    return { boat: !!b?.boat, x: b?.x ?? g.player.position.x, z: b?.z ?? g.player.position.z };
+    return { boat: !!b?.boat, x: b?.x ?? g.player.position.x, z: b?.z ?? g.player.position.z, rod: g.errands.rod, fish: g.errands.fish.length };
   });
+  if (!back.rod || back.fish !== 1) fail('[save] the rod and the catch were not kept');
   console.log(`→ save: "${label}", back ${Math.hypot(back.x - left.x, back.z - left.z).toFixed(1)} m from where the tab closed, at the helm ${back.boat}`);
   if (label !== 'Continue') fail('[save] the title does not offer to continue');
   if (back.boat !== left.boat || Math.hypot(back.x - left.x, back.z - left.z) > 12) fail('[save] the game did not come back where it was left');

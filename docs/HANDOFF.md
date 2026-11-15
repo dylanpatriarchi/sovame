@@ -452,3 +452,21 @@ longer applies: all of it is deleted.
   Nothing is left on the list. Ideas, not debts: a spatial hash for
   collisions if the rect count grows, more yards with lanes west of
   Строителей, a second town down the coast road.
+- 2026-11-15 — **Things to do** (branch `feat/things-to-do`; #94 is
+  merged):
+  - `src/errands.js` — `Errands`: parcels (E at a shop counter →
+    a random locked block door > 120 m away, pay 40 ₽ + 0.11 ₽/m, a
+    column of light over the door, a HUD line with a turning arrow),
+    roubles, a winter rod (120 ₽, F at the counter), ice fishing (F on
+    the bay ice with nothing else in reach; E on a bite within 1.5 s),
+    the catch sold at any counter (30 ₽/kg). `prompt()` / `onKey()` are
+    asked first by `Interactions`; `snapshot` / `restore` go into the
+    saved game. `state.fishing` keeps the player still.
+  - `src/map.js` — `GameMap` (M): land / ice / water sampled once on a
+    10 m grid, then streets, blocks, shops that open, boats, home, the
+    parcel and you. The lighthouse is off the top edge.
+  - Doors carry an `address`; the shop room has a `counter`.
+  - `ui.js`: `setWallet`, `setTask(text, angle)`, `toast(title, sub)`.
+  - `npm run smoke` also checks a parcel, the map, a rod and a fish.
+  Ideas: parcels that need the boat on purpose, a fish soup at home,
+  something to spend roubles on besides the rod.

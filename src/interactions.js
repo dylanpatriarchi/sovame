@@ -61,7 +61,7 @@ export class Interactions {
         // only answers when you are standing at it
         y: door.inside ? undefined : door.y,
         radius: door.inside ? 2.6 : 1.2,
-        available: () => !world.inside,
+        available: () => !world.inside && this.errands?.job?.door !== door,
         prompt: () => (door.inside ? where : door.public ? `${door.label} — закрыто · closed` : 'Заперто · locked'),
         onUse: () => (door.inside ? this.enterRoom(door) : this.sound.ui('tick')),
       });
@@ -294,7 +294,7 @@ export class Interactions {
       text = !state.transitioning && Math.abs(driving.car.speed) < 1.5 ? driving.car.boat ? 'E — step ashore (close to land) · V — camera' : `E — get out · V — camera · R — radio ${this.radioSets.car ? 'off' : 'on'}` : null;
     } else {
       const it = state.smoking ? null : this.nearest();
-      text = it && !state.transitioning ? it.prompt() : null;
+      text = this.errands?.prompt() ?? (it && !state.transitioning ? it.prompt() : null);
     }
     if (text !== this.lastPrompt) {
       this.lastPrompt = text;
@@ -306,6 +306,10 @@ export class Interactions {
   onKey(event) {
     const { driving, state, smoke } = this;
     const { code } = event;
+    if (code === 'KeyM') {
+      if (!event.repeat) this.map?.toggle();
+      return;
+    }
     if (driving.active) {
       if (event.repeat) return;
       if (code === 'KeyE') this.leaveCar();
@@ -314,6 +318,7 @@ export class Interactions {
       return;
     }
     if (state.transitioning) return;
+    if (this.errands?.onKey(event)) return;
     const useKey = code === 'KeyE' || code === 'KeyF' || code === 'KeyG';
     if (useKey && !state.smoking) this.nearest(code)?.onUse();
     // F or G again cuts the break short
